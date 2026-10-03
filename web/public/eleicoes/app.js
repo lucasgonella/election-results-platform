@@ -1,5 +1,10 @@
+const VERSION_URL =
+    "/data/version.json";
+
 const MANIFEST_URL =
     "/data/manifest.json";
+
+const REFRESH_MS = 30000;
 
 const PAGE_SIZE = 20;
 
@@ -46,6 +51,7 @@ const SCOPE_NAMES = {
 
 
 let manifest = null;
+let publishedVersion = null;
 
 let selectedScope = null;
 let selectedOffice = null;
@@ -892,6 +898,37 @@ async function loadSelectedResult() {
 }
 
 
+function publicationToken(
+    version
+) {
+    return [
+        version.environment,
+        version.generated_at
+    ].join(":");
+}
+
+
+async function loadVersion() {
+    const response =
+        await fetch(
+            VERSION_URL,
+            {
+                cache: "no-store"
+            }
+        );
+
+    if (!response.ok) {
+        throw new Error(
+            `Version HTTP ${
+                response.status
+            }`
+        );
+    }
+
+    return response.json();
+}
+
+
 async function loadManifest() {
 
     const response =
@@ -913,49 +950,40 @@ async function loadManifest() {
     manifest =
         await response.json();
 
-    window.Favorites.setManifest(
-        manifest
-    );
+    return manifest;
 }
-
-
 async function refreshIfChanged() {
 
     try {
+        const version =
+            await loadVersion();
+
+        const nextVersion =
+            publicationToken(
+                version
+            );
+
+        if (
+            nextVersion
+            === publishedVersion
+        ) {
+            return;
+        }
 
         const oldItem =
             currentManifestItem();
 
-        const response =
-            await fetch(
-                MANIFEST_URL,
-                {
-                    cache: "no-store"
-                }
-            );
-
-        if (!response.ok) {
-            return;
-        }
-
-        const newManifest =
-            await response.json();
+        await loadManifest();
 
         const newItem =
-            newManifest.results.find(
-                item =>
-                    item.scope
-                        === selectedScope
-                    &&
-                    item.office
-                        === selectedOffice
-            );
+            currentManifestItem();
 
-        manifest =
-            newManifest;
+        publishedVersion =
+            nextVersion;
 
         window.Favorites.setManifest(
-            manifest
+            manifest,
+            publishedVersion
         );
 
         if (
@@ -983,11 +1011,22 @@ async function refreshIfChanged() {
         );
     }
 }
-
-
 async function initialize() {
 
+    const version =
+        await loadVersion();
+
     await loadManifest();
+
+    publishedVersion =
+        publicationToken(
+            version
+        );
+
+    window.Favorites.setManifest(
+        manifest,
+        publishedVersion
+    );
 
     selectInitialRoute();
 
@@ -1001,7 +1040,7 @@ async function initialize() {
 
     setInterval(
         refreshIfChanged,
-        30000
+        REFRESH_MS
     );
 }
 
