@@ -60,7 +60,28 @@ def test_runner_script_uses_operational_runner():
 
     assert "--execute" in text
     assert "--batch-size" in text
+    assert "--workers" in text
     assert "--cycles" in text
+
+
+def test_worker_configuration_is_explicit():
+    script = SCRIPT.read_text(
+        encoding="utf-8"
+    )
+
+    env = ENV_EXAMPLE.read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        'WORKERS="${COLLECTOR_WORKERS:-1}"'
+        in script
+    )
+
+    assert (
+        "COLLECTOR_WORKERS=1"
+        in env
+    )
 
 
 def test_official_execution_is_explicit():
