@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1">
+
+    <title>Eleições 2026</title>
+
+    <link rel="stylesheet"
+          href="styles.css">
+</head>
+
+<body>
+    <main class="container">
+
+        <header class="header">
+            <div>
+                <p class="eyebrow">
+                    ELEIÇÕES 2026
+                </p>
+
+                <h1>
+                    Resultados eleitorais
+                </h1>
+
+                <p class="subtitle">
+                    Dados provenientes do TSE
+                </p>
+            </div>
+
+            <div class="status">
+                <span class="status-dot"></span>
+                Simulado
+            </div>
+        </header>
+
+        <section class="summary">
+
+            <div>
+                <span class="label">
+                    Localidade
+                </span>
+
+                <strong>
+                    Goiás
+                </strong>
+            </div>
+
+            <div>
+                <span class="label">
+                    Cargo
+                </span>
+
+                <strong>
+                    Deputado Estadual
+                </strong>
+            </div>
+
+            <div>
+                <span class="label">
+                    Apuração
+                </span>
+
+                <strong id="sections">
+                    --
+                </strong>
+            </div>
+
+            <div>
+                <span class="label">
+                    Candidatos
+                </span>
+
+                <strong id="candidate-count">
+                    --
+                </strong>
+            </div>
+
+        </section>
+
+        <section class="toolbar">
+
+            <input
+                id="search"
+                type="search"
+                placeholder="Buscar candidato, número ou partido..."
+                autocomplete="off"
+            >
+
+        </section>
+
+        <section>
+
+            <div class="section-header">
+                <div>
+                    <h2>
+                        Deputado Estadual
+                    </h2>
+
+                    <p id="updated-at">
+                        Carregando dados...
+                    </p>
+                </div>
+            </div>
+
+            <div id="results"
+                 class="results">
+            </div>
+
+            <div id="pagination"
+                 class="pagination">
+            </div>
+
+        </section>
+
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
