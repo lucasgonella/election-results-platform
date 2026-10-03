@@ -758,3 +758,145 @@ def test_only_changed_go_targets_selected(
     )
 
     assert len(saved) == 1
+
+
+def test_state_persistence_can_be_deferred(
+    monkeypatch,
+):
+    current_urls = urls()
+
+    client = FakeClient(
+        {
+            current_urls["config"]:
+                fetch_result(
+                    current_urls["config"],
+                    config_payload(),
+                ),
+
+            current_urls["federal"]:
+                fetch_result(
+                    current_urls["federal"],
+                    federal_payload(),
+                    etag='"federal"',
+                ),
+
+            current_urls["state"]:
+                fetch_result(
+                    current_urls["state"],
+                    state_payload(),
+                    etag='"state"',
+                ),
+        }
+    )
+
+    monkeypatch.setattr(
+        module,
+        "get_ea14_state",
+        lambda **kwargs: None,
+    )
+
+    saved = []
+
+    monkeypatch.setattr(
+        module,
+        "save_ea14_state",
+        lambda **kwargs:
+            saved.append(kwargs),
+    )
+
+    result = (
+        module.run_stateful_planner(
+            settings=settings(),
+            client=client,
+            persist_state=False,
+        )
+    )
+
+    assert len(
+        result.targets
+    ) == 13
+
+    assert saved == []
+
+    assert all(
+        election.state_update
+        is not None
+        for election
+        in result.elections
+    )
+
+
+def test_304_has_no_pending_state_update(
+    monkeypatch,
+):
+    current_urls = urls()
+
+    states = {
+        21270:
+            stored_state(
+                election_code=21270,
+                payload=(
+                    federal_payload()
+                ),
+            ),
+
+        21272:
+            stored_state(
+                election_code=21272,
+                payload=(
+                    state_payload()
+                ),
+            ),
+    }
+
+    client = FakeClient(
+        {
+            current_urls["config"]:
+                fetch_result(
+                    current_urls["config"],
+                    config_payload(),
+                ),
+
+            current_urls["federal"]:
+                fetch_result(
+                    current_urls["federal"],
+                    None,
+                    status_code=304,
+                ),
+
+            current_urls["state"]:
+                fetch_result(
+                    current_urls["state"],
+                    None,
+                    status_code=304,
+                ),
+        }
+    )
+
+    monkeypatch.setattr(
+        module,
+        "get_ea14_state",
+        lambda **kwargs:
+            states[
+                kwargs[
+                    "election_code"
+                ]
+            ],
+    )
+
+    result = (
+        module.run_stateful_planner(
+            settings=settings(),
+            client=client,
+            persist_state=False,
+        )
+    )
+
+    assert result.targets == ()
+
+    assert all(
+        election.state_update
+        is None
+        for election
+        in result.elections
+    )
