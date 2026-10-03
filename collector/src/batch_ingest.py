@@ -1,8 +1,10 @@
 ﻿from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 import json
+import threading
 
 from .discovery import ElectionTarget
 from .ea20_batch_repository import (
@@ -17,8 +19,10 @@ from .ea20_batch_repository import (
 from .ingest import (
     TargetIngestResult,
     _commit_ea14_state,
+    _fetch_target,
     _ingest_target,
     _looks_official,
+    _persist_fetched_target,
     _target_matches,
 )
 from .runtime import (
@@ -33,6 +37,7 @@ from .tse_client import TseClient
 
 
 DEFAULT_BATCH_SIZE = 10
+DEFAULT_WORKERS = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +60,7 @@ class BatchElectionSummary:
 class BatchedIngestResult:
     execute: bool
     batch_size: int
+    workers: int
 
     planned_targets: int
     selected_targets: int
@@ -163,6 +169,35 @@ def _prepare_election_batch(
     )
 
 
+def _worker_client(
+    *,
+    base_client: TseClient,
+    local_state: threading.local,
+):
+    if not isinstance(
+        base_client,
+        TseClient,
+    ):
+        return base_client
+
+    worker = getattr(
+        local_state,
+        "client",
+        None,
+    )
+
+    if worker is None:
+        worker = TseClient(
+            timeout=(
+                base_client.timeout
+            )
+        )
+
+        local_state.client = worker
+
+    return worker
+
+
 def run_batched_ingest(
     *,
     settings: (
@@ -177,6 +212,9 @@ def run_batched_ingest(
     batch_size: int = (
         DEFAULT_BATCH_SIZE
     ),
+    workers: int = (
+        DEFAULT_WORKERS
+    ),
     allow_official: bool = False,
     election_code: int | None = None,
     scope_code: str | None = None,
@@ -190,6 +228,12 @@ def run_batched_ingest(
     if batch_size < 1:
         raise ValueError(
             "batch_size must be "
+            "greater than zero."
+        )
+
+    if workers < 1:
+        raise ValueError(
+            "workers must be "
             "greater than zero."
         )
 
@@ -240,6 +284,7 @@ def run_batched_ingest(
         return BatchedIngestResult(
             execute=False,
             batch_size=batch_size,
+            workers=workers,
             planned_targets=(
                 planned_targets
             ),
@@ -271,6 +316,7 @@ def run_batched_ingest(
         return BatchedIngestResult(
             execute=True,
             batch_size=batch_size,
+            workers=workers,
             planned_targets=(
                 planned_targets
             ),
@@ -362,9 +408,19 @@ def run_batched_ingest(
                 )
             )
 
-            for item in eligible[
-                :remaining
-            ]:
+            selected_items = tuple(
+                eligible[
+                    :remaining
+                ]
+            )
+
+            remaining -= len(
+                selected_items
+            )
+
+            jobs = []
+
+            for item in selected_items:
                 target = (
                     target_by_url.get(
                         item.source_url
@@ -389,60 +445,175 @@ def run_batched_ingest(
 
                     failed += 1
                     failed_for_election += 1
-                    remaining -= 1
 
                     continue
 
-                try:
-                    result = _ingest_target(
-                        target=target,
-                        settings=(
-                            selected_settings
-                        ),
-                        client=(
-                            selected_client
-                        ),
+                jobs.append(
+                    (
+                        item,
+                        target,
                     )
+                )
 
-                except Exception as exc:
-                    message = (
-                        f"{type(exc).__name__}: "
-                        f"{exc}"
-                    )
+            if workers == 1:
+                for item, target in jobs:
+                    try:
+                        result = _ingest_target(
+                            target=target,
+                            settings=(
+                                selected_settings
+                            ),
+                            client=(
+                                selected_client
+                            ),
+                        )
 
-                    mark_item_error(
+                    except Exception as exc:
+                        message = (
+                            f"{type(exc).__name__}: "
+                            f"{exc}"
+                        )
+
+                        mark_item_error(
+                            item_id=item.id,
+                            error_message=message,
+                        )
+
+                        errors.append(
+                            (
+                                f"{target.url} -> "
+                                f"{message}"
+                            )
+                        )
+
+                        failed += 1
+                        failed_for_election += 1
+
+                        continue
+
+                    mark_item_completed(
                         item_id=item.id,
-                        error_message=message,
+                        status=result.status,
+                        collector_run_id=(
+                            result
+                            .collector_run_id
+                        ),
                     )
 
-                    errors.append(
-                        (
-                            f"{target.url} -> "
-                            f"{message}"
+                    results.append(
+                        result
+                    )
+
+                    processed_for_election += 1
+
+            elif jobs:
+                local_state = (
+                    threading.local()
+                )
+
+                def fetch_job(
+                    target,
+                ):
+                    worker_client = (
+                        _worker_client(
+                            base_client=(
+                                selected_client
+                            ),
+                            local_state=(
+                                local_state
+                            ),
                         )
                     )
 
-                    failed += 1
-                    failed_for_election += 1
-                    remaining -= 1
+                    return _fetch_target(
+                        target=target,
+                        client=worker_client,
+                    )
 
-                    continue
+                max_workers = min(
+                    workers,
+                    len(jobs),
+                )
 
-                mark_item_completed(
-                    item_id=item.id,
-                    status=result.status,
-                    collector_run_id=(
-                        result
-                        .collector_run_id
+                with ThreadPoolExecutor(
+                    max_workers=max_workers,
+                    thread_name_prefix=(
+                        "ea20"
                     ),
-                )
+                ) as executor:
+                    futures = [
+                        executor.submit(
+                            fetch_job,
+                            target,
+                        )
+                        for _, target
+                        in jobs
+                    ]
 
-                results.append(
-                    result
-                )
+                    for (
+                        (
+                            item,
+                            target,
+                        ),
+                        future,
+                    ) in zip(
+                        jobs,
+                        futures,
+                        strict=True,
+                    ):
+                        try:
+                            fetched = (
+                                future.result()
+                            )
 
-                processed_for_election += 1
-                remaining -= 1
+                            # Database writes remain
+                            # serialized intentionally.
+                            result = (
+                                _persist_fetched_target(
+                                    fetched=fetched,
+                                    settings=(
+                                        selected_settings
+                                    ),
+                                )
+                            )
+
+                        except Exception as exc:
+                            message = (
+                                f"{type(exc).__name__}: "
+                                f"{exc}"
+                            )
+
+                            mark_item_error(
+                                item_id=item.id,
+                                error_message=message,
+                            )
+
+                            errors.append(
+                                (
+                                    f"{target.url} -> "
+                                    f"{message}"
+                                )
+                            )
+
+                            failed += 1
+                            failed_for_election += 1
+
+                            continue
+
+                        mark_item_completed(
+                            item_id=item.id,
+                            status=result.status,
+                            collector_run_id=(
+                                result
+                                .collector_run_id
+                            ),
+                        )
+
+                        results.append(
+                            result
+                        )
+
+                        processed_for_election += 1
 
         refreshed = (
             refresh_batch_progress(
@@ -515,6 +686,7 @@ def run_batched_ingest(
     return BatchedIngestResult(
         execute=True,
         batch_size=batch_size,
+        workers=workers,
         planned_targets=(
             planned_targets
         ),
@@ -578,6 +750,9 @@ def _build_output(
 
         "batch_size":
             result.batch_size,
+
+        "workers":
+            result.workers,
 
         "planned_targets":
             result.planned_targets,
@@ -703,6 +878,14 @@ def main() -> None:
     )
 
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=(
+            DEFAULT_WORKERS
+        ),
+    )
+
+    parser.add_argument(
         "--election",
         type=int,
         dest="election_code",
@@ -733,6 +916,9 @@ def main() -> None:
         execute=args.execute,
         batch_size=(
             args.batch_size
+        ),
+        workers=(
+            args.workers
         ),
         allow_official=(
             args.allow_official
