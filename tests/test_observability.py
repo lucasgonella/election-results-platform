@@ -243,6 +243,18 @@ def test_repository_reads_status(
     )
 
 
+    first_query = (
+        connection
+        .cursor_object
+        .executions[0][0]
+    )
+
+    assert (
+        "AND total_targets > 0"
+        in first_query
+    )
+
+
 def test_health_is_ok_without_errors():
     status = status_object()
 
