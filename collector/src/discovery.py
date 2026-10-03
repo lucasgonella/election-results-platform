@@ -6,9 +6,10 @@ from typing import Any
 
 EXTERIOR_SCOPE = "zz"
 BRAZIL_SCOPE = "br"
-DF_SCOPE = "df"
+GOIAS_SCOPE = "go"
 
 PRESIDENT_OFFICE = 1
+FEDERAL_DEPUTY_OFFICE = 6
 STATE_DEPUTY_OFFICE = 7
 DISTRICT_DEPUTY_OFFICE = 8
 
@@ -215,15 +216,15 @@ def office_applies_to_scope(
     office_code: int,
     scope_code: str,
 ) -> bool:
-    if (
-        office_code == DISTRICT_DEPUTY_OFFICE
-        and scope_code != DF_SCOPE
-    ):
-        return False
+    if office_code in {
+        FEDERAL_DEPUTY_OFFICE,
+        STATE_DEPUTY_OFFICE,
+    }:
+        return scope_code == GOIAS_SCOPE
 
     if (
-        office_code == STATE_DEPUTY_OFFICE
-        and scope_code == DF_SCOPE
+        office_code
+        == DISTRICT_DEPUTY_OFFICE
     ):
         return False
 

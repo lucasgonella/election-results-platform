@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 
 from collector.src.planner import (
     build_collection_plan,
@@ -212,7 +212,7 @@ def test_builds_independent_plan_per_election():
 
     assert len(
         by_code[21272].targets
-    ) == 8
+    ) == 6
 
 
 def test_state_uses_its_own_ea14_scopes():
