@@ -261,6 +261,8 @@ COLLECTOR_CYCLES=1
 
 Com `COLLECTOR_WORKERS=1`, o processamento mantém o comportamento sequencial. Valores maiores paralelizam a fase de leitura do estado, download e parsing dos targets EA20. As gravações no PostgreSQL, os checkpoints de EA14 e a publicação do bundle permanecem serializados pelo processo principal.
 
+Atualizações de checkpoint EA14 que não produzam targets EA20 são persistidas sem criar batches vazios. Esses checkpoints isolados também não disparam uma nova publicação do bundle estático; a publicação automática é enfileirada somente quando um batch com dados EA20 conclui seu checkpoint.
+
 ## Segurança operacional
 
 O projeto possui uma trava explícita para impedir o uso acidental do ambiente oficial:

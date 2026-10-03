@@ -45,6 +45,7 @@ def batch_result(
     processed=10,
     failed=0,
     committed=0,
+    data_committed=0,
     planned=137,
     selected=137,
     errors=(),
@@ -54,6 +55,9 @@ def batch_result(
         failed_targets=failed,
         state_updates_committed=(
             committed
+        ),
+        data_updates_committed=(
+            data_committed
         ),
         planned_targets=planned,
         selected_targets=selected,
@@ -290,6 +294,7 @@ def test_output_contains_before_after():
             processed_targets=10,
             failed_targets=0,
             state_updates_committed=0,
+            data_updates_committed=0,
             before=before,
             after=after,
             cycles=(
@@ -298,6 +303,7 @@ def test_output_contains_before_after():
                     processed_targets=10,
                     failed_targets=0,
                     state_updates_committed=0,
+                    data_updates_committed=0,
                     pending_before=136,
                     pending_after=126,
                     completed_after=11,
@@ -425,3 +431,60 @@ def test_workers_must_be_positive():
             client=SimpleNamespace(),
             workers=0,
         )
+
+
+def test_runner_tracks_data_updates_separately(
+    monkeypatch,
+):
+    states = iter(
+        (
+            status(),
+            status(
+                pending=0,
+                completed=10,
+            ),
+        )
+    )
+
+    monkeypatch.setattr(
+        module,
+        "_get_status",
+        lambda settings:
+            next(states),
+    )
+
+    monkeypatch.setattr(
+        module,
+        "run_batched_ingest",
+        lambda **kwargs:
+            batch_result(
+                processed=0,
+                committed=2,
+                data_committed=0,
+                planned=0,
+                selected=0,
+            ),
+    )
+
+    result = module.run_collector(
+        settings=settings(),
+        client=SimpleNamespace(),
+        execute=True,
+        cycles=1,
+    )
+
+    assert (
+        result.state_updates_committed
+        == 2
+    )
+
+    assert (
+        result.data_updates_committed
+        == 0
+    )
+
+    assert (
+        result.cycles[0]
+        .data_updates_committed
+        == 0
+    )

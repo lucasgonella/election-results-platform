@@ -127,9 +127,9 @@ safe = (
     and after["health"] == "ok"
 )
 
-checkpoint_completed = (
+data_update_completed = (
     result.get(
-        "state_updates_committed",
+        "data_updates_committed",
         0,
     )
     > 0
@@ -137,7 +137,7 @@ checkpoint_completed = (
 
 publish_ready = (
     safe
-    and checkpoint_completed
+    and data_update_completed
 )
 
 print(

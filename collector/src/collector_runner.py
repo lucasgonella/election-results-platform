@@ -31,6 +31,7 @@ class RunnerCycleSummary:
     failed_targets: int
 
     state_updates_committed: int
+    data_updates_committed: int
 
     pending_before: int
     pending_after: int
@@ -64,6 +65,7 @@ class CollectorRunnerResult:
     failed_targets: int
 
     state_updates_committed: int
+    data_updates_committed: int
 
     before: CollectorObservability
     after: CollectorObservability
@@ -187,6 +189,7 @@ def run_collector(
             processed_targets=0,
             failed_targets=0,
             state_updates_committed=0,
+            data_updates_committed=0,
             before=before,
             after=before,
             cycles=(),
@@ -201,6 +204,7 @@ def run_collector(
     total_processed = 0
     total_failed = 0
     total_committed = 0
+    total_data_committed = 0
 
     planned_targets = 0
     selected_targets = 0
@@ -271,6 +275,10 @@ def run_collector(
                 batch_result
                 .state_updates_committed
             ),
+            data_updates_committed=(
+                batch_result
+                .data_updates_committed
+            ),
             pending_before=(
                 current_status
                 .pending_items
@@ -312,6 +320,11 @@ def run_collector(
         total_committed += (
             batch_result
             .state_updates_committed
+        )
+
+        total_data_committed += (
+            batch_result
+            .data_updates_committed
         )
 
         current_status = (
@@ -375,6 +388,9 @@ def run_collector(
         ),
         state_updates_committed=(
             total_committed
+        ),
+        data_updates_committed=(
+            total_data_committed
         ),
         before=before,
         after=current_status,
@@ -477,6 +493,10 @@ def _build_output(
             result
             .state_updates_committed,
 
+        "data_updates_committed":
+            result
+            .data_updates_committed,
+
         "before":
             _status_output(
                 result.before
@@ -502,6 +522,10 @@ def _build_output(
                 "state_updates_committed":
                     cycle
                     .state_updates_committed,
+
+                "data_updates_committed":
+                    cycle
+                    .data_updates_committed,
 
                 "pending_before":
                     cycle

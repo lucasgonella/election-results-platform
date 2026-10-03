@@ -69,6 +69,7 @@ class BatchedIngestResult:
     failed_targets: int
 
     state_updates_committed: int
+    data_updates_committed: int
 
     planner: StatefulPlannerResult
 
@@ -294,6 +295,7 @@ def run_batched_ingest(
             processed_targets=0,
             failed_targets=0,
             state_updates_committed=0,
+            data_updates_committed=0,
             planner=planner,
             elections=(),
             results=(),
@@ -324,6 +326,7 @@ def run_batched_ingest(
             processed_targets=0,
             failed_targets=0,
             state_updates_committed=0,
+            data_updates_committed=0,
             planner=planner,
             elections=(),
             results=(),
@@ -337,11 +340,26 @@ def run_batched_ingest(
         ]
     ] = []
 
+    committed = 0
+    data_committed = 0
+
     for election in planner.elections:
         if (
             election.state_update
             is None
         ):
+            continue
+
+        # EA14 can change without producing
+        # any EA20 target. Persist the new
+        # checkpoint, but do not create an
+        # empty batch or trigger publishing.
+        if not election.targets:
+            _commit_ea14_state(
+                election
+            )
+
+            committed += 1
             continue
 
         batch = (
@@ -369,7 +387,6 @@ def run_batched_ingest(
         BatchElectionSummary
     ] = []
 
-    committed = 0
     failed = 0
 
     for election, batch in prepared:
@@ -649,6 +666,7 @@ def run_batched_ingest(
             )
 
             committed += 1
+            data_committed += 1
             state_committed = True
 
         summaries.append(
@@ -699,6 +717,9 @@ def run_batched_ingest(
         failed_targets=failed,
         state_updates_committed=(
             committed
+        ),
+        data_updates_committed=(
+            data_committed
         ),
         planner=planner,
         elections=tuple(
@@ -769,6 +790,10 @@ def _build_output(
         "state_updates_committed":
             result
             .state_updates_committed,
+
+        "data_updates_committed":
+            result
+            .data_updates_committed,
 
         "batches": [
             {

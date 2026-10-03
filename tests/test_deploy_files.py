@@ -228,8 +228,13 @@ def test_conditional_static_publish():
     )
 
     assert (
-        "state_updates_committed"
+        "data_updates_committed"
         in text
+    )
+
+    assert (
+        "state_updates_committed"
+        not in text
     )
 
     assert (
