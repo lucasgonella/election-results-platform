@@ -575,8 +575,8 @@ function renderCandidateCard(
                 .isFavorite(
                     favoriteRef
                 )
-                ? "?"
-                : "?"
+                ? "\u2605"
+                : "\u2606"
         );
 
     favoriteButton.type =
@@ -600,8 +600,8 @@ function renderCandidateCard(
 
             favoriteButton.textContent =
                 selected
-                    ? "?"
-                    : "?";
+                    ? "\u2605"
+                    : "\u2606";
         }
     );
 
