@@ -59,13 +59,14 @@ https://www.tse.jus.br/eleicoes/informacoes-tecnicas-sobre-a-divulgacao-de-resul
 
 ## Escopo atual
 
-O bundle publicado atualmente cobre 85 combinações de localidade e cargo:
+O bundle completo cobre 137 combinações de localidade e cargo:
 
 - Presidente: Brasil, 27 UFs e Exterior;
 - Governador: 27 UFs;
 - Senador: 27 UFs;
-- Deputado Federal: Goiás;
-- Deputado Estadual: Goiás.
+- Deputado Federal: 27 UFs;
+- Deputado Estadual: 26 estados, exceto o Distrito Federal;
+- Deputado Distrital: Distrito Federal.
 
 Códigos de cargo utilizados pela aplicação:
 
@@ -76,6 +77,7 @@ Códigos de cargo utilizados pela aplicação:
 | 5 | Senador |
 | 6 | Deputado Federal |
 | 7 | Deputado Estadual |
+| 8 | Deputado Distrital |
 
 ## Arquitetura
 
@@ -136,6 +138,12 @@ data/
 │   ├── senator.json
 │   ├── federal-deputy.json
 │   └── state-deputy.json
+├── df/
+│   ├── president.json
+│   ├── governor.json
+│   ├── senator.json
+│   ├── federal-deputy.json
+│   └── district-deputy.json
 └── ...
 ```
 
@@ -262,6 +270,23 @@ COLLECTOR_CYCLES=1
 Com `COLLECTOR_WORKERS=1`, o processamento mantém o comportamento sequencial. Valores maiores paralelizam a fase de leitura do estado, download e parsing dos targets EA20. As gravações no PostgreSQL, os checkpoints de EA14 e a publicação do bundle permanecem serializados pelo processo principal.
 
 Atualizações de checkpoint EA14 que não produzam targets EA20 são persistidas sem criar batches vazios. Esses checkpoints isolados também não disparam uma nova publicação do bundle estático; a publicação automática é enfileirada somente quando um batch com dados EA20 conclui seu checkpoint.
+
+### Bootstrap de novos targets
+
+Quando o escopo suportado pela aplicação é ampliado, o módulo `collector.src.bootstrap_missing` compara o plano atual com os snapshots já persistidos e coleta somente as combinações que ainda não existem no banco.
+
+Exemplo:
+
+```bash
+python -m collector.src.bootstrap_missing \
+  --execute \
+  --until-complete \
+  --batch-size 25 \
+  --workers 5 \
+  --allow-official
+```
+
+O bootstrap faz downloads EA20 em paralelo, persiste os resultados de forma serializada e não altera os checkpoints EA14. Isso permite adicionar novos cargos/localidades sem apagar o histórico ou refazer os targets que já existem.
 
 ## Segurança operacional
 
