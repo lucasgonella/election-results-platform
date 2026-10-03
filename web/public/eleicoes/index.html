@@ -2,84 +2,171 @@
 <html lang="pt-BR">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
 
     <title>Eleições 2026</title>
 
-    <link rel="stylesheet"
-          href="styles.css">
+    <link
+        rel="stylesheet"
+        href="styles.css"
+    >
 </head>
 
 <body>
-    <main class="container">
 
-        <header class="header">
+<main class="container">
+
+    <header class="hero">
+
+        <div>
+            <p class="eyebrow">
+                ELEIÇÕES 2026
+            </p>
+
+            <h1>
+                Resultados eleitorais
+            </h1>
+
+            <p class="subtitle">
+                Dados provenientes do TSE
+            </p>
+        </div>
+
+        <div
+            id="environment-badge"
+            class="environment-badge"
+        >
+            Carregando...
+        </div>
+
+    </header>
+
+
+    <section class="controls">
+
+        <div class="field">
+
+            <label for="scope-select">
+                Localidade
+            </label>
+
+            <select id="scope-select">
+                <option>
+                    Carregando...
+                </option>
+            </select>
+
+        </div>
+
+        <div class="office-area">
+
+            <span class="field-label">
+                Cargo
+            </span>
+
+            <div
+                id="office-tabs"
+                class="office-tabs"
+            ></div>
+
+        </div>
+
+    </section>
+
+
+    <section class="summary">
+
+        <div class="summary-item">
+            <span>Localidade</span>
+
+            <strong id="location-summary">
+                --
+            </strong>
+        </div>
+
+        <div class="summary-item">
+            <span>Cargo</span>
+
+            <strong id="office-summary">
+                --
+            </strong>
+        </div>
+
+        <div class="summary-item">
+            <span>Apuração</span>
+
+            <strong id="sections-summary">
+                --
+            </strong>
+        </div>
+
+        <div class="summary-item">
+            <span>Candidatos</span>
+
+            <strong id="candidate-count-summary">
+                --
+            </strong>
+        </div>
+
+    </section>
+
+
+    <section class="progress-card">
+
+        <div class="progress-header">
+
+            <span>
+                Seções totalizadas
+            </span>
+
+            <strong id="progress-label">
+                --
+            </strong>
+
+        </div>
+
+        <div class="progress-track">
+            <div
+                id="progress-bar"
+                class="progress-bar"
+            ></div>
+        </div>
+
+    </section>
+
+
+    <section class="results-section">
+
+        <div class="results-header">
+
             <div>
-                <p class="eyebrow">
-                    ELEIÇÕES 2026
+                <h2 id="page-title">
+                    Resultados
+                </h2>
+
+                <p id="updated-at">
+                    Carregando dados...
                 </p>
-
-                <h1>
-                    Resultados eleitorais
-                </h1>
-
-                <p class="subtitle">
-                    Dados provenientes do TSE
-                </p>
             </div>
 
-            <div class="status">
-                <span class="status-dot"></span>
-                Simulado
-            </div>
-        </header>
+            <span
+                id="refresh-indicator"
+                class="refresh-indicator"
+            >
+                Atualização automática
+            </span>
 
-        <section class="summary">
+        </div>
 
-            <div>
-                <span class="label">
-                    Localidade
-                </span>
 
-                <strong>
-                    Goiás
-                </strong>
-            </div>
-
-            <div>
-                <span class="label">
-                    Cargo
-                </span>
-
-                <strong>
-                    Deputado Estadual
-                </strong>
-            </div>
-
-            <div>
-                <span class="label">
-                    Apuração
-                </span>
-
-                <strong id="sections">
-                    --
-                </strong>
-            </div>
-
-            <div>
-                <span class="label">
-                    Candidatos
-                </span>
-
-                <strong id="candidate-count">
-                    --
-                </strong>
-            </div>
-
-        </section>
-
-        <section class="toolbar">
+        <div
+            id="toolbar"
+            class="toolbar"
+        >
 
             <input
                 id="search"
@@ -88,34 +175,41 @@
                 autocomplete="off"
             >
 
-        </section>
+        </div>
 
-        <section>
 
-            <div class="section-header">
-                <div>
-                    <h2>
-                        Deputado Estadual
-                    </h2>
+        <div
+            id="results"
+            class="results"
+        ></div>
 
-                    <p id="updated-at">
-                        Carregando dados...
-                    </p>
-                </div>
-            </div>
 
-            <div id="results"
-                 class="results">
-            </div>
+        <div
+            id="pagination"
+            class="pagination"
+        ></div>
 
-            <div id="pagination"
-                 class="pagination">
-            </div>
+    </section>
 
-        </section>
 
-    </main>
+    <footer>
 
-    <script src="app.js"></script>
+        <p>
+            Os dados apresentados são provenientes
+            dos resultados disponibilizados pelo TSE.
+        </p>
+
+        <p>
+            O portal não realiza projeções,
+            estimativas ou declarações próprias
+            de resultado.
+        </p>
+
+    </footer>
+
+</main>
+
+<script src="app.js"></script>
+
 </body>
 </html>
