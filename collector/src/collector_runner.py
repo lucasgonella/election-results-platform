@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import json
+import time
 
 from .batch_ingest import (
     DEFAULT_BATCH_SIZE,
@@ -21,6 +22,19 @@ from .tse_client import TseClient
 
 
 DEFAULT_CYCLES = 1
+
+
+def _elapsed_ms(
+    started_ns: int,
+) -> float:
+    return round(
+        (
+            time.perf_counter_ns()
+            - started_ns
+        )
+        / 1_000_000,
+        3,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +59,12 @@ class RunnerCycleSummary:
         str,
         ...
     ]
+
+    duration_ms: float = 0.0
+    planner_duration_ms: float = 0.0
+    fetch_duration_ms: float = 0.0
+    persist_duration_ms: float = 0.0
+    candidates_processed: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +94,12 @@ class CollectorRunnerResult:
         RunnerCycleSummary,
         ...
     ]
+
+    duration_ms: float = 0.0
+    planner_duration_ms: float = 0.0
+    fetch_duration_ms: float = 0.0
+    persist_duration_ms: float = 0.0
+    candidates_processed: int = 0
 
 
 def _get_status(
@@ -114,6 +140,10 @@ def run_collector(
     scope_code: str | None = None,
     office_code: int | None = None,
 ) -> CollectorRunnerResult:
+    run_started_ns = (
+        time.perf_counter_ns()
+    )
+
     selected_settings = (
         settings
         or load_settings()
@@ -193,6 +223,27 @@ def run_collector(
             before=before,
             after=before,
             cycles=(),
+            duration_ms=(
+                _elapsed_ms(
+                    run_started_ns
+                )
+            ),
+            planner_duration_ms=(
+                dry_run
+                .planner_duration_ms
+            ),
+            fetch_duration_ms=(
+                dry_run
+                .fetch_duration_ms
+            ),
+            persist_duration_ms=(
+                dry_run
+                .persist_duration_ms
+            ),
+            candidates_processed=(
+                dry_run
+                .candidates_processed
+            ),
         )
 
     current_status = before
@@ -205,6 +256,11 @@ def run_collector(
     total_failed = 0
     total_committed = 0
     total_data_committed = 0
+
+    total_planner_duration_ms = 0.0
+    total_fetch_duration_ms = 0.0
+    total_persist_duration_ms = 0.0
+    total_candidates_processed = 0
 
     planned_targets = 0
     selected_targets = 0
@@ -301,6 +357,26 @@ def run_collector(
             errors=tuple(
                 batch_result.errors
             ),
+            duration_ms=(
+                batch_result
+                .duration_ms
+            ),
+            planner_duration_ms=(
+                batch_result
+                .planner_duration_ms
+            ),
+            fetch_duration_ms=(
+                batch_result
+                .fetch_duration_ms
+            ),
+            persist_duration_ms=(
+                batch_result
+                .persist_duration_ms
+            ),
+            candidates_processed=(
+                batch_result
+                .candidates_processed
+            ),
         )
 
         cycle_summaries.append(
@@ -325,6 +401,26 @@ def run_collector(
         total_data_committed += (
             batch_result
             .data_updates_committed
+        )
+
+        total_planner_duration_ms += (
+            batch_result
+            .planner_duration_ms
+        )
+
+        total_fetch_duration_ms += (
+            batch_result
+            .fetch_duration_ms
+        )
+
+        total_persist_duration_ms += (
+            batch_result
+            .persist_duration_ms
+        )
+
+        total_candidates_processed += (
+            batch_result
+            .candidates_processed
         )
 
         current_status = (
@@ -396,6 +492,32 @@ def run_collector(
         after=current_status,
         cycles=tuple(
             cycle_summaries
+        ),
+        duration_ms=(
+            _elapsed_ms(
+                run_started_ns
+            )
+        ),
+        planner_duration_ms=(
+            round(
+                total_planner_duration_ms,
+                3,
+            )
+        ),
+        fetch_duration_ms=(
+            round(
+                total_fetch_duration_ms,
+                3,
+            )
+        ),
+        persist_duration_ms=(
+            round(
+                total_persist_duration_ms,
+                3,
+            )
+        ),
+        candidates_processed=(
+            total_candidates_processed
         ),
     )
 
@@ -497,6 +619,27 @@ def _build_output(
             result
             .data_updates_committed,
 
+        "timings": {
+            "duration_ms":
+                result.duration_ms,
+
+            "planner_duration_ms":
+                result
+                .planner_duration_ms,
+
+            "fetch_duration_ms":
+                result
+                .fetch_duration_ms,
+
+            "persist_duration_ms":
+                result
+                .persist_duration_ms,
+
+            "candidates_processed":
+                result
+                .candidates_processed,
+        },
+
         "before":
             _status_output(
                 result.before
@@ -544,6 +687,27 @@ def _build_output(
 
                 "health_after":
                     cycle.health_after,
+
+                "timings": {
+                    "duration_ms":
+                        cycle.duration_ms,
+
+                    "planner_duration_ms":
+                        cycle
+                        .planner_duration_ms,
+
+                    "fetch_duration_ms":
+                        cycle
+                        .fetch_duration_ms,
+
+                    "persist_duration_ms":
+                        cycle
+                        .persist_duration_ms,
+
+                    "candidates_processed":
+                        cycle
+                        .candidates_processed,
+                },
 
                 "errors":
                     list(

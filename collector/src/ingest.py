@@ -4,6 +4,7 @@ import argparse
 from collections import Counter
 from dataclasses import dataclass
 import json
+import time
 
 from .discovery import ElectionTarget
 from .ea14_state_repository import (
@@ -36,6 +37,19 @@ from .tse_client import (
 DEFAULT_MAX_TARGETS = 10
 
 
+def _elapsed_ms(
+    started_ns: int,
+) -> float:
+    return round(
+        (
+            time.perf_counter_ns()
+            - started_ns
+        )
+        / 1_000_000,
+        3,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class TargetIngestResult:
     election_code: int
@@ -50,6 +64,13 @@ class TargetIngestResult:
 
     snapshots_created: int
     candidates_processed: int
+
+    cache_lookup_duration_ms: float = 0.0
+    http_duration_ms: float = 0.0
+    parse_duration_ms: float = 0.0
+    fetch_duration_ms: float = 0.0
+    persist_duration_ms: float = 0.0
+    target_duration_ms: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +87,11 @@ class FetchedTarget:
         ParsedResult
         | None
     )
+
+    cache_lookup_duration_ms: float = 0.0
+    http_duration_ms: float = 0.0
+    parse_duration_ms: float = 0.0
+    fetch_duration_ms: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,10 +222,28 @@ def _fetch_target(
     target: ElectionTarget,
     client: TseClient,
 ) -> FetchedTarget:
+    fetch_started_ns = (
+        time.perf_counter_ns()
+    )
+
+    cache_started_ns = (
+        time.perf_counter_ns()
+    )
+
     cached_state = (
         get_last_fetch_state(
             target.url
         )
+    )
+
+    cache_lookup_duration_ms = (
+        _elapsed_ms(
+            cache_started_ns
+        )
+    )
+
+    http_started_ns = (
+        time.perf_counter_ns()
     )
 
     response = client.fetch_json(
@@ -216,6 +260,12 @@ def _fetch_target(
         ),
     )
 
+    http_duration_ms = (
+        _elapsed_ms(
+            http_started_ns
+        )
+    )
+
     if response.status_code == 304:
         if cached_state is None:
             raise RuntimeError(
@@ -230,6 +280,18 @@ def _fetch_target(
                 cached_state
             ),
             parsed=None,
+            cache_lookup_duration_ms=(
+                cache_lookup_duration_ms
+            ),
+            http_duration_ms=(
+                http_duration_ms
+            ),
+            parse_duration_ms=0.0,
+            fetch_duration_ms=(
+                _elapsed_ms(
+                    fetch_started_ns
+                )
+            ),
         )
 
     if response.payload is None:
@@ -237,6 +299,10 @@ def _fetch_target(
             "EA20 returned no payload "
             f"for {target.url}."
         )
+
+    parse_started_ns = (
+        time.perf_counter_ns()
+    )
 
     parsed = parse_ea20(
         response.payload
@@ -247,6 +313,12 @@ def _fetch_target(
         parsed=parsed,
     )
 
+    parse_duration_ms = (
+        _elapsed_ms(
+            parse_started_ns
+        )
+    )
+
     return FetchedTarget(
         target=target,
         response=response,
@@ -254,14 +326,30 @@ def _fetch_target(
             cached_state
         ),
         parsed=parsed,
+        cache_lookup_duration_ms=(
+            cache_lookup_duration_ms
+        ),
+        http_duration_ms=(
+            http_duration_ms
+        ),
+        parse_duration_ms=(
+            parse_duration_ms
+        ),
+        fetch_duration_ms=(
+            _elapsed_ms(
+                fetch_started_ns
+            )
+        ),
     )
-
-
 def _persist_fetched_target(
     *,
     fetched: FetchedTarget,
     settings: RuntimeSettings,
 ) -> TargetIngestResult:
+    persist_started_ns = (
+        time.perf_counter_ns()
+    )
+
     target = fetched.target
     response = fetched.response
 
@@ -280,6 +368,12 @@ def _persist_fetched_target(
             record_not_modified(
                 response,
                 cached_state,
+            )
+        )
+
+        persist_duration_ms = (
+            _elapsed_ms(
+                persist_started_ns
             )
         )
 
@@ -303,6 +397,30 @@ def _persist_fetched_target(
             ),
             snapshots_created=0,
             candidates_processed=0,
+            cache_lookup_duration_ms=(
+                fetched
+                .cache_lookup_duration_ms
+            ),
+            http_duration_ms=(
+                fetched
+                .http_duration_ms
+            ),
+            parse_duration_ms=(
+                fetched
+                .parse_duration_ms
+            ),
+            fetch_duration_ms=(
+                fetched
+                .fetch_duration_ms
+            ),
+            persist_duration_ms=(
+                persist_duration_ms
+            ),
+            target_duration_ms=(
+                fetched
+                .fetch_duration_ms
+                + persist_duration_ms
+            ),
         )
 
     parsed = fetched.parsed
@@ -319,6 +437,12 @@ def _persist_fetched_target(
         environment=(
             settings.environment
         ),
+    )
+
+    persist_duration_ms = (
+        _elapsed_ms(
+            persist_started_ns
+        )
     )
 
     return TargetIngestResult(
@@ -347,9 +471,31 @@ def _persist_fetched_target(
         candidates_processed=(
             persisted.candidates_processed
         ),
+        cache_lookup_duration_ms=(
+            fetched
+            .cache_lookup_duration_ms
+        ),
+        http_duration_ms=(
+            fetched
+            .http_duration_ms
+        ),
+        parse_duration_ms=(
+            fetched
+            .parse_duration_ms
+        ),
+        fetch_duration_ms=(
+            fetched
+            .fetch_duration_ms
+        ),
+        persist_duration_ms=(
+            persist_duration_ms
+        ),
+        target_duration_ms=(
+            fetched
+            .fetch_duration_ms
+            + persist_duration_ms
+        ),
     )
-
-
 def _ingest_target(
     *,
     target: ElectionTarget,

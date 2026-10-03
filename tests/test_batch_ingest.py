@@ -867,6 +867,12 @@ def test_parallel_workers_fetch_concurrently_and_persist_serially(
     assert result.failed_targets == 0
     assert result.workers == 3
 
+    assert result.candidates_processed == 30
+    assert result.duration_ms >= 0
+    assert result.planner_duration_ms >= 0
+    assert result.fetch_duration_ms >= 0
+    assert result.persist_duration_ms >= 0
+
 
 def test_workers_must_be_positive():
     with pytest.raises(
