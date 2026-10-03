@@ -180,14 +180,16 @@ def build_static_site(
             }
         )
 
+    generated_at = (
+        datetime.now(
+            timezone.utc
+        ).isoformat()
+    )
+
     manifest = {
         "schema_version": 1,
         "environment": environment,
-        "generated_at": (
-            datetime.now(
-                timezone.utc
-            ).isoformat()
-        ),
+        "generated_at": generated_at,
         "result_count": len(
             manifest_results
         ),
@@ -199,6 +201,17 @@ def build_static_site(
     write_json_atomic(
         manifest,
         output_dir / "manifest.json",
+    )
+
+    version = {
+        "schema_version": 1,
+        "environment": environment,
+        "generated_at": generated_at,
+    }
+
+    write_json_atomic(
+        version,
+        output_dir / "version.json",
     )
 
     return manifest
