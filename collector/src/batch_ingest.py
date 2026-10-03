@@ -1,0 +1,773 @@
+﻿from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+import json
+
+from .discovery import ElectionTarget
+from .ea20_batch_repository import (
+    EA20Batch,
+    get_pending_items,
+    mark_batch_completed,
+    mark_item_completed,
+    mark_item_error,
+    prepare_batch,
+    refresh_batch_progress,
+)
+from .ingest import (
+    TargetIngestResult,
+    _commit_ea14_state,
+    _ingest_target,
+    _looks_official,
+    _target_matches,
+)
+from .runtime import (
+    RuntimeSettings,
+    load_settings,
+)
+from .stateful_planner import (
+    StatefulPlannerResult,
+    run_stateful_planner,
+)
+from .tse_client import TseClient
+
+
+DEFAULT_BATCH_SIZE = 10
+
+
+@dataclass(frozen=True, slots=True)
+class BatchElectionSummary:
+    election_code: int
+
+    batch_id: int
+    batch_status: str
+
+    total_targets: int
+    completed_targets: int
+
+    processed_this_run: int
+    failed_this_run: int
+
+    state_committed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class BatchedIngestResult:
+    execute: bool
+    batch_size: int
+
+    planned_targets: int
+    selected_targets: int
+
+    processed_targets: int
+    failed_targets: int
+
+    state_updates_committed: int
+
+    planner: StatefulPlannerResult
+
+    elections: tuple[
+        BatchElectionSummary,
+        ...
+    ]
+
+    results: tuple[
+        TargetIngestResult,
+        ...
+    ]
+
+    errors: tuple[
+        str,
+        ...
+    ]
+
+
+def _selected_urls(
+    *,
+    planner: StatefulPlannerResult,
+    election_code: int | None,
+    scope_code: str | None,
+    office_code: int | None,
+) -> set[str]:
+    return {
+        target.url
+        for target in planner.targets
+        if _target_matches(
+            target,
+            election_code=election_code,
+            scope_code=scope_code,
+            office_code=office_code,
+        )
+    }
+
+
+def _prepare_election_batch(
+    *,
+    election,
+) -> EA20Batch:
+    update = election.state_update
+
+    if update is None:
+        raise RuntimeError(
+            "Cannot prepare EA20 batch "
+            "without EA14 state update."
+        )
+
+    sha256 = (
+        update.fetch_result.sha256
+    )
+
+    if not sha256:
+        raise RuntimeError(
+            "EA14 payload has no SHA256."
+        )
+
+    raw_idg = update.payload.get(
+        "idg"
+    )
+
+    tse_idg = (
+        int(raw_idg)
+        if raw_idg not in (
+            None,
+            "",
+        )
+        else None
+    )
+
+    return prepare_batch(
+        environment=(
+            update.environment
+        ),
+        cycle=(
+            update.cycle
+        ),
+        election_code=(
+            update.election_code
+        ),
+        round_number=(
+            update.round_number
+        ),
+        ea14_tse_idg=(
+            tse_idg
+        ),
+        ea14_payload_sha256=(
+            sha256
+        ),
+        ea14_source_url=(
+            update.fetch_result.url
+        ),
+        targets=(
+            election.targets
+        ),
+    )
+
+
+def run_batched_ingest(
+    *,
+    settings: (
+        RuntimeSettings
+        | None
+    ) = None,
+    client: (
+        TseClient
+        | None
+    ) = None,
+    execute: bool = False,
+    batch_size: int = (
+        DEFAULT_BATCH_SIZE
+    ),
+    allow_official: bool = False,
+    election_code: int | None = None,
+    scope_code: str | None = None,
+    office_code: int | None = None,
+) -> BatchedIngestResult:
+    selected_settings = (
+        settings
+        or load_settings()
+    )
+
+    if batch_size < 1:
+        raise ValueError(
+            "batch_size must be "
+            "greater than zero."
+        )
+
+    if (
+        execute
+        and _looks_official(
+            selected_settings
+        )
+        and not allow_official
+    ):
+        raise RuntimeError(
+            "EA20 ingestion against the "
+            "official TSE environment is "
+            "blocked."
+        )
+
+    selected_client = (
+        client
+        or TseClient()
+    )
+
+    planner = run_stateful_planner(
+        settings=(
+            selected_settings
+        ),
+        client=(
+            selected_client
+        ),
+        persist_state=False,
+    )
+
+    selected_urls = _selected_urls(
+        planner=planner,
+        election_code=election_code,
+        scope_code=scope_code,
+        office_code=office_code,
+    )
+
+    planned_targets = len(
+        planner.targets
+    )
+
+    selected_target_count = len(
+        selected_urls
+    )
+
+    if not execute:
+        return BatchedIngestResult(
+            execute=False,
+            batch_size=batch_size,
+            planned_targets=(
+                planned_targets
+            ),
+            selected_targets=(
+                selected_target_count
+            ),
+            processed_targets=0,
+            failed_targets=0,
+            state_updates_committed=0,
+            planner=planner,
+            elections=(),
+            results=(),
+            errors=(),
+        )
+
+    filters_active = any(
+        value is not None
+        for value in (
+            election_code,
+            scope_code,
+            office_code,
+        )
+    )
+
+    if (
+        filters_active
+        and not selected_urls
+    ):
+        return BatchedIngestResult(
+            execute=True,
+            batch_size=batch_size,
+            planned_targets=(
+                planned_targets
+            ),
+            selected_targets=0,
+            processed_targets=0,
+            failed_targets=0,
+            state_updates_committed=0,
+            planner=planner,
+            elections=(),
+            results=(),
+            errors=(),
+        )
+
+    prepared: list[
+        tuple[
+            object,
+            EA20Batch,
+        ]
+    ] = []
+
+    for election in planner.elections:
+        if (
+            election.state_update
+            is None
+        ):
+            continue
+
+        batch = (
+            _prepare_election_batch(
+                election=election
+            )
+        )
+
+        prepared.append(
+            (
+                election,
+                batch,
+            )
+        )
+
+    remaining = batch_size
+
+    results: list[
+        TargetIngestResult
+    ] = []
+
+    errors: list[str] = []
+
+    summaries: list[
+        BatchElectionSummary
+    ] = []
+
+    committed = 0
+    failed = 0
+
+    for election, batch in prepared:
+        processed_for_election = 0
+        failed_for_election = 0
+
+        target_by_url: dict[
+            str,
+            ElectionTarget,
+        ] = {
+            target.url: target
+            for target
+            in election.targets
+        }
+
+        if (
+            remaining > 0
+            and batch.total_targets > 0
+        ):
+            pending = (
+                get_pending_items(
+                    batch_id=batch.id,
+                    limit=max(
+                        batch.total_targets,
+                        1,
+                    ),
+                )
+            )
+
+            eligible = tuple(
+                item
+                for item in pending
+                if (
+                    item.source_url
+                    in selected_urls
+                )
+            )
+
+            for item in eligible[
+                :remaining
+            ]:
+                target = (
+                    target_by_url.get(
+                        item.source_url
+                    )
+                )
+
+                if target is None:
+                    message = (
+                        "Batch item does not "
+                        "exist in current plan: "
+                        f"{item.source_url}"
+                    )
+
+                    mark_item_error(
+                        item_id=item.id,
+                        error_message=message,
+                    )
+
+                    errors.append(
+                        message
+                    )
+
+                    failed += 1
+                    failed_for_election += 1
+                    remaining -= 1
+
+                    continue
+
+                try:
+                    result = _ingest_target(
+                        target=target,
+                        settings=(
+                            selected_settings
+                        ),
+                        client=(
+                            selected_client
+                        ),
+                    )
+
+                except Exception as exc:
+                    message = (
+                        f"{type(exc).__name__}: "
+                        f"{exc}"
+                    )
+
+                    mark_item_error(
+                        item_id=item.id,
+                        error_message=message,
+                    )
+
+                    errors.append(
+                        (
+                            f"{target.url} -> "
+                            f"{message}"
+                        )
+                    )
+
+                    failed += 1
+                    failed_for_election += 1
+                    remaining -= 1
+
+                    continue
+
+                mark_item_completed(
+                    item_id=item.id,
+                    status=result.status,
+                    collector_run_id=(
+                        result
+                        .collector_run_id
+                    ),
+                )
+
+                results.append(
+                    result
+                )
+
+                processed_for_election += 1
+                remaining -= 1
+
+        refreshed = (
+            refresh_batch_progress(
+                batch_id=batch.id
+            )
+        )
+
+        state_committed = False
+
+        if refreshed.status in {
+            "ready",
+            "completed",
+        }:
+            if (
+                refreshed.status
+                == "ready"
+            ):
+                refreshed = (
+                    mark_batch_completed(
+                        batch_id=batch.id
+                    )
+                )
+
+            # Important:
+            # batch is marked completed
+            # before EA14 checkpoint.
+            #
+            # If checkpoint persistence
+            # fails, next execution can
+            # recover and try again.
+            _commit_ea14_state(
+                election
+            )
+
+            committed += 1
+            state_committed = True
+
+        summaries.append(
+            BatchElectionSummary(
+                election_code=(
+                    election
+                    .election_code
+                ),
+                batch_id=(
+                    refreshed.id
+                ),
+                batch_status=(
+                    refreshed.status
+                ),
+                total_targets=(
+                    refreshed
+                    .total_targets
+                ),
+                completed_targets=(
+                    refreshed
+                    .completed_targets
+                ),
+                processed_this_run=(
+                    processed_for_election
+                ),
+                failed_this_run=(
+                    failed_for_election
+                ),
+                state_committed=(
+                    state_committed
+                ),
+            )
+        )
+
+    return BatchedIngestResult(
+        execute=True,
+        batch_size=batch_size,
+        planned_targets=(
+            planned_targets
+        ),
+        selected_targets=(
+            selected_target_count
+        ),
+        processed_targets=(
+            len(results)
+        ),
+        failed_targets=failed,
+        state_updates_committed=(
+            committed
+        ),
+        planner=planner,
+        elections=tuple(
+            summaries
+        ),
+        results=tuple(
+            results
+        ),
+        errors=tuple(
+            errors
+        ),
+    )
+
+
+def _build_output(
+    result: BatchedIngestResult,
+    settings: RuntimeSettings,
+    *,
+    election_code: int | None,
+    scope_code: str | None,
+    office_code: int | None,
+) -> dict:
+    return {
+        "mode": (
+            "execute"
+            if result.execute
+            else "dry-run"
+        ),
+
+        "runtime": {
+            "base_url":
+                settings.base_url,
+            "environment":
+                settings.environment,
+            "cycle":
+                settings.cycle,
+            "round":
+                settings.round_number,
+        },
+
+        "filters": {
+            "election_code":
+                election_code,
+            "scope_code":
+                scope_code,
+            "office_code":
+                office_code,
+        },
+
+        "batch_size":
+            result.batch_size,
+
+        "planned_targets":
+            result.planned_targets,
+
+        "selected_targets":
+            result.selected_targets,
+
+        "processed_targets":
+            result.processed_targets,
+
+        "failed_targets":
+            result.failed_targets,
+
+        "state_updates_committed":
+            result
+            .state_updates_committed,
+
+        "batches": [
+            {
+                "election_code":
+                    item.election_code,
+
+                "batch_id":
+                    item.batch_id,
+
+                "status":
+                    item.batch_status,
+
+                "total_targets":
+                    item.total_targets,
+
+                "completed_targets":
+                    item.completed_targets,
+
+                "processed_this_run":
+                    item
+                    .processed_this_run,
+
+                "failed_this_run":
+                    item
+                    .failed_this_run,
+
+                "state_committed":
+                    item
+                    .state_committed,
+            }
+            for item in (
+                result.elections
+            )
+        ],
+
+        "results": [
+            {
+                "election_code":
+                    item.election_code,
+
+                "scope_code":
+                    item.scope_code,
+
+                "office_code":
+                    item.office_code,
+
+                "status":
+                    item.status,
+
+                "http_status":
+                    item.http_status,
+
+                "collector_run_id":
+                    item
+                    .collector_run_id,
+
+                "tse_idg":
+                    item.tse_idg,
+
+                "snapshots_created":
+                    item
+                    .snapshots_created,
+
+                "candidates_processed":
+                    item
+                    .candidates_processed,
+            }
+            for item in result.results
+        ],
+
+        "errors":
+            list(
+                result.errors
+            ),
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Persistent batched "
+            "TSE EA20 collector."
+        )
+    )
+
+    mode = (
+        parser
+        .add_mutually_exclusive_group()
+    )
+
+    mode.add_argument(
+        "--dry-run",
+        action="store_true",
+    )
+
+    mode.add_argument(
+        "--execute",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=(
+            DEFAULT_BATCH_SIZE
+        ),
+    )
+
+    parser.add_argument(
+        "--election",
+        type=int,
+        dest="election_code",
+    )
+
+    parser.add_argument(
+        "--scope",
+        dest="scope_code",
+    )
+
+    parser.add_argument(
+        "--office",
+        type=int,
+        dest="office_code",
+    )
+
+    parser.add_argument(
+        "--allow-official",
+        action="store_true",
+    )
+
+    args = parser.parse_args()
+
+    settings = load_settings()
+
+    result = run_batched_ingest(
+        settings=settings,
+        execute=args.execute,
+        batch_size=(
+            args.batch_size
+        ),
+        allow_official=(
+            args.allow_official
+        ),
+        election_code=(
+            args.election_code
+        ),
+        scope_code=(
+            args.scope_code
+        ),
+        office_code=(
+            args.office_code
+        ),
+    )
+
+    print(
+        json.dumps(
+            _build_output(
+                result,
+                settings,
+                election_code=(
+                    args.election_code
+                ),
+                scope_code=(
+                    args.scope_code
+                ),
+                office_code=(
+                    args.office_code
+                ),
+            ),
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()
