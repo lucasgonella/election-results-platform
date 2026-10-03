@@ -10,6 +10,14 @@ SCRIPT = (
     / "run-collector.sh"
 )
 
+
+PUBLISH_SCRIPT = (
+    ROOT
+    / "deploy"
+    / "scripts"
+    / "publish-results.sh"
+)
+
 SERVICE = (
     ROOT
     / "deploy"
@@ -34,6 +42,7 @@ ENV_EXAMPLE = (
 
 def test_deploy_files_exist():
     assert SCRIPT.is_file()
+    assert PUBLISH_SCRIPT.is_file()
     assert SERVICE.is_file()
     assert TIMER.is_file()
     assert ENV_EXAMPLE.is_file()
@@ -130,5 +139,57 @@ def test_secret_is_not_present_in_example():
 
     assert (
         "POSTGRES_PASSWORD=change_me"
+        in text
+    )
+
+
+def test_static_publish_script():
+    text = PUBLISH_SCRIPT.read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "collector.src.static_site_builder"
+        in text
+    )
+
+    assert (
+        "PUBLISH_EXPECTED_TARGETS"
+        in text
+    )
+
+    assert (
+        "manifest.json"
+        in text
+    )
+
+    assert (
+        "REMOTE BUNDLE: OK"
+        in text
+    )
+
+    assert (
+        "STATIC PUBLISH: OK"
+        in text
+    )
+
+
+def test_static_publish_environment_example():
+    text = ENV_EXAMPLE.read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "PUBLISH_EXPECTED_TARGETS=85"
+        in text
+    )
+
+    assert (
+        "PUBLISH_REMOTE_HOST="
+        in text
+    )
+
+    assert (
+        "PUBLISH_REMOTE_DIR="
         in text
     )
