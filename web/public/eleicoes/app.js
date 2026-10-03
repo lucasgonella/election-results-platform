@@ -8,7 +8,8 @@ const OFFICE_ORDER = [
     3,
     5,
     6,
-    7
+    7,
+    8
 ];
 
 const SCOPE_NAMES = {
