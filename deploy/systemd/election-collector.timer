@@ -1,0 +1,14 @@
+[Unit]
+Description=Schedule Brazil Election Results Collector
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+
+RandomizedDelaySec=15s
+Persistent=true
+
+Unit=election-collector.service
+
+[Install]
+WantedBy=timers.target

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
@@ -512,7 +512,20 @@ def _build_output(
     }
 
 
-def main() -> None:
+
+def _exit_code(
+    result: CollectorRunnerResult,
+) -> int:
+    if (
+        result.failed_targets > 0
+        or result.stop_reason == "error"
+    ):
+        return 1
+
+    return 0
+
+
+def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Operational collector "
@@ -620,6 +633,12 @@ def main() -> None:
         )
     )
 
+    return _exit_code(
+        result
+    )
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(
+        main()
+    )

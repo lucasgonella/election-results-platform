@@ -1,4 +1,4 @@
-﻿from types import SimpleNamespace
+from types import SimpleNamespace
 
 import pytest
 
@@ -332,4 +332,37 @@ def test_output_contains_before_after():
         output["cycles"][0]
         ["processed_targets"]
         == 10
+    )
+
+def test_exit_code_is_zero_on_success():
+    result = SimpleNamespace(
+        failed_targets=0,
+        stop_reason="idle",
+    )
+
+    assert (
+        module._exit_code(result)
+        == 0
+    )
+
+
+def test_exit_code_is_nonzero_on_failure():
+    failed = SimpleNamespace(
+        failed_targets=1,
+        stop_reason="error",
+    )
+
+    assert (
+        module._exit_code(failed)
+        == 1
+    )
+
+    stopped = SimpleNamespace(
+        failed_targets=0,
+        stop_reason="error",
+    )
+
+    assert (
+        module._exit_code(stopped)
+        == 1
     )
