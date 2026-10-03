@@ -271,6 +271,8 @@ Com `COLLECTOR_WORKERS=1`, o processamento mantém o comportamento sequencial. V
 
 Atualizações de checkpoint EA14 que não produzam targets EA20 são persistidas sem criar batches vazios. Esses checkpoints isolados também não disparam uma nova publicação do bundle estático; a publicação automática é enfileirada somente quando um batch com dados EA20 conclui seu checkpoint.
 
+O runner também publica métricas de duração em milissegundos para cada execução: `duration_ms`, `planner_duration_ms`, `fetch_duration_ms` e `persist_duration_ms`, além de `candidates_processed`. Em execuções paralelas, `fetch_duration_ms` representa o tempo de parede da fase concorrente de busca/parsing dos EA20, enquanto `persist_duration_ms` representa a fase serial de persistência dos resultados e atualização dos itens do batch. Essas métricas permitem avaliar com dados reais se aumentar `COLLECTOR_WORKERS` traz benefício ou se o gargalo está no PostgreSQL.
+
 ### Bootstrap de novos targets
 
 Quando o escopo suportado pela aplicação é ampliado, o módulo `collector.src.bootstrap_missing` compara o plano atual com os snapshots já persistidos e coleta somente as combinações que ainda não existem no banco.
