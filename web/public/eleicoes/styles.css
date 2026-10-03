@@ -515,6 +515,21 @@ footer p {
     margin: 5px 0;
 }
 
+.footer-credits {
+    margin-top: 14px;
+}
+
+footer a {
+    color: inherit;
+    font-weight: 650;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+}
+
+footer a:hover {
+    color: #17191c;
+}
+
 
 @media (
     max-width: 760px
