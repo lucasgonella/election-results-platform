@@ -21,6 +21,7 @@ OFFICE_SLUGS = {
     5: "senator",
     6: "federal-deputy",
     7: "state-deputy",
+    8: "district-deputy",
 }
 
 
