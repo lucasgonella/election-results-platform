@@ -426,7 +426,7 @@
         remove.className =
             "favorite-remove";
 
-        remove.textContent = "★";
+        remove.textContent = "\u2605";
 
         remove.title =
             "Remover dos favoritos";
