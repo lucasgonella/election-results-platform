@@ -11,7 +11,7 @@ LOCAL_DATA_DIR="${PUBLISH_DATA_DIR:-${STATE_DIR}/public/data}"
 
 ENVIRONMENT="${TSE_ENVIRONMENT:-simulado2026}"
 EXPECTED_TARGETS="${PUBLISH_EXPECTED_TARGETS:-137}"
-EXPECTED_FILES=$((EXPECTED_TARGETS + 1))
+EXPECTED_FILES=$((EXPECTED_TARGETS + 2))
 
 SSH_KEY="${PUBLISH_SSH_KEY:-${STATE_DIR}/.ssh/locaweb_publisher}"
 KNOWN_HOSTS="${PUBLISH_KNOWN_HOSTS:-${STATE_DIR}/.ssh/known_hosts}"
@@ -79,6 +79,7 @@ expected_environment = sys.argv[2]
 expected_targets = int(sys.argv[3])
 
 manifest_path = root / "manifest.json"
+version_path = root / "version.json"
 
 if not manifest_path.is_file():
     raise SystemExit(
@@ -91,12 +92,39 @@ manifest = json.loads(
     )
 )
 
+if not version_path.is_file():
+    raise SystemExit(
+        "ERROR: version.json not found."
+    )
+
+version = json.loads(
+    version_path.read_text(
+        encoding="utf-8"
+    )
+)
+
 if (
     manifest["environment"]
     != expected_environment
 ):
     raise SystemExit(
         "ERROR: unexpected environment."
+    )
+
+if (
+    version.get("environment")
+    != expected_environment
+):
+    raise SystemExit(
+        "ERROR: unexpected version environment."
+    )
+
+if (
+    version.get("generated_at")
+    != manifest.get("generated_at")
+):
+    raise SystemExit(
+        "ERROR: publication version mismatch."
     )
 
 if (
@@ -114,7 +142,7 @@ json_files = list(
 )
 
 expected_files = (
-    expected_targets + 1
+    expected_targets + 2
 )
 
 if len(json_files) != expected_files:
@@ -201,6 +229,11 @@ old_dir="${remote_dir}.old"
 
 if [ ! -s "${stage_dir}/manifest.json" ]; then
     echo "Remote manifest missing." >&2
+    exit 1
+fi
+
+if [ ! -s "${stage_dir}/version.json" ]; then
+    echo "Remote version file missing." >&2
     exit 1
 fi
 
