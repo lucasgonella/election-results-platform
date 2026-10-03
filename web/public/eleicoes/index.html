@@ -36,11 +36,26 @@
             </p>
         </div>
 
-        <div
-            id="environment-badge"
-            class="environment-badge"
-        >
-            Carregando...
+        <div class="hero-actions">
+
+            <button
+                id="favorites-open"
+                class="favorites-open"
+                type="button"
+            >
+                ? Favoritos
+                <span id="favorites-count">
+                    0
+                </span>
+            </button>
+
+            <div
+                id="environment-badge"
+                class="environment-badge"
+            >
+                Carregando...
+            </div>
+
         </div>
 
     </header>
@@ -209,6 +224,51 @@
 
 </main>
 
+<div
+    id="favorites-backdrop"
+    class="favorites-backdrop"
+    hidden
+>
+    <aside
+        class="favorites-panel"
+        aria-label="Candidatos favoritos"
+    >
+        <header class="favorites-panel-header">
+
+            <div>
+                <p class="eyebrow">
+                    ACOMPANHAMENTO
+                </p>
+
+                <h2>
+                    Candidatos favoritos
+                </h2>
+
+                <p>
+                    Dados atualizados automaticamente.
+                </p>
+            </div>
+
+            <button
+                id="favorites-close"
+                class="favorites-close"
+                type="button"
+                aria-label="Fechar favoritos"
+            >
+                ?
+            </button>
+
+        </header>
+
+        <div
+            id="favorites-list"
+            class="favorites-list"
+        ></div>
+
+    </aside>
+</div>
+
+<script src="favorites.js"></script>
 <script src="app.js"></script>
 
 </body>

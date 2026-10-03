@@ -586,3 +586,306 @@ footer p {
         flex-grow: 1;
     }
 }
+
+/* --------------------------------------------------
+   Favorites
+-------------------------------------------------- */
+
+.hero-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.favorites-open {
+    padding: 10px 14px;
+
+    border: 1px solid #d8dbe0;
+    border-radius: 999px;
+
+    background: white;
+    color: #202226;
+
+    cursor: pointer;
+    font-weight: 650;
+}
+
+.favorites-open:hover {
+    background: #f0f1f3;
+}
+
+#favorites-count {
+    display: inline-flex;
+
+    min-width: 22px;
+    height: 22px;
+
+    align-items: center;
+    justify-content: center;
+
+    margin-left: 5px;
+
+    border-radius: 999px;
+
+    background: #202226;
+    color: white;
+
+    font-size: 12px;
+}
+
+
+.candidate-title-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.favorite-toggle {
+    flex: 0 0 auto;
+
+    width: 34px;
+    height: 34px;
+
+    padding: 0;
+
+    border: 1px solid #d8dbe0;
+    border-radius: 9px;
+
+    background: white;
+
+    cursor: pointer;
+
+    font-size: 20px;
+    line-height: 1;
+}
+
+.favorite-toggle:hover {
+    background: #f3f4f6;
+}
+
+
+.favorites-opened {
+    overflow: hidden;
+}
+
+.favorites-backdrop {
+    position: fixed;
+    z-index: 1000;
+
+    inset: 0;
+
+    background: rgb(0 0 0 / 36%);
+}
+
+.favorites-backdrop[hidden] {
+    display: none;
+}
+
+.favorites-panel {
+    position: absolute;
+
+    top: 0;
+    right: 0;
+    bottom: 0;
+
+    width: min(
+        580px,
+        100%
+    );
+
+    overflow-y: auto;
+
+    padding: 26px;
+
+    background: #f4f5f7;
+
+    box-shadow:
+        -12px 0 40px
+        rgb(0 0 0 / 16%);
+}
+
+.favorites-panel-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+
+    margin-bottom: 24px;
+}
+
+.favorites-panel-header h2 {
+    margin: 0 0 6px;
+
+    font-size: 28px;
+}
+
+.favorites-panel-header p:not(.eyebrow) {
+    margin: 0;
+
+    color: #737780;
+
+    font-size: 13px;
+}
+
+.favorites-close {
+    flex: 0 0 auto;
+
+    width: 40px;
+    height: 40px;
+
+    border: 1px solid #d8dbe0;
+    border-radius: 10px;
+
+    background: white;
+
+    cursor: pointer;
+
+    font-size: 25px;
+    line-height: 1;
+}
+
+.favorites-list {
+    display: grid;
+    gap: 12px;
+}
+
+.favorite-card {
+    padding: 18px;
+
+    border: 1px solid #dfe1e5;
+    border-radius: 14px;
+
+    background: white;
+}
+
+.favorite-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 10px;
+
+    margin-bottom: 12px;
+}
+
+.favorite-context {
+    color: #6b7079;
+
+    font-size: 12px;
+    font-weight: 650;
+
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.favorite-remove {
+    width: 34px;
+    height: 34px;
+
+    padding: 0;
+
+    border: 1px solid #d8dbe0;
+    border-radius: 9px;
+
+    background: white;
+
+    cursor: pointer;
+
+    font-size: 20px;
+}
+
+.favorite-name {
+    display: block;
+
+    margin-bottom: 4px;
+
+    font-size: 17px;
+}
+
+.favorite-meta {
+    color: #6b7079;
+
+    font-size: 13px;
+}
+
+.favorite-numbers {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+
+    margin-top: 16px;
+    padding-top: 14px;
+
+    border-top: 1px solid #eceef1;
+}
+
+.favorite-numbers strong {
+    font-size: 19px;
+}
+
+.favorite-numbers span {
+    color: #777c85;
+
+    font-size: 12px;
+}
+
+.favorite-status {
+    display: inline-block;
+
+    margin-top: 10px;
+    padding: 4px 7px;
+
+    border-radius: 6px;
+
+    background: #eef3fb;
+
+    font-size: 12px;
+}
+
+.favorite-updated {
+    margin-top: 12px;
+
+    color: #858a93;
+
+    font-size: 11px;
+}
+
+.favorites-empty,
+.favorites-loading {
+    display: grid;
+    gap: 7px;
+
+    padding: 30px;
+
+    border: 1px solid #dfe1e5;
+    border-radius: 14px;
+
+    background: white;
+
+    text-align: center;
+}
+
+.favorites-empty span {
+    color: #737780;
+
+    font-size: 13px;
+}
+
+
+@media (max-width: 760px) {
+
+    .hero-actions {
+        margin-top: 18px;
+
+        flex-wrap: wrap;
+    }
+
+    .environment-badge {
+        margin-top: 0;
+    }
+
+    .favorites-panel {
+        width: 100%;
+
+        padding: 20px 16px;
+    }
+}
