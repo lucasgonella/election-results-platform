@@ -237,6 +237,17 @@ def test_conditional_static_publish():
     )
 
 
+    assert (
+        '${PUBLISH_STATE_DIR}/runtime/publish.pending'
+        in text
+    )
+
+    assert (
+        'dirname "${PUBLISH_PENDING_FILE}"'
+        in text
+    )
+
+
 def test_auto_publish_is_disabled_by_default():
     text = ENV_EXAMPLE.read_text(
         encoding="utf-8"
@@ -244,5 +255,13 @@ def test_auto_publish_is_disabled_by_default():
 
     assert (
         "PUBLISH_AFTER_COLLECT=false"
+        in text
+    )
+
+
+    assert (
+        "PUBLISH_PENDING_FILE="
+        "/var/lib/election-results-platform/"
+        "runtime/publish.pending"
         in text
     )

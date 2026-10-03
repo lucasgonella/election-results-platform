@@ -16,7 +16,7 @@ PUBLISH_SCRIPT="${PUBLISH_SCRIPT:-${APP_DIR}/deploy/scripts/publish-results.sh}"
 
 PUBLISH_STATE_DIR="${PUBLISH_STATE_DIR:-/var/lib/election-results-platform}"
 
-PUBLISH_PENDING_FILE="${PUBLISH_PENDING_FILE:-${PUBLISH_STATE_DIR}/publish.pending}"
+PUBLISH_PENDING_FILE="${PUBLISH_PENDING_FILE:-${PUBLISH_STATE_DIR}/runtime/publish.pending}"
 
 
 if [[ ! -d "${APP_DIR}" ]]; then
@@ -151,7 +151,7 @@ case "${PUBLISH_AFTER_COLLECT}" in
     1|true|TRUE|yes|YES)
 
         mkdir -p \
-            "${PUBLISH_STATE_DIR}"
+            "$(dirname "${PUBLISH_PENDING_FILE}")"
 
         if [[ "${PUBLISH_READY}" == "1" ]]; then
 
