@@ -2,11 +2,12 @@
 Description=Schedule Brazil Election Results Collector
 
 [Timer]
-OnBootSec=2min
-OnUnitActiveSec=2min
+OnActiveSec=2min
+OnUnitInactiveSec=2min
 
 RandomizedDelaySec=15s
-Persistent=true
+AccuracySec=1s
+Persistent=false
 
 Unit=election-collector.service
 
