@@ -149,6 +149,8 @@ data/
 
 O publisher envia o bundle para uma área temporária no servidor remoto, valida a quantidade de arquivos e só então ativa a nova versão.
 
+Cada bundle inclui também um `version.json` mínimo, com o identificador temporal da publicação. O frontend consulta esse arquivo leve para detectar uma nova publicação e só então recarrega o `manifest.json` e os JSONs de resultados necessários. O painel de favoritos usa o mesmo mecanismo e mantém em cache, no navegador, os arquivos de resultado enquanto a versão publicada não muda.
+
 ### Frontend
 
 O frontend é estático e fica em:

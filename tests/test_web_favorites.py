@@ -65,7 +65,7 @@ def test_favorites_panel_is_loaded():
     )
 
     assert (
-        '<script src="favorites.js?v=5"></script>'
+        '<script src="favorites.js?v=6"></script>'
         in html
     )
 
@@ -110,7 +110,7 @@ def test_favorites_markup_uses_safe_icons_and_cache_busting():
     assert "&#9734; Favoritos" in html
     assert "&times;" in html
     assert 'href="styles.css?v=5"' in html
-    assert '<script src="app.js?v=4"></script>' in html
+    assert '<script src="app.js?v=5"></script>' in html
     assert "? Favoritos" not in html
 
 
@@ -122,8 +122,11 @@ def test_favorites_refresh_current_published_data():
         encoding="utf-8"
     )
 
+    assert '"/data/version.json"' in js
     assert '"/data/manifest.json"' in js
     assert "const REFRESH_MS = 10000;" in js
+    assert "checkForPublication" in js
+    assert "resultCache" in js
     assert 'cache: "no-store"' in js
     assert "item.tse_idg" in js
     assert "item.captured_at" in js
@@ -154,6 +157,7 @@ def test_favorites_show_context_and_update_metadata():
 
     assert 'id="favorites-refresh-status"' in html
     assert "a cada 10 segundos" in html
+    assert "Verifica novas publicações" in html
 
 
 def test_district_deputy_is_supported_in_web_order():

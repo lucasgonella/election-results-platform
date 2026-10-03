@@ -4,6 +4,9 @@
     const STORAGE_KEY =
         "election-results:favorites:v1";
 
+    const VERSION_URL =
+        "/data/version.json";
+
     const MANIFEST_URL =
         "/data/manifest.json";
 
@@ -19,8 +22,12 @@
     ];
 
     let manifest = null;
+    let publishedVersion = null;
     let refreshTimer = null;
     let rendering = false;
+
+    const resultCache =
+        new Map();
 
 
     function loadFavorites() {
@@ -175,16 +182,30 @@
 
 
     function setManifest(
-        value
+        value,
+        version = null
     ) {
+        const changed = (
+            version !== null
+            && version
+                !== publishedVersion
+        );
+
         manifest = value;
 
-        if (isOpen()) {
-            void renderPanel();
+        if (version !== null) {
+            publishedVersion =
+                version;
+        }
+
+        if (changed) {
+            resultCache.clear();
+
+            if (isOpen()) {
+                void renderPanel();
+            }
         }
     }
-
-
     function isOpen() {
         const backdrop =
             document.getElementById(
@@ -220,7 +241,7 @@
             refreshTimer =
                 window.setInterval(
                     () => {
-                        void renderPanel();
+                        void checkForPublication();
                     },
                     REFRESH_MS
                 );
@@ -296,6 +317,37 @@
     }
 
 
+    function publicationToken(
+        version
+    ) {
+        return [
+            version.environment,
+            version.generated_at
+        ].join(":");
+    }
+
+
+    async function loadVersion() {
+        const response =
+            await fetch(
+                VERSION_URL,
+                {
+                    cache: "no-store"
+                }
+            );
+
+        if (!response.ok) {
+            throw new Error(
+                `Version HTTP ${
+                    response.status
+                }`
+            );
+        }
+
+        return response.json();
+    }
+
+
     async function refreshManifest() {
         const response =
             await fetch(
@@ -315,6 +367,65 @@
             await response.json();
 
         return manifest;
+    }
+
+
+    async function checkForPublication() {
+        if (
+            rendering
+            || !isOpen()
+        ) {
+            return;
+        }
+
+        try {
+            const version =
+                await loadVersion();
+
+            const nextVersion =
+                publicationToken(
+                    version
+                );
+
+            if (
+                publishedVersion
+                === nextVersion
+            ) {
+                updateRefreshStatus(
+                    `Sem nova publicação · verificado às ${
+                        formatCheckTime()
+                    }`,
+                    "synced"
+                );
+
+                return;
+            }
+
+            updateRefreshStatus(
+                "Nova publicação detectada. Atualizando favoritos...",
+                "checking"
+            );
+
+            await refreshManifest();
+
+            publishedVersion =
+                nextVersion;
+
+            resultCache.clear();
+
+            await renderPanel();
+
+        } catch (error) {
+            console.error(
+                "Favorites publication check failed:",
+                error
+            );
+
+            updateRefreshStatus(
+                "Não foi possível verificar a atualização agora.",
+                "error"
+            );
+        }
     }
 
 
@@ -433,24 +544,53 @@
             };
         }
 
-        const response =
-            await fetch(
-                `/data/${item.path}`,
-                {
-                    cache: "no-store"
-                }
+        let resultPromise =
+            resultCache.get(
+                item.path
             );
 
-        if (!response.ok) {
-            throw new Error(
-                `HTTP ${
-                    response.status
-                } for ${item.path}`
+        if (!resultPromise) {
+            resultPromise = (
+                fetch(
+                    `/data/${item.path}`,
+                    {
+                        cache: "no-store"
+                    }
+                )
+                .then(
+                    response => {
+                        if (!response.ok) {
+                            throw new Error(
+                                `HTTP ${
+                                    response.status
+                                } for ${item.path}`
+                            );
+                        }
+
+                        return response.json();
+                    }
+                )
+            );
+
+            resultCache.set(
+                item.path,
+                resultPromise
             );
         }
 
-        const result =
-            await response.json();
+        let result;
+
+        try {
+            result =
+                await resultPromise;
+
+        } catch (error) {
+            resultCache.delete(
+                item.path
+            );
+
+            throw error;
+        }
 
         const candidate =
             result.candidates.find(
@@ -475,8 +615,6 @@
                 )
         };
     }
-
-
     function createCard(
         entry
     ) {
@@ -828,7 +966,9 @@
                 "checking"
             );
 
-            await refreshManifest();
+            if (!manifest) {
+                await refreshManifest();
+            }
 
             const favorites =
                 loadFavorites();

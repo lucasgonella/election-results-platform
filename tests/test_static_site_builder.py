@@ -170,6 +170,29 @@ def test_build_static_site(
 
     assert manifest_path.is_file()
 
+    version_path = (
+        tmp_path
+        / "version.json"
+    )
+
+    assert version_path.is_file()
+
+    version = json.loads(
+        version_path.read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert (
+        version["environment"]
+        == "simulado2026"
+    )
+
+    assert (
+        version["generated_at"]
+        == manifest["generated_at"]
+    )
+
     saved = json.loads(
         manifest_path.read_text(
             encoding="utf-8"
