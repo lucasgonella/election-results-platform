@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 import json
 import threading
+import time
 
 from .discovery import ElectionTarget
 from .ea20_batch_repository import (
@@ -20,7 +21,6 @@ from .ingest import (
     TargetIngestResult,
     _commit_ea14_state,
     _fetch_target,
-    _ingest_target,
     _looks_official,
     _persist_fetched_target,
     _target_matches,
@@ -38,6 +38,19 @@ from .tse_client import TseClient
 
 DEFAULT_BATCH_SIZE = 10
 DEFAULT_WORKERS = 1
+
+
+def _elapsed_ms(
+    started_ns: int,
+) -> float:
+    return round(
+        (
+            time.perf_counter_ns()
+            - started_ns
+        )
+        / 1_000_000,
+        3,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +100,12 @@ class BatchedIngestResult:
         str,
         ...
     ]
+
+    duration_ms: float = 0.0
+    planner_duration_ms: float = 0.0
+    fetch_duration_ms: float = 0.0
+    persist_duration_ms: float = 0.0
+    candidates_processed: int = 0
 
 
 def _selected_urls(
@@ -221,6 +240,10 @@ def run_batched_ingest(
     scope_code: str | None = None,
     office_code: int | None = None,
 ) -> BatchedIngestResult:
+    run_started_ns = (
+        time.perf_counter_ns()
+    )
+
     selected_settings = (
         settings
         or load_settings()
@@ -256,6 +279,10 @@ def run_batched_ingest(
         or TseClient()
     )
 
+    planner_started_ns = (
+        time.perf_counter_ns()
+    )
+
     planner = run_stateful_planner(
         settings=(
             selected_settings
@@ -264,6 +291,12 @@ def run_batched_ingest(
             selected_client
         ),
         persist_state=False,
+    )
+
+    planner_duration_ms = (
+        _elapsed_ms(
+            planner_started_ns
+        )
     )
 
     selected_urls = _selected_urls(
@@ -300,6 +333,14 @@ def run_batched_ingest(
             elections=(),
             results=(),
             errors=(),
+            duration_ms=(
+                _elapsed_ms(
+                    run_started_ns
+                )
+            ),
+            planner_duration_ms=(
+                planner_duration_ms
+            ),
         )
 
     filters_active = any(
@@ -331,6 +372,14 @@ def run_batched_ingest(
             elections=(),
             results=(),
             errors=(),
+            duration_ms=(
+                _elapsed_ms(
+                    run_started_ns
+                )
+            ),
+            planner_duration_ms=(
+                planner_duration_ms
+            ),
         )
 
     prepared: list[
@@ -388,6 +437,10 @@ def run_batched_ingest(
     ] = []
 
     failed = 0
+
+    fetch_duration_ms = 0.0
+    persist_duration_ms = 0.0
+    candidates_processed = 0
 
     for election, batch in prepared:
         processed_for_election = 0
@@ -472,20 +525,195 @@ def run_batched_ingest(
                     )
                 )
 
-            if workers == 1:
-                for item, target in jobs:
-                    try:
-                        result = _ingest_target(
+            fetch_outcomes = []
+
+            if jobs:
+                fetch_started_ns = (
+                    time.perf_counter_ns()
+                )
+
+                if workers == 1:
+                    for item, target in jobs:
+                        try:
+                            fetched = (
+                                _fetch_target(
+                                    target=target,
+                                    client=(
+                                        selected_client
+                                    ),
+                                )
+                            )
+
+                            fetch_outcomes.append(
+                                (
+                                    item,
+                                    target,
+                                    fetched,
+                                    None,
+                                )
+                            )
+
+                        except Exception as exc:
+                            fetch_outcomes.append(
+                                (
+                                    item,
+                                    target,
+                                    None,
+                                    exc,
+                                )
+                            )
+
+                else:
+                    local_state = (
+                        threading.local()
+                    )
+
+                    def fetch_job(
+                        target,
+                    ):
+                        worker_client = (
+                            _worker_client(
+                                base_client=(
+                                    selected_client
+                                ),
+                                local_state=(
+                                    local_state
+                                ),
+                            )
+                        )
+
+                        return _fetch_target(
                             target=target,
-                            settings=(
-                                selected_settings
+                            client=worker_client,
+                        )
+
+                    max_workers = min(
+                        workers,
+                        len(jobs),
+                    )
+
+                    with ThreadPoolExecutor(
+                        max_workers=(
+                            max_workers
+                        ),
+                        thread_name_prefix=(
+                            "ea20"
+                        ),
+                    ) as executor:
+                        futures = [
+                            executor.submit(
+                                fetch_job,
+                                target,
+                            )
+                            for _, target
+                            in jobs
+                        ]
+
+                        for (
+                            (
+                                item,
+                                target,
                             ),
-                            client=(
-                                selected_client
+                            future,
+                        ) in zip(
+                            jobs,
+                            futures,
+                            strict=True,
+                        ):
+                            try:
+                                fetched = (
+                                    future.result()
+                                )
+
+                                fetch_outcomes.append(
+                                    (
+                                        item,
+                                        target,
+                                        fetched,
+                                        None,
+                                    )
+                                )
+
+                            except Exception as exc:
+                                fetch_outcomes.append(
+                                    (
+                                        item,
+                                        target,
+                                        None,
+                                        exc,
+                                    )
+                                )
+
+                fetch_duration_ms += (
+                    _elapsed_ms(
+                        fetch_started_ns
+                    )
+                )
+
+                # Persistence stays serialized
+                # after the complete fetch/parse
+                # phase. This makes fetch and
+                # persistence wall-clock timings
+                # directly comparable.
+                for (
+                    item,
+                    target,
+                    fetched,
+                    fetch_error,
+                ) in fetch_outcomes:
+                    if fetch_error is not None:
+                        message = (
+                            f"{type(fetch_error).__name__}: "
+                            f"{fetch_error}"
+                        )
+
+                        mark_item_error(
+                            item_id=item.id,
+                            error_message=message,
+                        )
+
+                        errors.append(
+                            (
+                                f"{target.url} -> "
+                                f"{message}"
+                            )
+                        )
+
+                        failed += 1
+                        failed_for_election += 1
+
+                        continue
+
+                    persist_started_ns = (
+                        time.perf_counter_ns()
+                    )
+
+                    try:
+                        result = (
+                            _persist_fetched_target(
+                                fetched=fetched,
+                                settings=(
+                                    selected_settings
+                                ),
+                            )
+                        )
+
+                        mark_item_completed(
+                            item_id=item.id,
+                            status=result.status,
+                            collector_run_id=(
+                                result
+                                .collector_run_id
                             ),
                         )
 
                     except Exception as exc:
+                        persist_duration_ms += (
+                            _elapsed_ms(
+                                persist_started_ns
+                            )
+                        )
+
                         message = (
                             f"{type(exc).__name__}: "
                             f"{exc}"
@@ -508,129 +736,22 @@ def run_batched_ingest(
 
                         continue
 
-                    mark_item_completed(
-                        item_id=item.id,
-                        status=result.status,
-                        collector_run_id=(
-                            result
-                            .collector_run_id
-                        ),
+                    persist_duration_ms += (
+                        _elapsed_ms(
+                            persist_started_ns
+                        )
                     )
 
                     results.append(
                         result
                     )
 
+                    candidates_processed += (
+                        result
+                        .candidates_processed
+                    )
+
                     processed_for_election += 1
-
-            elif jobs:
-                local_state = (
-                    threading.local()
-                )
-
-                def fetch_job(
-                    target,
-                ):
-                    worker_client = (
-                        _worker_client(
-                            base_client=(
-                                selected_client
-                            ),
-                            local_state=(
-                                local_state
-                            ),
-                        )
-                    )
-
-                    return _fetch_target(
-                        target=target,
-                        client=worker_client,
-                    )
-
-                max_workers = min(
-                    workers,
-                    len(jobs),
-                )
-
-                with ThreadPoolExecutor(
-                    max_workers=max_workers,
-                    thread_name_prefix=(
-                        "ea20"
-                    ),
-                ) as executor:
-                    futures = [
-                        executor.submit(
-                            fetch_job,
-                            target,
-                        )
-                        for _, target
-                        in jobs
-                    ]
-
-                    for (
-                        (
-                            item,
-                            target,
-                        ),
-                        future,
-                    ) in zip(
-                        jobs,
-                        futures,
-                        strict=True,
-                    ):
-                        try:
-                            fetched = (
-                                future.result()
-                            )
-
-                            # Database writes remain
-                            # serialized intentionally.
-                            result = (
-                                _persist_fetched_target(
-                                    fetched=fetched,
-                                    settings=(
-                                        selected_settings
-                                    ),
-                                )
-                            )
-
-                        except Exception as exc:
-                            message = (
-                                f"{type(exc).__name__}: "
-                                f"{exc}"
-                            )
-
-                            mark_item_error(
-                                item_id=item.id,
-                                error_message=message,
-                            )
-
-                            errors.append(
-                                (
-                                    f"{target.url} -> "
-                                    f"{message}"
-                                )
-                            )
-
-                            failed += 1
-                            failed_for_election += 1
-
-                            continue
-
-                        mark_item_completed(
-                            item_id=item.id,
-                            status=result.status,
-                            collector_run_id=(
-                                result
-                                .collector_run_id
-                            ),
-                        )
-
-                        results.append(
-                            result
-                        )
-
-                        processed_for_election += 1
 
         refreshed = (
             refresh_batch_progress(
@@ -731,6 +852,29 @@ def run_batched_ingest(
         errors=tuple(
             errors
         ),
+        duration_ms=(
+            _elapsed_ms(
+                run_started_ns
+            )
+        ),
+        planner_duration_ms=(
+            planner_duration_ms
+        ),
+        fetch_duration_ms=(
+            round(
+                fetch_duration_ms,
+                3,
+            )
+        ),
+        persist_duration_ms=(
+            round(
+                persist_duration_ms,
+                3,
+            )
+        ),
+        candidates_processed=(
+            candidates_processed
+        ),
     )
 
 
@@ -794,6 +938,27 @@ def _build_output(
         "data_updates_committed":
             result
             .data_updates_committed,
+
+        "timings": {
+            "duration_ms":
+                result.duration_ms,
+
+            "planner_duration_ms":
+                result
+                .planner_duration_ms,
+
+            "fetch_duration_ms":
+                result
+                .fetch_duration_ms,
+
+            "persist_duration_ms":
+                result
+                .persist_duration_ms,
+
+            "candidates_processed":
+                result
+                .candidates_processed,
+        },
 
         "batches": [
             {
@@ -860,6 +1025,32 @@ def _build_output(
                 "candidates_processed":
                     item
                     .candidates_processed,
+
+                "timings": {
+                    "cache_lookup_duration_ms":
+                        item
+                        .cache_lookup_duration_ms,
+
+                    "http_duration_ms":
+                        item
+                        .http_duration_ms,
+
+                    "parse_duration_ms":
+                        item
+                        .parse_duration_ms,
+
+                    "fetch_duration_ms":
+                        item
+                        .fetch_duration_ms,
+
+                    "persist_duration_ms":
+                        item
+                        .persist_duration_ms,
+
+                    "target_duration_ms":
+                        item
+                        .target_duration_ms,
+                },
             }
             for item in result.results
         ],
