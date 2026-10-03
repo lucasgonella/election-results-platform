@@ -99,7 +99,28 @@ def test_systemd_timer_invokes_service():
         in text
     )
 
-    assert "Persistent=true" in text
+    assert "OnActiveSec=2min" in text
+
+    assert (
+        "OnUnitInactiveSec=2min"
+        in text
+    )
+
+    assert (
+        "OnUnitActiveSec="
+        not in text
+    )
+
+    assert "OnBootSec=" not in text
+
+    assert (
+        "RandomizedDelaySec=15s"
+        in text
+    )
+
+    assert "AccuracySec=1s" in text
+
+    assert "Persistent=false" in text
 
 
 def test_secret_is_not_present_in_example():
