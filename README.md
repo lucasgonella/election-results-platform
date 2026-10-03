@@ -46,6 +46,7 @@ https://www.tse.jus.br/eleicoes/informacoes-tecnicas-sobre-a-divulgacao-de-resul
 - descoberta dinâmica das eleições suportadas;
 - detecção de mudanças antes de processar novos resultados;
 - ingestão stateful em batches;
+- workers paralelos configuráveis para busca e parsing de EA20, mantendo a persistência no PostgreSQL serializada;
 - persistência histórica de snapshots no PostgreSQL;
 - observabilidade do estado dos batches;
 - geração de JSONs estáticos para o frontend;
@@ -249,6 +250,16 @@ deploy/scripts/
 ```
 
 A configuração de produção deve ser fornecida externamente por arquivo de ambiente. Credenciais de banco, chaves SSH e outros segredos não devem ser versionados.
+
+A concorrência do collector é configurável por ambiente:
+
+```text
+COLLECTOR_BATCH_SIZE=25
+COLLECTOR_WORKERS=5
+COLLECTOR_CYCLES=1
+```
+
+Com `COLLECTOR_WORKERS=1`, o processamento mantém o comportamento sequencial. Valores maiores paralelizam a fase de leitura do estado, download e parsing dos targets EA20. As gravações no PostgreSQL, os checkpoints de EA14 e a publicação do bundle permanecem serializados pelo processo principal.
 
 ## Segurança operacional
 
