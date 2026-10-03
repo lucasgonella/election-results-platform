@@ -22,6 +22,16 @@ class PersistenceSummary:
     snapshots_created: int
     candidates_processed: int
 
+@dataclass(frozen=True, slots=True)
+class CachedFetchState:
+    etag: str | None
+    last_modified: str | None
+
+    tse_idg: int | None
+
+    election_code: int | None
+    scope_code: str | None
+    office_code: int | None
 
 def get_connection() -> psycopg.Connection:
     return psycopg.connect(
@@ -39,6 +49,118 @@ def get_connection() -> psycopg.Connection:
         application_name="election-results-collector",
     )
 
+def get_last_fetch_state(
+    source_url: str,
+) -> CachedFetchState | None:
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    etag,
+                    last_modified,
+                    tse_idg,
+                    election_code,
+                    scope_code,
+                    office_code
+                FROM collector_runs
+                WHERE source_url = %s
+                  AND (
+                      etag IS NOT NULL
+                      OR last_modified IS NOT NULL
+                  )
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (source_url,),
+            )
+
+            row = cursor.fetchone()
+
+    if row is None:
+        return None
+
+    return CachedFetchState(
+        etag=row[0],
+        last_modified=row[1],
+        tse_idg=row[2],
+        election_code=row[3],
+        scope_code=row[4],
+        office_code=row[5],
+    )
+
+def record_not_modified(
+    fetch_result: TseFetchResult,
+    cached_state: CachedFetchState,
+) -> int:
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO collector_runs (
+                    status,
+                    source_url,
+
+                    election_code,
+                    scope_code,
+                    office_code,
+
+                    http_status,
+                    tse_idg,
+
+                    etag,
+                    last_modified,
+
+                    candidates_processed,
+                    finished_at
+                )
+                VALUES (
+                    'not_modified',
+                    %s,
+
+                    %s,
+                    %s,
+                    %s,
+
+                    304,
+                    %s,
+
+                    %s,
+                    %s,
+
+                    0,
+                    NOW()
+                )
+                RETURNING id
+                """,
+                (
+                    fetch_result.url,
+
+                    cached_state.election_code,
+                    cached_state.scope_code,
+                    cached_state.office_code,
+
+                    cached_state.tse_idg,
+
+                    fetch_result.etag,
+                    fetch_result.last_modified,
+                ),
+            )
+
+            row = cursor.fetchone()
+
+            if row is None:
+                raise RuntimeError(
+                    "Could not record 304 collector run."
+                )
+
+            collector_run_id = row[0]
+
+        connection.commit()
+
+    return collector_run_id
 
 def persist_result(
     fetch_result: TseFetchResult,
