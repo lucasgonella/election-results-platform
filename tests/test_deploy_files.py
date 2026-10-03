@@ -111,7 +111,7 @@ def test_systemd_timer_invokes_service():
     assert "OnActiveSec=2min" in text
 
     assert (
-        "OnUnitInactiveSec=30s"
+        "OnUnitInactiveSec=10s"
         in text
     )
 
@@ -123,7 +123,7 @@ def test_systemd_timer_invokes_service():
     assert "OnBootSec=" not in text
 
     assert (
-        "RandomizedDelaySec=5s"
+        "RandomizedDelaySec=0"
         in text
     )
 
