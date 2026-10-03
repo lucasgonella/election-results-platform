@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
@@ -31,6 +31,18 @@ from .tse_client import (
 
 
 @dataclass(frozen=True, slots=True)
+class EA14StateUpdate:
+    environment: str
+    cycle: str
+
+    election_code: int
+    round_number: int
+
+    fetch_result: object
+    payload: dict
+
+
+@dataclass(frozen=True, slots=True)
 class StatefulElectionResult:
     election_code: int
     election_type: int | None
@@ -46,6 +58,11 @@ class StatefulElectionResult:
         ElectionTarget,
         ...
     ]
+
+    state_update: (
+        EA14StateUpdate
+        | None
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +149,7 @@ def run_stateful_planner(
         TseClient
         | None
     ) = None,
+    persist_state: bool = True,
 ) -> StatefulPlannerResult:
     selected_settings = (
         settings
@@ -233,6 +251,7 @@ def run_stateful_planner(
                     status="not_modified",
                     changed_scopes=(),
                     targets=(),
+                    state_update=None,
                 )
             )
 
@@ -276,7 +295,7 @@ def run_stateful_planner(
             )
         )
 
-        save_ea14_state(
+        state_update = EA14StateUpdate(
             environment=(
                 selected_settings
                 .environment
@@ -291,6 +310,34 @@ def run_stateful_planner(
             fetch_result=response,
             payload=response.payload,
         )
+
+        if persist_state:
+            save_ea14_state(
+                environment=(
+                    state_update
+                    .environment
+                ),
+                cycle=(
+                    state_update
+                    .cycle
+                ),
+                election_code=(
+                    state_update
+                    .election_code
+                ),
+                round_number=(
+                    state_update
+                    .round_number
+                ),
+                fetch_result=(
+                    state_update
+                    .fetch_result
+                ),
+                payload=(
+                    state_update
+                    .payload
+                ),
+            )
 
         if stored is None:
             status = "initialized"
@@ -321,6 +368,9 @@ def run_stateful_planner(
                 ),
                 targets=(
                     detection.targets
+                ),
+                state_update=(
+                    state_update
                 ),
             )
         )
