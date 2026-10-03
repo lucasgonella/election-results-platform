@@ -1,4 +1,4 @@
-﻿from collections import Counter
+from collections import Counter
 
 from collector.src.discovery import (
     build_ea20_url,
@@ -212,10 +212,10 @@ def test_parse_ea14_scopes():
     )
 
 
-def test_generates_expected_137_targets():
+def test_generates_expected_85_targets():
     targets = build_targets()
 
-    assert len(targets) == 137
+    assert len(targets) == 85
 
     elections = Counter(
         target.election_code
@@ -225,7 +225,7 @@ def test_generates_expected_137_targets():
     assert elections == Counter(
         {
             21270: 29,
-            21272: 108,
+            21272: 56,
         }
     )
 
@@ -239,9 +239,8 @@ def test_generates_expected_137_targets():
             1: 29,
             3: 27,
             5: 27,
-            6: 27,
-            7: 26,
-            8: 1,
+            6: 1,
+            7: 1,
         }
     )
 
@@ -276,40 +275,39 @@ def test_exterior_only_has_president():
     assert exterior[0].office_name == "Presidente"
 
 
-def test_df_uses_district_deputy():
+def test_deputies_are_only_generated_for_goias():
     targets = build_targets()
 
-    df_legislative = [
+    deputies = [
         target
         for target in targets
-        if (
-            target.scope_code == "df"
-            and target.office_code in (7, 8)
+        if target.office_code in (
+            6,
+            7,
+            8,
         )
     ]
 
-    assert len(df_legislative) == 1
-    assert df_legislative[0].office_code == 8
-    assert (
-        df_legislative[0].office_name
-        == "Deputado Distrital"
-    )
+    assert len(deputies) == 2
+
+    assert {
+        (
+            target.scope_code,
+            target.office_code,
+        )
+        for target in deputies
+    } == {
+        ("go", 6),
+        ("go", 7),
+    }
 
 
-def test_non_df_uses_state_deputy():
+def test_district_deputy_is_not_generated():
     targets = build_targets()
 
-    state_deputies = [
-        target
-        for target in targets
-        if target.office_code == 7
-    ]
-
-    assert len(state_deputies) == 26
-
     assert not any(
-        target.scope_code == "df"
-        for target in state_deputies
+        target.office_code == 8
+        for target in targets
     )
 
 

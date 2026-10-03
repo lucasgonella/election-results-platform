@@ -1,4 +1,4 @@
-﻿from datetime import (
+from datetime import (
     datetime,
     timezone,
 )
@@ -313,7 +313,7 @@ def test_first_run_selects_all_targets(
 
     assert len(
         result.targets
-    ) == 13
+    ) == 11
 
     by_code = {
         election.election_code:
@@ -338,7 +338,7 @@ def test_first_run_selects_all_targets(
         len(
             by_code[21272].targets
         )
-        == 8
+        == 6
     )
 
     assert len(saved) == 2
@@ -814,7 +814,7 @@ def test_state_persistence_can_be_deferred(
 
     assert len(
         result.targets
-    ) == 13
+    ) == 11
 
     assert saved == []
 
