@@ -65,7 +65,7 @@ def test_favorites_panel_is_loaded():
     )
 
     assert (
-        '<script src="favorites.js?v=4"></script>'
+        '<script src="favorites.js?v=5"></script>'
         in html
     )
 
@@ -110,7 +110,7 @@ def test_favorites_markup_uses_safe_icons_and_cache_busting():
     assert "&#9734; Favoritos" in html
     assert "&times;" in html
     assert 'href="styles.css?v=5"' in html
-    assert '<script src="app.js?v=3"></script>' in html
+    assert '<script src="app.js?v=4"></script>' in html
     assert "? Favoritos" not in html
 
 
@@ -154,3 +154,22 @@ def test_favorites_show_context_and_update_metadata():
 
     assert 'id="favorites-refresh-status"' in html
     assert "a cada 10 segundos" in html
+
+
+def test_district_deputy_is_supported_in_web_order():
+    app = (
+        WEB
+        / "app.js"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    favorites = (
+        WEB
+        / "favorites.js"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert "    8\n];" in app
+    assert "        8\n    ];" in favorites
