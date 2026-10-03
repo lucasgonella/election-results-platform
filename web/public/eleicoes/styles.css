@@ -741,6 +741,38 @@ footer a:hover {
     font-size: 13px;
 }
 
+.favorites-refresh-status {
+    display: inline-flex;
+
+    margin-top: 9px !important;
+    padding: 5px 8px;
+
+    border-radius: 999px;
+
+    font-size: 11px !important;
+    font-weight: 700;
+}
+
+.favorites-refresh-status.checking {
+    color: #5f6470;
+    background: #eceef1;
+}
+
+.favorites-refresh-status.synced {
+    color: #176b45;
+    background: #e9f7ef;
+}
+
+.favorites-refresh-status.pending {
+    color: #785600;
+    background: #fff3c4;
+}
+
+.favorites-refresh-status.error {
+    color: #a02828;
+    background: #fdecec;
+}
+
 .favorites-close {
     flex: 0 0 auto;
 
@@ -822,6 +854,28 @@ footer a:hover {
     font-size: 13px;
 }
 
+.favorite-sync {
+    display: inline-flex;
+
+    margin-bottom: 13px;
+    padding: 4px 7px;
+
+    border-radius: 999px;
+
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.favorite-sync.synced {
+    color: #176b45;
+    background: #e9f7ef;
+}
+
+.favorite-sync.pending {
+    color: #785600;
+    background: #fff3c4;
+}
+
 .favorite-numbers {
     display: flex;
     justify-content: space-between;
@@ -864,6 +918,55 @@ footer a:hover {
     font-size: 11px;
 }
 
+.favorite-details {
+    display: grid;
+
+    grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+
+    gap: 1px;
+
+    overflow: hidden;
+
+    margin-top: 14px;
+
+    border: 1px solid #eceef1;
+    border-radius: 10px;
+
+    background: #eceef1;
+}
+
+.favorite-detail {
+    min-width: 0;
+
+    padding: 10px 11px;
+
+    background: #fafafa;
+}
+
+.favorite-detail span {
+    display: block;
+
+    margin-bottom: 3px;
+
+    color: #858a93;
+
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.favorite-detail strong {
+    display: block;
+
+    overflow: hidden;
+
+    font-size: 12px;
+    font-weight: 700;
+
+    text-overflow: ellipsis;
+}
+
 .favorites-empty,
 .favorites-loading {
     display: grid;
@@ -902,5 +1005,10 @@ footer a:hover {
         width: 100%;
 
         padding: 20px 16px;
+    }
+
+    .favorite-details {
+        grid-template-columns:
+            1fr;
     }
 }
