@@ -21,6 +21,7 @@ from .ingest import (
     TargetIngestResult,
     _commit_ea14_state,
     _fetch_target,
+    _ingest_target,
     _looks_official,
     _persist_fetched_target,
     _target_matches,
@@ -525,23 +526,153 @@ def run_batched_ingest(
                     )
                 )
 
-            fetch_outcomes = []
+            if workers == 1:
+                for item, target in jobs:
+                    try:
+                        result = (
+                            _ingest_target(
+                                target=target,
+                                settings=(
+                                    selected_settings
+                                ),
+                                client=(
+                                    selected_client
+                                ),
+                            )
+                        )
 
-            if jobs:
+                    except Exception as exc:
+                        message = (
+                            f"{type(exc).__name__}: "
+                            f"{exc}"
+                        )
+
+                        mark_item_error(
+                            item_id=item.id,
+                            error_message=message,
+                        )
+
+                        errors.append(
+                            (
+                                f"{target.url} -> "
+                                f"{message}"
+                            )
+                        )
+
+                        failed += 1
+                        failed_for_election += 1
+
+                        continue
+
+                    item_status_started_ns = (
+                        time.perf_counter_ns()
+                    )
+
+                    mark_item_completed(
+                        item_id=item.id,
+                        status=result.status,
+                        collector_run_id=(
+                            result
+                            .collector_run_id
+                        ),
+                    )
+
+                    fetch_duration_ms += (
+                        getattr(
+                            result,
+                            "fetch_duration_ms",
+                            0.0,
+                        )
+                    )
+
+                    persist_duration_ms += (
+                        getattr(
+                            result,
+                            "persist_duration_ms",
+                            0.0,
+                        )
+                        + _elapsed_ms(
+                            item_status_started_ns
+                        )
+                    )
+
+                    results.append(
+                        result
+                    )
+
+                    candidates_processed += (
+                        result
+                        .candidates_processed
+                    )
+
+                    processed_for_election += 1
+
+            elif jobs:
+                fetch_outcomes = []
+
                 fetch_started_ns = (
                     time.perf_counter_ns()
                 )
 
-                if workers == 1:
-                    for item, target in jobs:
+                local_state = (
+                    threading.local()
+                )
+
+                def fetch_job(
+                    target,
+                ):
+                    worker_client = (
+                        _worker_client(
+                            base_client=(
+                                selected_client
+                            ),
+                            local_state=(
+                                local_state
+                            ),
+                        )
+                    )
+
+                    return _fetch_target(
+                        target=target,
+                        client=worker_client,
+                    )
+
+                max_workers = min(
+                    workers,
+                    len(jobs),
+                )
+
+                with ThreadPoolExecutor(
+                    max_workers=(
+                        max_workers
+                    ),
+                    thread_name_prefix=(
+                        "ea20"
+                    ),
+                ) as executor:
+                    futures = [
+                        executor.submit(
+                            fetch_job,
+                            target,
+                        )
+                        for _, target
+                        in jobs
+                    ]
+
+                    for (
+                        (
+                            item,
+                            target,
+                        ),
+                        future,
+                    ) in zip(
+                        jobs,
+                        futures,
+                        strict=True,
+                    ):
                         try:
                             fetched = (
-                                _fetch_target(
-                                    target=target,
-                                    client=(
-                                        selected_client
-                                    ),
-                                )
+                                future.result()
                             )
 
                             fetch_outcomes.append(
@@ -563,98 +694,17 @@ def run_batched_ingest(
                                 )
                             )
 
-                else:
-                    local_state = (
-                        threading.local()
-                    )
-
-                    def fetch_job(
-                        target,
-                    ):
-                        worker_client = (
-                            _worker_client(
-                                base_client=(
-                                    selected_client
-                                ),
-                                local_state=(
-                                    local_state
-                                ),
-                            )
-                        )
-
-                        return _fetch_target(
-                            target=target,
-                            client=worker_client,
-                        )
-
-                    max_workers = min(
-                        workers,
-                        len(jobs),
-                    )
-
-                    with ThreadPoolExecutor(
-                        max_workers=(
-                            max_workers
-                        ),
-                        thread_name_prefix=(
-                            "ea20"
-                        ),
-                    ) as executor:
-                        futures = [
-                            executor.submit(
-                                fetch_job,
-                                target,
-                            )
-                            for _, target
-                            in jobs
-                        ]
-
-                        for (
-                            (
-                                item,
-                                target,
-                            ),
-                            future,
-                        ) in zip(
-                            jobs,
-                            futures,
-                            strict=True,
-                        ):
-                            try:
-                                fetched = (
-                                    future.result()
-                                )
-
-                                fetch_outcomes.append(
-                                    (
-                                        item,
-                                        target,
-                                        fetched,
-                                        None,
-                                    )
-                                )
-
-                            except Exception as exc:
-                                fetch_outcomes.append(
-                                    (
-                                        item,
-                                        target,
-                                        None,
-                                        exc,
-                                    )
-                                )
-
                 fetch_duration_ms += (
                     _elapsed_ms(
                         fetch_started_ns
                     )
                 )
 
-                # Persistence stays serialized
-                # after the complete fetch/parse
-                # phase. This makes fetch and
-                # persistence wall-clock timings
-                # directly comparable.
+                # Database writes remain
+                # serialized after all EA20
+                # fetch/parse work completes.
+                # The two phase timings are
+                # therefore directly comparable.
                 for (
                     item,
                     target,
