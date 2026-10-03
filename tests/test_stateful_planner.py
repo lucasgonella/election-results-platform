@@ -814,7 +814,7 @@ def test_state_persistence_can_be_deferred(
 
     assert len(
         result.targets
-    ) == 11
+    ) == 13
 
     assert saved == []
 
