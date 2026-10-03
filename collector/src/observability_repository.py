@@ -212,6 +212,7 @@ def get_observability(
 
                     WHERE environment = %s
                       AND cycle = %s
+                      AND total_targets > 0
 
                     ORDER BY
                         environment,
