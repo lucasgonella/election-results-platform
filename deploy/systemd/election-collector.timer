@@ -3,9 +3,9 @@ Description=Schedule Brazil Election Results Collector
 
 [Timer]
 OnActiveSec=2min
-OnUnitInactiveSec=2min
+OnUnitInactiveSec=30s
 
-RandomizedDelaySec=15s
+RandomizedDelaySec=5s
 AccuracySec=1s
 Persistent=false
 
