@@ -185,6 +185,21 @@ def test_static_publish_script():
     )
 
     assert (
+        "version.json"
+        in text
+    )
+
+    assert (
+        "EXPECTED_TARGETS + 2"
+        in text
+    )
+
+    assert (
+        "expected_targets + 2"
+        in text
+    )
+
+    assert (
         "REMOTE BUNDLE: OK"
         in text
     )
