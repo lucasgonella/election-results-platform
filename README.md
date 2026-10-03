@@ -52,7 +52,7 @@ https://www.tse.jus.br/eleicoes/informacoes-tecnicas-sobre-a-divulgacao-de-resul
 - publicação remota com staging, validação e troca atômica;
 - atualização automática do frontend;
 - busca de candidatos por nome, número ou partido;
-- favoritos persistidos no navegador com `localStorage`;
+- favoritos persistidos no navegador com `localStorage`, atualização automática a cada 10 segundos e indicador de sincronização com o bundle publicado;
 - suporte a deep links por localidade e cargo;
 - CI com GitHub Actions e pytest.
 

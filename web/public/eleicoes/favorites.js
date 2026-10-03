@@ -4,7 +4,10 @@
     const STORAGE_KEY =
         "election-results:favorites:v1";
 
-    const REFRESH_MS = 30000;
+    const MANIFEST_URL =
+        "/data/manifest.json";
+
+    const REFRESH_MS = 10000;
 
     const OFFICE_ORDER = [
         1,
@@ -250,6 +253,102 @@
     }
 
 
+    function updateRefreshStatus(
+        message,
+        state = ""
+    ) {
+        const status =
+            document.getElementById(
+                "favorites-refresh-status"
+            );
+
+        if (!status) {
+            return;
+        }
+
+        status.textContent =
+            message;
+
+        status.className =
+            "favorites-refresh-status";
+
+        if (state) {
+            status.classList.add(
+                state
+            );
+        }
+    }
+
+
+    function formatCheckTime() {
+        return new Date()
+            .toLocaleTimeString(
+                "pt-BR",
+                {
+                    timeZone:
+                        "America/Sao_Paulo",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit"
+                }
+            );
+    }
+
+
+    async function refreshManifest() {
+        const response =
+            await fetch(
+                MANIFEST_URL,
+                {
+                    cache: "no-store"
+                }
+            );
+
+        if (!response.ok) {
+            throw new Error(
+                `Manifest HTTP ${response.status}`
+            );
+        }
+
+        manifest =
+            await response.json();
+
+        return manifest;
+    }
+
+
+    function isPublishedSnapshotCurrent(
+        item,
+        result
+    ) {
+        if (
+            !item
+            || !result
+            || !result.snapshot
+        ) {
+            return false;
+        }
+
+        return (
+            String(
+                item.tse_idg
+            )
+            ===
+            String(
+                result.snapshot.tse_idg
+            )
+            &&
+            String(
+                item.captured_at
+            )
+            ===
+            String(
+                result.snapshot.captured_at
+            )
+        );
+    }
+
+
     function manifestItem(
         favorite
     ) {
@@ -328,7 +427,8 @@
                 favorite,
                 item: null,
                 result: null,
-                candidate: null
+                candidate: null,
+                synced: false
             };
         }
 
@@ -366,7 +466,12 @@
             favorite,
             item,
             result,
-            candidate
+            candidate,
+            synced:
+                isPublishedSnapshotCurrent(
+                    item,
+                    result
+                )
         };
     }
 
@@ -377,7 +482,8 @@
         const {
             favorite,
             result,
-            candidate
+            candidate,
+            synced
         } = entry;
 
         const card =
@@ -452,6 +558,26 @@
 
         card.appendChild(
             header
+        );
+
+
+        const syncBadge =
+            document.createElement(
+                "div"
+            );
+
+        syncBadge.className =
+            synced
+                ? "favorite-sync synced"
+                : "favorite-sync pending";
+
+        syncBadge.textContent =
+            synced
+                ? "● Sincronizado com a publicação atual"
+                : "● Atualizando dados publicados";
+
+        card.appendChild(
+            syncBadge
         );
 
 
@@ -579,24 +705,97 @@
         }
 
 
-        const updated =
+        const details =
             document.createElement(
                 "div"
             );
 
-        updated.className =
-            "favorite-updated";
+        details.className =
+            "favorite-details";
 
-        updated.textContent =
-            `Atualizado em ${
+
+        const detailItems = [
+            [
+                "Localidade",
+                favorite.scope_name
+                    ?? favorite.scope
+                        .toUpperCase()
+            ],
+            [
+                "Cargo",
+                favorite.office_name
+                    ?? result.office
+                        ?.name
+                    ?? `Cargo ${favorite.office}`
+            ],
+            [
+                "Apuração",
+                `${
+                    formatPercentage(
+                        result.snapshot
+                            .sections
+                            ?.percentage
+                        ?? 0
+                    )
+                }%`
+            ],
+            [
+                "Atualizado",
                 formatDate(
                     result.snapshot
                         .captured_at
                 )
-            }`;
+            ]
+        ];
+
+
+        for (
+            const [
+                labelText,
+                valueText
+            ]
+            of detailItems
+        ) {
+            const detail =
+                document.createElement(
+                    "div"
+                );
+
+            detail.className =
+                "favorite-detail";
+
+
+            const label =
+                document.createElement(
+                    "span"
+                );
+
+            label.textContent =
+                labelText;
+
+
+            const value =
+                document.createElement(
+                    "strong"
+                );
+
+            value.textContent =
+                valueText;
+
+
+            detail.append(
+                label,
+                value
+            );
+
+            details.appendChild(
+                detail
+            );
+        }
+
 
         card.appendChild(
-            updated
+            details
         );
 
         return card;
@@ -623,6 +822,13 @@
         rendering = true;
 
         try {
+            updateRefreshStatus(
+                "Verificando dados publicados...",
+                "checking"
+            );
+
+            await refreshManifest();
+
             const favorites =
                 loadFavorites();
 
@@ -645,6 +851,13 @@
 
                 list.appendChild(
                     empty
+                );
+
+                updateRefreshStatus(
+                    `Dados publicados verificados às ${
+                        formatCheckTime()
+                    }`,
+                    "synced"
                 );
 
                 return;
@@ -721,7 +934,8 @@
                                     favorite,
                                     item: null,
                                     result: null,
-                                    candidate: null
+                                    candidate: null,
+                                    synced: false
                                 };
                             }
                         }
@@ -741,6 +955,38 @@
                     )
                 );
             }
+
+
+            const allSynced =
+                entries.every(
+                    entry =>
+                        entry.synced
+                );
+
+            if (allSynced) {
+                updateRefreshStatus(
+                    `Sincronizado com a publicação atual · verificado às ${
+                        formatCheckTime()
+                    }`,
+                    "synced"
+                );
+            } else {
+                updateRefreshStatus(
+                    "Atualização em andamento. Nova verificação em até 10s.",
+                    "pending"
+                );
+            }
+
+        } catch (error) {
+            console.error(
+                "Favorites refresh failed:",
+                error
+            );
+
+            updateRefreshStatus(
+                "Não foi possível verificar a atualização agora.",
+                "error"
+            );
 
         } finally {
             rendering = false;
