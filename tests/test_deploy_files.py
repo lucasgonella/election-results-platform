@@ -193,3 +193,56 @@ def test_static_publish_environment_example():
         "PUBLISH_REMOTE_DIR="
         in text
     )
+
+
+
+def test_conditional_static_publish():
+    text = SCRIPT.read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "PUBLISH_AFTER_COLLECT"
+        in text
+    )
+
+    assert (
+        "state_updates_committed"
+        in text
+    )
+
+    assert (
+        'after["pending_items"] == 0'
+        in text
+    )
+
+    assert (
+        'after["error_items"] == 0'
+        in text
+    )
+
+    assert (
+        'after["health"] == "ok"'
+        in text
+    )
+
+    assert (
+        "publish.pending"
+        in text
+    )
+
+    assert (
+        "publish-results.sh"
+        in text
+    )
+
+
+def test_auto_publish_is_disabled_by_default():
+    text = ENV_EXAMPLE.read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "PUBLISH_AFTER_COLLECT=false"
+        in text
+    )
