@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
@@ -236,6 +236,11 @@ def generate_targets(
     ea14_payload: dict[str, Any],
     base_url: str,
     environment: str,
+    election_codes: (
+        set[int]
+        | frozenset[int]
+        | None
+    ) = None,
 ) -> tuple[ElectionTarget, ...]:
     elections = parse_election_config(
         config_payload
@@ -266,6 +271,13 @@ def generate_targets(
         if (
             election.election_type
             not in SUPPORTED_ELECTION_TYPES
+        ):
+            continue
+
+        if (
+            election_codes is not None
+            and election.election_code
+            not in election_codes
         ):
             continue
 
