@@ -471,6 +471,12 @@ def test_ready_batch_commits_checkpoint(
         == 1
     )
 
+    assert (
+        result
+        .data_updates_committed
+        == 1
+    )
+
     assert len(committed) == 1
 
     assert (
@@ -545,6 +551,12 @@ def test_completed_batch_recovers_checkpoint(
     assert (
         result
         .state_updates_committed
+        == 1
+    )
+
+    assert (
+        result
+        .data_updates_committed
         == 1
     )
 
@@ -866,3 +878,63 @@ def test_workers_must_be_positive():
             client=SimpleNamespace(),
             workers=0,
         )
+
+
+def test_zero_target_state_update_skips_batch_and_publish_data(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        module,
+        "run_stateful_planner",
+        lambda **kwargs:
+            planner(()),
+    )
+
+    prepared = []
+
+    monkeypatch.setattr(
+        module,
+        "prepare_batch",
+        lambda **kwargs:
+            prepared.append(
+                kwargs
+            ),
+    )
+
+    committed = []
+
+    monkeypatch.setattr(
+        module,
+        "_commit_ea14_state",
+        lambda election:
+            committed.append(
+                election
+            ),
+    )
+
+    result = (
+        module.run_batched_ingest(
+            settings=settings(),
+            client=SimpleNamespace(),
+            execute=True,
+            batch_size=25,
+            workers=5,
+        )
+    )
+
+    assert prepared == []
+    assert len(committed) == 1
+    assert result.planned_targets == 0
+    assert result.processed_targets == 0
+
+    assert (
+        result.state_updates_committed
+        == 1
+    )
+
+    assert (
+        result.data_updates_committed
+        == 0
+    )
+
+    assert result.elections == ()
