@@ -14,6 +14,7 @@ from .parser import (
     parse_ea20,
 )
 from .repository import (
+    CachedFetchState,
     get_last_fetch_state,
     persist_result,
     record_not_modified,
@@ -26,7 +27,10 @@ from .stateful_planner import (
     StatefulPlannerResult,
     run_stateful_planner,
 )
-from .tse_client import TseClient
+from .tse_client import (
+    TseClient,
+    TseFetchResult,
+)
 
 
 DEFAULT_MAX_TARGETS = 10
@@ -46,6 +50,22 @@ class TargetIngestResult:
 
     snapshots_created: int
     candidates_processed: int
+
+
+@dataclass(frozen=True, slots=True)
+class FetchedTarget:
+    target: ElectionTarget
+    response: TseFetchResult
+
+    cached_state: (
+        CachedFetchState
+        | None
+    )
+
+    parsed: (
+        ParsedResult
+        | None
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,12 +191,11 @@ def _validate_target_payload(
         )
 
 
-def _ingest_target(
+def _fetch_target(
     *,
     target: ElectionTarget,
-    settings: RuntimeSettings,
     client: TseClient,
-) -> TargetIngestResult:
+) -> FetchedTarget:
     cached_state = (
         get_last_fetch_state(
             target.url
@@ -198,6 +217,59 @@ def _ingest_target(
     )
 
     if response.status_code == 304:
+        if cached_state is None:
+            raise RuntimeError(
+                "Received EA20 HTTP 304 "
+                "without cached state."
+            )
+
+        return FetchedTarget(
+            target=target,
+            response=response,
+            cached_state=(
+                cached_state
+            ),
+            parsed=None,
+        )
+
+    if response.payload is None:
+        raise RuntimeError(
+            "EA20 returned no payload "
+            f"for {target.url}."
+        )
+
+    parsed = parse_ea20(
+        response.payload
+    )
+
+    _validate_target_payload(
+        target=target,
+        parsed=parsed,
+    )
+
+    return FetchedTarget(
+        target=target,
+        response=response,
+        cached_state=(
+            cached_state
+        ),
+        parsed=parsed,
+    )
+
+
+def _persist_fetched_target(
+    *,
+    fetched: FetchedTarget,
+    settings: RuntimeSettings,
+) -> TargetIngestResult:
+    target = fetched.target
+    response = fetched.response
+
+    if response.status_code == 304:
+        cached_state = (
+            fetched.cached_state
+        )
+
         if cached_state is None:
             raise RuntimeError(
                 "Received EA20 HTTP 304 "
@@ -233,20 +305,13 @@ def _ingest_target(
             candidates_processed=0,
         )
 
-    if response.payload is None:
+    parsed = fetched.parsed
+
+    if parsed is None:
         raise RuntimeError(
-            "EA20 returned no payload "
+            "EA20 parsed payload is missing "
             f"for {target.url}."
         )
-
-    parsed = parse_ea20(
-        response.payload
-    )
-
-    _validate_target_payload(
-        target=target,
-        parsed=parsed,
-    )
 
     persisted = persist_result(
         response,
@@ -284,6 +349,22 @@ def _ingest_target(
         ),
     )
 
+
+def _ingest_target(
+    *,
+    target: ElectionTarget,
+    settings: RuntimeSettings,
+    client: TseClient,
+) -> TargetIngestResult:
+    fetched = _fetch_target(
+        target=target,
+        client=client,
+    )
+
+    return _persist_fetched_target(
+        fetched=fetched,
+        settings=settings,
+    )
 
 def _commit_ea14_state(
     election,

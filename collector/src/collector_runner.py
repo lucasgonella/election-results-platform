@@ -6,6 +6,7 @@ import json
 
 from .batch_ingest import (
     DEFAULT_BATCH_SIZE,
+    DEFAULT_WORKERS,
     run_batched_ingest,
 )
 from .observability_repository import (
@@ -50,6 +51,7 @@ class CollectorRunnerResult:
     execute: bool
 
     batch_size: int
+    workers: int
     requested_cycles: int
     completed_cycles: int
 
@@ -99,6 +101,9 @@ def run_collector(
     batch_size: int = (
         DEFAULT_BATCH_SIZE
     ),
+    workers: int = (
+        DEFAULT_WORKERS
+    ),
     cycles: int = (
         DEFAULT_CYCLES
     ),
@@ -116,6 +121,12 @@ def run_collector(
         raise ValueError(
             "batch_size must be "
             "greater than zero."
+        )
+
+    if workers < 1:
+        raise ValueError(
+            "workers must be greater "
+            "than zero."
         )
 
     if cycles < 1:
@@ -143,6 +154,7 @@ def run_collector(
             ),
             execute=False,
             batch_size=batch_size,
+            workers=workers,
             allow_official=(
                 allow_official
             ),
@@ -160,6 +172,7 @@ def run_collector(
         return CollectorRunnerResult(
             execute=False,
             batch_size=batch_size,
+            workers=workers,
             requested_cycles=cycles,
             completed_cycles=0,
             stop_reason="dry_run",
@@ -209,6 +222,9 @@ def run_collector(
                 execute=True,
                 batch_size=(
                     batch_size
+                ),
+                workers=(
+                    workers
                 ),
                 allow_official=(
                     allow_official
@@ -335,6 +351,7 @@ def run_collector(
     return CollectorRunnerResult(
         execute=True,
         batch_size=batch_size,
+        workers=workers,
         requested_cycles=cycles,
         completed_cycles=(
             len(
@@ -428,6 +445,9 @@ def _build_output(
 
         "batch_size":
             result.batch_size,
+
+        "workers":
+            result.workers,
 
         "requested_cycles":
             result
@@ -557,6 +577,14 @@ def main() -> int:
     )
 
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=(
+            DEFAULT_WORKERS
+        ),
+    )
+
+    parser.add_argument(
         "--cycles",
         type=int,
         default=(
@@ -595,6 +623,9 @@ def main() -> int:
         execute=args.execute,
         batch_size=(
             args.batch_size
+        ),
+        workers=(
+            args.workers
         ),
         cycles=(
             args.cycles

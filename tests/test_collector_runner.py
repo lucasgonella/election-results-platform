@@ -281,6 +281,7 @@ def test_output_contains_before_after():
         module.CollectorRunnerResult(
             execute=True,
             batch_size=10,
+            workers=1,
             requested_cycles=1,
             completed_cycles=1,
             stop_reason="cycle_limit",
@@ -366,3 +367,61 @@ def test_exit_code_is_nonzero_on_failure():
         module._exit_code(stopped)
         == 1
     )
+
+
+def test_workers_are_forwarded_to_batch_ingest(
+    monkeypatch,
+):
+    states = iter(
+        (
+            status(),
+            status(
+                pending=131,
+                completed=6,
+            ),
+        )
+    )
+
+    monkeypatch.setattr(
+        module,
+        "_get_status",
+        lambda settings:
+            next(states),
+    )
+
+    received = []
+
+    monkeypatch.setattr(
+        module,
+        "run_batched_ingest",
+        lambda **kwargs: (
+            received.append(kwargs)
+            or batch_result(
+                processed=5
+            )
+        ),
+    )
+
+    result = module.run_collector(
+        settings=settings(),
+        client=SimpleNamespace(),
+        execute=True,
+        batch_size=10,
+        workers=5,
+        cycles=1,
+    )
+
+    assert result.workers == 5
+    assert received[0]["workers"] == 5
+
+
+def test_workers_must_be_positive():
+    with pytest.raises(
+        ValueError,
+        match="workers must be",
+    ):
+        module.run_collector(
+            settings=settings(),
+            client=SimpleNamespace(),
+            workers=0,
+        )

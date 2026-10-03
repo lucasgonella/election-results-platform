@@ -8,6 +8,7 @@ VENV_DIR="${ELECTION_VENV_DIR:-${APP_DIR}/.venv}"
 PYTHON_BIN="${VENV_DIR}/bin/python"
 
 BATCH_SIZE="${COLLECTOR_BATCH_SIZE:-10}"
+WORKERS="${COLLECTOR_WORKERS:-1}"
 CYCLES="${COLLECTOR_CYCLES:-1}"
 
 PUBLISH_AFTER_COLLECT="${PUBLISH_AFTER_COLLECT:-false}"
@@ -36,6 +37,11 @@ if [[ ! "${BATCH_SIZE}" =~ ^[1-9][0-9]*$ ]]; then
     exit 2
 fi
 
+if [[ ! "${WORKERS}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Invalid COLLECTOR_WORKERS: ${WORKERS}" >&2
+    exit 2
+fi
+
 
 if [[ ! "${CYCLES}" =~ ^[1-9][0-9]*$ ]]; then
     echo "Invalid COLLECTOR_CYCLES: ${CYCLES}" >&2
@@ -52,6 +58,8 @@ ARGS=(
     --execute
     --batch-size
     "${BATCH_SIZE}"
+    --workers
+    "${WORKERS}"
     --cycles
     "${CYCLES}"
 )

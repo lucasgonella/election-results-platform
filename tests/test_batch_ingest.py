@@ -1,4 +1,5 @@
 ﻿from types import SimpleNamespace
+import threading
 
 import pytest
 
@@ -721,3 +722,147 @@ def test_filter_processes_only_matching_target(
     )
 
     assert result.selected_targets == 1
+
+
+def test_parallel_workers_fetch_concurrently_and_persist_serially(
+    monkeypatch,
+):
+    targets = (
+        target("go"),
+        target("ac"),
+        target("sp"),
+    )
+
+    monkeypatch.setattr(
+        module,
+        "run_stateful_planner",
+        lambda **kwargs:
+            planner(targets),
+    )
+
+    monkeypatch.setattr(
+        module,
+        "prepare_batch",
+        lambda **kwargs:
+            batch(
+                total=3,
+                completed=0,
+            ),
+    )
+
+    monkeypatch.setattr(
+        module,
+        "get_pending_items",
+        lambda **kwargs: (
+            item(1, targets[0]),
+            item(2, targets[1]),
+            item(3, targets[2]),
+        ),
+    )
+
+    barrier = threading.Barrier(3)
+    fetched_scopes = []
+    persisted_scopes = []
+
+    def fake_fetch_target(
+        *,
+        target,
+        client,
+    ):
+        fetched_scopes.append(
+            target.scope_code
+        )
+
+        barrier.wait(
+            timeout=2
+        )
+
+        return SimpleNamespace(
+            target=target
+        )
+
+    def fake_persist(
+        *,
+        fetched,
+        settings,
+    ):
+        persisted_scopes.append(
+            fetched.target.scope_code
+        )
+
+        return ingest_result(
+            fetched.target
+        )
+
+    monkeypatch.setattr(
+        module,
+        "_fetch_target",
+        fake_fetch_target,
+    )
+
+    monkeypatch.setattr(
+        module,
+        "_persist_fetched_target",
+        fake_persist,
+    )
+
+    completed = []
+
+    monkeypatch.setattr(
+        module,
+        "mark_item_completed",
+        lambda **kwargs:
+            completed.append(
+                kwargs
+            ),
+    )
+
+    monkeypatch.setattr(
+        module,
+        "refresh_batch_progress",
+        lambda **kwargs:
+            batch(
+                status="pending",
+                total=3,
+                completed=3,
+            ),
+    )
+
+    result = (
+        module.run_batched_ingest(
+            settings=settings(),
+            client=SimpleNamespace(),
+            execute=True,
+            batch_size=3,
+            workers=3,
+        )
+    )
+
+    assert set(fetched_scopes) == {
+        "go",
+        "ac",
+        "sp",
+    }
+
+    assert persisted_scopes == [
+        "go",
+        "ac",
+        "sp",
+    ]
+
+    assert len(completed) == 3
+    assert result.processed_targets == 3
+    assert result.failed_targets == 0
+    assert result.workers == 3
+
+
+def test_workers_must_be_positive():
+    with pytest.raises(
+        ValueError,
+        match="workers must be",
+    ):
+        module.run_batched_ingest(
+            settings=settings(),
+            client=SimpleNamespace(),
+            workers=0,
+        )
