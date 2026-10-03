@@ -65,7 +65,7 @@ def test_favorites_panel_is_loaded():
     )
 
     assert (
-        '<script src="favorites.js"></script>'
+        '<script src="favorites.js?v=3"></script>'
         in html
     )
 
@@ -87,3 +87,28 @@ def test_candidate_cards_support_favorites():
         "window.Favorites.toggle"
         in app
     )
+
+    assert (
+        "\\u2605"
+        in app
+    )
+
+    assert (
+        "\\u2606"
+        in app
+    )
+
+
+def test_favorites_markup_uses_safe_icons_and_cache_busting():
+    html = (
+        WEB
+        / "index.html"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert "&#9734; Favoritos" in html
+    assert "&times;" in html
+    assert 'href="styles.css?v=3"' in html
+    assert '<script src="app.js?v=3"></script>' in html
+    assert "? Favoritos" not in html
