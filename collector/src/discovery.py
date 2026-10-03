@@ -6,7 +6,7 @@ from typing import Any
 
 EXTERIOR_SCOPE = "zz"
 BRAZIL_SCOPE = "br"
-GOIAS_SCOPE = "go"
+DISTRICT_SCOPE = "df"
 
 PRESIDENT_OFFICE = 1
 FEDERAL_DEPUTY_OFFICE = 6
@@ -216,17 +216,29 @@ def office_applies_to_scope(
     office_code: int,
     scope_code: str,
 ) -> bool:
-    if office_code in {
-        FEDERAL_DEPUTY_OFFICE,
-        STATE_DEPUTY_OFFICE,
-    }:
-        return scope_code == GOIAS_SCOPE
+    if (
+        office_code
+        == FEDERAL_DEPUTY_OFFICE
+    ):
+        return True
+
+    if (
+        office_code
+        == STATE_DEPUTY_OFFICE
+    ):
+        return (
+            scope_code
+            != DISTRICT_SCOPE
+        )
 
     if (
         office_code
         == DISTRICT_DEPUTY_OFFICE
     ):
-        return False
+        return (
+            scope_code
+            == DISTRICT_SCOPE
+        )
 
     return True
 
@@ -359,4 +371,3 @@ def generate_targets(
                 )
 
     return tuple(targets)
-
