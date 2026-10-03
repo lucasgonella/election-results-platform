@@ -212,10 +212,10 @@ def test_parse_ea14_scopes():
     )
 
 
-def test_generates_expected_85_targets():
+def test_generates_expected_137_targets():
     targets = build_targets()
 
-    assert len(targets) == 85
+    assert len(targets) == 137
 
     elections = Counter(
         target.election_code
@@ -225,7 +225,7 @@ def test_generates_expected_85_targets():
     assert elections == Counter(
         {
             21270: 29,
-            21272: 56,
+            21272: 108,
         }
     )
 
@@ -239,8 +239,9 @@ def test_generates_expected_85_targets():
             1: 29,
             3: 27,
             5: 27,
-            6: 1,
-            7: 1,
+            6: 27,
+            7: 26,
+            8: 1,
         }
     )
 
@@ -275,40 +276,58 @@ def test_exterior_only_has_president():
     assert exterior[0].office_name == "Presidente"
 
 
-def test_deputies_are_only_generated_for_goias():
+def test_deputies_cover_all_states_and_df():
     targets = build_targets()
 
-    deputies = [
+    federal = [
         target
         for target in targets
-        if target.office_code in (
-            6,
-            7,
-            8,
-        )
+        if target.office_code == 6
     ]
 
-    assert len(deputies) == 2
+    state = [
+        target
+        for target in targets
+        if target.office_code == 7
+    ]
 
+    district = [
+        target
+        for target in targets
+        if target.office_code == 8
+    ]
+
+    assert len(federal) == 27
     assert {
-        (
-            target.scope_code,
-            target.office_code,
-        )
-        for target in deputies
-    } == {
-        ("go", 6),
-        ("go", 7),
+        target.scope_code
+        for target in federal
+    } == set(UF_CODES)
+
+    assert len(state) == 26
+    assert "df" not in {
+        target.scope_code
+        for target in state
     }
 
+    assert len(district) == 1
+    assert (
+        district[0].scope_code
+        == "df"
+    )
 
-def test_district_deputy_is_not_generated():
+
+def test_df_uses_district_not_state_deputy():
     targets = build_targets()
 
-    assert not any(
-        target.office_code == 8
+    df_offices = {
+        target.office_code
         for target in targets
-    )
+        if target.scope_code == "df"
+    }
+
+    assert 6 in df_offices
+    assert 8 in df_offices
+    assert 7 not in df_offices
 
 
 def test_ea20_url_format():
