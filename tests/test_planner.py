@@ -212,7 +212,7 @@ def test_builds_independent_plan_per_election():
 
     assert len(
         by_code[21272].targets
-    ) == 6
+    ) == 8
 
 
 def test_state_uses_its_own_ea14_scopes():
