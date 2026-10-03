@@ -80,6 +80,16 @@ def test_result_relative_paths():
         == "go/state-deputy.json"
     )
 
+    assert (
+        result_relative_path(
+            StaticExportTarget(
+                scope_code="df",
+                office_code=8,
+            )
+        ).as_posix()
+        == "df/district-deputy.json"
+    )
+
 
 def test_build_static_site(
     tmp_path,
