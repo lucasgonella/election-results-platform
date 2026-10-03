@@ -543,8 +543,83 @@ function renderCandidateCard(
     meta.textContent =
         `Nº ${number} · ${party}`;
 
-    main.append(
+    const favoriteRef = {
+        scope: selectedScope,
+        scope_name: scopeName(
+            selectedScope
+        ),
+        office: selectedOffice,
+        office_name:
+            currentResult
+                ?.office
+                ?.name
+            ?? `Cargo ${selectedOffice}`,
+        candidate_id: String(
+            candidate.tse_candidate_seq
+        ),
+        candidate_name:
+            candidate.ballot_name
+            || candidate.name,
+        ballot_number:
+            candidate.ballot_number,
+        party_acronym:
+            candidate.party_acronym
+    };
+
+
+    const favoriteButton =
+        createElement(
+            "button",
+            "favorite-toggle",
+            window.Favorites
+                .isFavorite(
+                    favoriteRef
+                )
+                ? "?"
+                : "?"
+        );
+
+    favoriteButton.type =
+        "button";
+
+    favoriteButton.title =
+        "Adicionar ou remover dos favoritos";
+
+    favoriteButton.setAttribute(
+        "aria-label",
+        "Adicionar ou remover dos favoritos"
+    );
+
+    favoriteButton.addEventListener(
+        "click",
+        () => {
+            const selected =
+                window.Favorites.toggle(
+                    favoriteRef
+                );
+
+            favoriteButton.textContent =
+                selected
+                    ? "?"
+                    : "?";
+        }
+    );
+
+
+    const titleRow =
+        createElement(
+            "div",
+            "candidate-title-row"
+        );
+
+    titleRow.append(
         name,
+        favoriteButton
+    );
+
+
+    main.append(
+        titleRow,
         meta
     );
 
@@ -836,6 +911,10 @@ async function loadManifest() {
 
     manifest =
         await response.json();
+
+    window.Favorites.setManifest(
+        manifest
+    );
 }
 
 
@@ -873,6 +952,10 @@ async function refreshIfChanged() {
 
         manifest =
             newManifest;
+
+        window.Favorites.setManifest(
+            manifest
+        );
 
         if (
             newItem
