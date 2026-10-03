@@ -14,7 +14,8 @@
         3,
         5,
         6,
-        7
+        7,
+        8
     ];
 
     let manifest = null;
