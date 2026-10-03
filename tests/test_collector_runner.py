@@ -49,6 +49,11 @@ def batch_result(
     planned=137,
     selected=137,
     errors=(),
+    duration_ms=12.0,
+    planner_duration_ms=2.0,
+    fetch_duration_ms=4.0,
+    persist_duration_ms=5.0,
+    candidates_processed=100,
 ):
     return SimpleNamespace(
         processed_targets=processed,
@@ -62,6 +67,19 @@ def batch_result(
         planned_targets=planned,
         selected_targets=selected,
         errors=errors,
+        duration_ms=duration_ms,
+        planner_duration_ms=(
+            planner_duration_ms
+        ),
+        fetch_duration_ms=(
+            fetch_duration_ms
+        ),
+        persist_duration_ms=(
+            persist_duration_ms
+        ),
+        candidates_processed=(
+            candidates_processed
+        ),
     )
 
 
@@ -148,6 +166,10 @@ def test_one_cycle_processes_batch(
     assert result.completed_cycles == 1
     assert result.processed_targets == 10
     assert result.failed_targets == 0
+    assert result.candidates_processed == 100
+    assert result.planner_duration_ms == 2.0
+    assert result.fetch_duration_ms == 4.0
+    assert result.persist_duration_ms == 5.0
 
     assert (
         result.cycles[0]
@@ -339,6 +361,20 @@ def test_output_contains_before_after():
         output["cycles"][0]
         ["processed_targets"]
         == 10
+    )
+
+
+    assert (
+        output["timings"]
+        ["fetch_duration_ms"]
+        == 0.0
+    )
+
+    assert (
+        output["cycles"][0]
+        ["timings"]
+        ["duration_ms"]
+        == 0.0
     )
 
 def test_exit_code_is_zero_on_success():
