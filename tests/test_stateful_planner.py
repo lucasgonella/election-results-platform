@@ -313,7 +313,7 @@ def test_first_run_selects_all_targets(
 
     assert len(
         result.targets
-    ) == 11
+    ) == 13
 
     by_code = {
         election.election_code:
@@ -338,7 +338,7 @@ def test_first_run_selects_all_targets(
         len(
             by_code[21272].targets
         )
-        == 6
+        == 8
     )
 
     assert len(saved) == 2
@@ -814,7 +814,7 @@ def test_state_persistence_can_be_deferred(
 
     assert len(
         result.targets
-    ) == 11
+    ) == 13
 
     assert saved == []
 

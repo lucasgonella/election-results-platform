@@ -201,7 +201,7 @@ def test_static_publish_environment_example():
     )
 
     assert (
-        "PUBLISH_EXPECTED_TARGETS=85"
+        "PUBLISH_EXPECTED_TARGETS=137"
         in text
     )
 
