@@ -1246,3 +1246,139 @@ footer a:hover {
         gap: 4px;
     }
 }
+
+
+/* --------------------------------------------------
+   Proportional seat allocation
+-------------------------------------------------- */
+
+.seat-allocation {
+    margin-bottom: 20px;
+    padding: 18px;
+
+    border: 1px solid #dfe1e5;
+    border-radius: 16px;
+
+    background: white;
+}
+
+.seat-allocation[hidden] {
+    display: none;
+}
+
+.seat-allocation-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+
+    margin-bottom: 14px;
+}
+
+.seat-allocation-header h2 {
+    margin: 0 0 4px;
+
+    font-size: 18px;
+}
+
+.seat-allocation-header p {
+    margin: 0;
+
+    color: #626b79;
+    font-size: 12px;
+}
+
+.seat-allocation-summary {
+    flex: 0 0 auto;
+
+    padding: 6px 10px;
+
+    border-radius: 999px;
+
+    background: #f4f7fc;
+    color: #4f5b6d;
+
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.seat-allocation-empty {
+    padding: 14px;
+
+    border: 1px dashed #dce3ef;
+    border-radius: 10px;
+
+    color: #626b79;
+    font-size: 13px;
+}
+
+.seat-allocation-empty[hidden] {
+    display: none;
+}
+
+.seat-allocation-grid {
+    display: grid;
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(230px, 1fr)
+        );
+
+    gap: 9px;
+}
+
+.seat-allocation-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+
+    padding: 12px 13px;
+
+    border: 1px solid #dce3ef;
+    border-radius: 10px;
+
+    background: #f9fbff;
+}
+
+.seat-allocation-identity {
+    display: grid;
+    gap: 3px;
+
+    min-width: 0;
+}
+
+.seat-allocation-identity strong {
+    font-size: 14px;
+}
+
+.seat-allocation-identity span {
+    overflow: hidden;
+
+    color: #626b79;
+    font-size: 11px;
+
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.seat-allocation-value {
+    flex: 0 0 auto;
+
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+    .seat-allocation-header {
+        display: grid;
+    }
+
+    .seat-allocation-summary {
+        width: fit-content;
+    }
+
+    .seat-allocation-card {
+        align-items: flex-start;
+    }
+}

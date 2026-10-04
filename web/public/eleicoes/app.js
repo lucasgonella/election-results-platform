@@ -11,6 +11,13 @@ const REFRESH_MS = 5000;
 
 const PAGE_SIZE = 20;
 
+const PROPORTIONAL_OFFICES =
+    new Set([
+        6,
+        7,
+        8
+    ]);
+
 const OFFICE_ORDER = [
     1,
     3,
@@ -887,6 +894,260 @@ function renderSummary() {
 }
 
 
+function seatGroupTitle(group) {
+    const parties =
+        Array.isArray(
+            group.parties
+        )
+            ? group.parties
+            : [];
+
+    if (
+        group.type === "i"
+        && parties.length === 1
+    ) {
+        return (
+            parties[0].acronym
+            || group.name
+            || "Partido"
+        );
+    }
+
+    return (
+        group.name
+        || (
+            parties
+                .map(
+                    party =>
+                        party.acronym
+                )
+                .filter(Boolean)
+                .join(" / ")
+        )
+        || "Agregação"
+    );
+}
+
+
+function seatGroupDetail(group) {
+    const parties =
+        Array.isArray(
+            group.parties
+        )
+            ? group.parties
+            : [];
+
+    const acronyms =
+        parties
+            .map(
+                party =>
+                    party.acronym
+            )
+            .filter(Boolean)
+            .join(" / ");
+
+    if (group.type === "f") {
+        return acronyms
+            ? `Federação · ${acronyms}`
+            : "Federação";
+    }
+
+    if (group.type === "c") {
+        return acronyms
+            ? `Coligação · ${acronyms}`
+            : "Coligação";
+    }
+
+    if (
+        group.type === "i"
+        && parties.length === 1
+    ) {
+        return (
+            parties[0].name
+            || "Partido isolado"
+        );
+    }
+
+    return (
+        group.composition
+        || acronyms
+        || "Partido/federação"
+    );
+}
+
+
+function renderSeatAllocation() {
+    const section =
+        document.getElementById(
+            "seat-allocation"
+        );
+
+    const grid =
+        document.getElementById(
+            "seat-allocation-grid"
+        );
+
+    const empty =
+        document.getElementById(
+            "seat-allocation-empty"
+        );
+
+    const summary =
+        document.getElementById(
+            "seat-allocation-summary"
+        );
+
+    if (
+        !section
+        || !grid
+        || !empty
+        || !summary
+    ) {
+        return;
+    }
+
+    const officeCode =
+        Number(
+            currentResult
+                ?.office
+                ?.code
+        );
+
+    if (
+        !PROPORTIONAL_OFFICES
+            .has(officeCode)
+    ) {
+        section.hidden = true;
+        grid.innerHTML = "";
+        return;
+    }
+
+    section.hidden = false;
+    grid.innerHTML = "";
+
+    const allocations =
+        Array.isArray(
+            currentResult
+                ?.office
+                ?.seat_allocations
+        )
+            ? currentResult
+                .office
+                .seat_allocations
+            : [];
+
+    const groups =
+        allocations
+            .filter(
+                item =>
+                    Number(
+                        item.seats
+                        ?? 0
+                    ) > 0
+            )
+            .sort(
+                (a, b) =>
+                    Number(
+                        b.seats
+                        ?? 0
+                    )
+                    -
+                    Number(
+                        a.seats
+                        ?? 0
+                    )
+                    ||
+                    seatGroupTitle(a)
+                        .localeCompare(
+                            seatGroupTitle(b),
+                            "pt-BR"
+                        )
+            );
+
+    const allocated =
+        groups.reduce(
+            (total, item) =>
+                total
+                + Number(
+                    item.seats
+                    ?? 0
+                ),
+            0
+        );
+
+    const totalSeats =
+        Number(
+            currentResult
+                ?.office
+                ?.seats
+            ?? 0
+        );
+
+    summary.textContent =
+        totalSeats > 0
+            ? `${allocated} de ${totalSeats} vagas atribuídas`
+            : `${allocated} vagas atribuídas`;
+
+    empty.hidden =
+        groups.length > 0;
+
+    if (!groups.length) {
+        return;
+    }
+
+    for (const group of groups) {
+        const card =
+            createElement(
+                "article",
+                "seat-allocation-card"
+            );
+
+        const identity =
+            createElement(
+                "div",
+                "seat-allocation-identity"
+            );
+
+        identity.append(
+            createElement(
+                "strong",
+                null,
+                seatGroupTitle(group)
+            ),
+            createElement(
+                "span",
+                null,
+                seatGroupDetail(group)
+            )
+        );
+
+        const seats =
+            Number(
+                group.seats
+                ?? 0
+            );
+
+        const value =
+            createElement(
+                "strong",
+                "seat-allocation-value",
+                `${formatNumber(seats)} ${
+                    seats === 1
+                        ? "vaga"
+                        : "vagas"
+                }`
+            );
+
+        card.append(
+            identity,
+            value
+        );
+
+        grid.appendChild(card);
+    }
+}
+
+
 function candidateSearchText(
     candidate
 ) {
@@ -1301,6 +1562,7 @@ async function loadSelectedResult() {
     ).value = "";
 
     renderSummary();
+    renderSeatAllocation();
     renderResults();
 }
 

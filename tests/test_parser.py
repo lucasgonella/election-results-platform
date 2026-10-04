@@ -158,3 +158,56 @@ def test_duplicate_candidate_is_rejected():
         match="Duplicate candidate",
     ):
         parse_ea20(payload)
+
+
+
+def test_parse_proportional_seat_allocation():
+    payload = build_payload()
+
+    office_payload = payload["carg"][0]
+    office_payload["cd"] = "6"
+    office_payload["nmn"] = (
+        "Deputado Federal"
+    )
+    office_payload["nv"] = "17"
+    office_payload["qe"] = "123456"
+
+    alliance = (
+        office_payload["agr"][0]
+    )
+    alliance["tp"] = "f"
+    alliance["vag"] = "5"
+    alliance["com"] = (
+        "PTST / OUT"
+    )
+
+    result = parse_ea20(payload)
+    office = result.offices[0]
+
+    assert office.code == 6
+    assert office.seats == 17
+    assert (
+        office.electoral_quotient
+        == 123456
+    )
+
+    assert (
+        len(office.seat_allocations)
+        == 1
+    )
+
+    allocation = (
+        office.seat_allocations[0]
+    )
+
+    assert allocation.kind == "f"
+    assert allocation.seats == 5
+    assert (
+        allocation.composition
+        == "PTST / OUT"
+    )
+    assert (
+        allocation.parties[0]
+        ["acronym"]
+        == "PTST"
+    )
