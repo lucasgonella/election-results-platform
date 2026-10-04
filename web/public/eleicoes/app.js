@@ -4,6 +4,9 @@ const VERSION_URL =
 const MANIFEST_URL =
     "/data/manifest.json";
 
+const ALERTS_URL =
+    "/data/alerts.json";
+
 const REFRESH_MS = 5000;
 
 const PAGE_SIZE = 20;
@@ -51,6 +54,7 @@ const SCOPE_NAMES = {
 
 
 let manifest = null;
+let alerts = [];
 let publishedVersion = null;
 
 let selectedScope = null;
@@ -110,6 +114,175 @@ function scopeName(scope) {
         SCOPE_NAMES[scope]
         ?? scope.toUpperCase()
     );
+}
+
+
+function renderElectedAlerts() {
+    const container =
+        document.getElementById(
+            "elected-alerts"
+        );
+
+    if (!container) {
+        return;
+    }
+
+    if (!alerts.length) {
+        container.hidden = true;
+        container.innerHTML = "";
+        return;
+    }
+
+    container.hidden = false;
+    container.innerHTML = "";
+
+    const header =
+        createElement(
+            "div",
+            "elected-alerts-header"
+        );
+
+    const title =
+        createElement(
+            "strong",
+            null,
+            "Resultados definidos pelo TSE"
+        );
+
+    const source =
+        createElement(
+            "span",
+            null,
+            "Avisos exibidos somente quando o dado oficial marca a candidatura como eleita."
+        );
+
+    header.append(
+        title,
+        source
+    );
+
+    const list =
+        createElement(
+            "div",
+            "elected-alerts-list"
+        );
+
+    const visible =
+        alerts.slice(
+            0,
+            4
+        );
+
+    for (
+        const item
+        of visible
+    ) {
+        const card =
+            createElement(
+                "div",
+                "elected-alert"
+            );
+
+        const context =
+            createElement(
+                "span",
+                "elected-alert-context",
+                scopeName(
+                    item.scope
+                )
+                + " · "
+                + item.office_name
+            );
+
+        const candidate =
+            createElement(
+                "strong",
+                "elected-alert-candidate",
+                item.candidate_name
+            );
+
+        const detail =
+            createElement(
+                "span",
+                "elected-alert-detail",
+                (
+                    item.party_acronym
+                    || "Partido não informado"
+                )
+                + " · Eleito(a) segundo o dado publicado pelo TSE"
+            );
+
+        card.append(
+            context,
+            candidate,
+            detail
+        );
+
+        list.appendChild(
+            card
+        );
+    }
+
+    if (
+        alerts.length
+        > visible.length
+    ) {
+        list.appendChild(
+            createElement(
+                "div",
+                "elected-alert-more",
+                "+"
+                + (
+                    alerts.length
+                    - visible.length
+                )
+                + " outros resultados definidos"
+            )
+        );
+    }
+
+    container.append(
+        header,
+        list
+    );
+}
+
+
+async function loadAlerts() {
+    const response =
+        await fetch(
+            ALERTS_URL,
+            {
+                cache: "no-store"
+            }
+        );
+
+    if (
+        response.status
+        === 404
+    ) {
+        alerts = [];
+        return alerts;
+    }
+
+    if (!response.ok) {
+        throw new Error(
+            "Alerts HTTP "
+            + response.status
+        );
+    }
+
+    const payload =
+        await response.json();
+
+    alerts =
+        Array.isArray(
+            payload.alerts
+        )
+            ? payload.alerts
+            : [];
+
+    return alerts;
 }
 
 
@@ -973,7 +1146,12 @@ async function refreshIfChanged() {
         const oldItem =
             currentManifestItem();
 
-        await loadManifest();
+        await Promise.all([
+            loadManifest(),
+            loadAlerts()
+        ]);
+
+        renderElectedAlerts();
 
         const newItem =
             currentManifestItem();
@@ -1016,7 +1194,10 @@ async function initialize() {
     const version =
         await loadVersion();
 
-    await loadManifest();
+    await Promise.all([
+        loadManifest(),
+        loadAlerts()
+    ]);
 
     publishedVersion =
         publicationToken(
@@ -1031,6 +1212,7 @@ async function initialize() {
     selectInitialRoute();
 
     renderEnvironment();
+    renderElectedAlerts();
     renderScopeSelector();
     renderOfficeTabs();
 
