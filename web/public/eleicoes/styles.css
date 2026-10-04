@@ -1156,6 +1156,37 @@ footer a:hover {
     font-size: 12px;
 }
 
+.elected-by-office-groups {
+    display: grid;
+    gap: 22px;
+}
+
+.elected-office-group {
+    min-width: 0;
+}
+
+.elected-office-group
++ .elected-office-group {
+    padding-top: 20px;
+
+    border-top: 1px solid #e2e7ef;
+}
+
+.elected-office-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+
+    margin-bottom: 10px;
+}
+
+.elected-office-group-header h3 {
+    margin: 0;
+
+    font-size: 15px;
+}
+
 .elected-by-state-count {
     flex: 0 0 auto;
 
@@ -1204,10 +1235,10 @@ footer a:hover {
     background: #f9fbff;
 }
 
-.elected-state-card h3 {
-    margin: 0 0 12px;
+.elected-state-card h4 {
+    margin: 0 0 10px;
 
-    font-size: 16px;
+    font-size: 15px;
 }
 
 .elected-state-office {
@@ -1284,6 +1315,10 @@ footer a:hover {
 @media (max-width: 760px) {
     .elected-by-state-header {
         display: grid;
+    }
+
+    .elected-office-group-header {
+        align-items: flex-start;
     }
 
     .elected-by-state-count {

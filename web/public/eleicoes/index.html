@@ -76,7 +76,7 @@
 
     <link
         rel="stylesheet"
-        href="styles.css?v=9"
+        href="styles.css?v=10"
     >
 </head>
 
@@ -148,26 +148,69 @@
                     Governador e Senado conforme as definições oficiais publicadas pelo TSE.
                 </p>
             </div>
+        </div>
 
-            <span
-                id="elected-by-state-count"
-                class="elected-by-state-count"
+        <div class="elected-by-office-groups">
+            <section
+                class="elected-office-group"
+                aria-labelledby="governor-results-title"
             >
-                0 UFs com resultado definido
-            </span>
-        </div>
+                <div class="elected-office-group-header">
+                    <h3 id="governor-results-title">
+                        Governadores
+                    </h3>
 
-        <div
-            id="elected-by-state-empty"
-            class="elected-by-state-empty"
-        >
-            Nenhum resultado de Governador ou Senado definido pelo TSE até o momento.
-        </div>
+                    <span
+                        id="governor-results-count"
+                        class="elected-by-state-count"
+                    >
+                        0 UFs
+                    </span>
+                </div>
 
-        <div
-            id="elected-by-state-grid"
-            class="elected-by-state-grid"
-        ></div>
+                <div
+                    id="governor-results-empty"
+                    class="elected-by-state-empty"
+                >
+                    Nenhum governador definido pelo TSE até o momento.
+                </div>
+
+                <div
+                    id="governor-results-grid"
+                    class="elected-by-state-grid"
+                ></div>
+            </section>
+
+            <section
+                class="elected-office-group"
+                aria-labelledby="senate-results-title"
+            >
+                <div class="elected-office-group-header">
+                    <h3 id="senate-results-title">
+                        Senadores
+                    </h3>
+
+                    <span
+                        id="senate-results-count"
+                        class="elected-by-state-count"
+                    >
+                        0 UFs
+                    </span>
+                </div>
+
+                <div
+                    id="senate-results-empty"
+                    class="elected-by-state-empty"
+                >
+                    Nenhum senador definido pelo TSE até o momento.
+                </div>
+
+                <div
+                    id="senate-results-grid"
+                    class="elected-by-state-grid"
+                ></div>
+            </section>
+        </div>
     </section>
 
 
@@ -445,7 +488,7 @@
 </div>
 
 <script src="favorites.js?v=7"></script>
-<script src="app.js?v=12"></script>
+<script src="app.js?v=13"></script>
 
 </body>
 </html>

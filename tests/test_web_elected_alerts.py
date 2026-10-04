@@ -83,7 +83,12 @@ def test_elected_by_state_region_is_present():
     )
 
     assert (
-        'id="elected-by-state-grid"'
+        'id="governor-results-grid"'
+        in html
+    )
+
+    assert (
+        'id="senate-results-grid"'
         in html
     )
 
@@ -112,17 +117,22 @@ def test_elected_by_state_uses_official_alert_feed():
     )
 
     assert (
-        '"Governador"'
+        'field: "governors"'
         in app
     )
 
     assert (
-        '"Senado"'
+        'field: "senators"'
         in app
     )
 
     assert (
-        "Aguardando definição do TSE"
+        '"governor-results-grid"'
+        in app
+    )
+
+    assert (
+        '"senate-results-grid"'
         in app
     )
 
@@ -182,7 +192,7 @@ def test_second_round_alert_is_distinct_from_elected_state_panel():
                     "function electedStateGroups()"
                 ):
                 app.index(
-                    "function electedOfficeRow("
+                    "function electedCandidateList("
                 )
             ]
         )
@@ -258,7 +268,7 @@ def test_mathematically_defined_governor_can_appear_without_candidate_name():
             "function electedStateGroups()"
         ):
         app.index(
-            "function electedOfficeRow("
+            "function electedCandidateList("
         )
     ]
 
@@ -273,6 +283,53 @@ def test_mathematically_defined_governor_can_appear_without_candidate_name():
     )
 
     assert (
-        "resultado definido"
+        "Resultado definido pelo TSE"
+        in app
+    )
+
+
+
+def test_governor_and_senate_use_separate_grids():
+    html = (
+        WEB
+        / "index.html"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    app = (
+        WEB
+        / "app.js"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "Governadores"
+        in html
+    )
+
+    assert (
+        "Senadores"
+        in html
+    )
+
+    assert (
+        'id="governor-results-count"'
+        in html
+    )
+
+    assert (
+        'id="senate-results-count"'
+        in html
+    )
+
+    assert (
+        "renderOfficeResultGrid({"
+        in app
+    )
+
+    assert (
+        "electedStateCard("
         in app
     )
