@@ -88,7 +88,7 @@ def test_elected_by_state_region_is_present():
     )
 
     assert (
-        "Eleitos por estado"
+        "Resultados definidos por estado"
         in html
     )
 
@@ -210,5 +210,69 @@ def test_mathematical_definition_alert_is_rendered():
 
     assert (
         "Eleição matematicamente definida para 2º turno pelo TSE"
+        in app
+    )
+
+
+
+def test_result_alerts_can_expand_all_remaining_items():
+    app = (
+        WEB
+        / "app.js"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "document.createElement(\n"
+        '                "details"'
+        in app
+    )
+
+    assert (
+        "Mostrar mais "
+        in app
+    )
+
+    assert (
+        "elected-alerts-more-list"
+        in app
+    )
+
+    assert (
+        "resultAlertCard(item)"
+        in app
+    )
+
+
+def test_mathematically_defined_governor_can_appear_without_candidate_name():
+    app = (
+        WEB
+        / "app.js"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    group_block = app[
+        app.index(
+            "function electedStateGroups()"
+        ):
+        app.index(
+            "function electedOfficeRow("
+        )
+    ]
+
+    assert (
+        "|| !item.candidate_name"
+        not in group_block
+    )
+
+    assert (
+        "Nome ainda não individualizado pelo TSE"
+        in app
+    )
+
+    assert (
+        "resultado definido"
         in app
     )
