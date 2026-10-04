@@ -274,7 +274,7 @@ def prepare() -> dict:
                 0,
             )
         )
-        < 2
+        < 3
     )
 
     old_alerts = load_json(
@@ -302,6 +302,7 @@ def prepare() -> dict:
 
     if result_alert_bootstrap:
         force_offices.update({
+            1,
             3,
         })
 
@@ -539,7 +540,7 @@ def prepare() -> dict:
                 )
             ),
             "result_alert_version": (
-                2
+                3
                 if not errors
                 else int(
                     state_meta.get(
