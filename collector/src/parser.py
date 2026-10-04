@@ -109,10 +109,25 @@ class CandidateResult:
 
 
 @dataclass(frozen=True, slots=True)
+class SeatAllocation:
+    number: int | None
+    name: str
+    kind: str | None
+    composition: str | None
+    seats: int | None
+    parties: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True, slots=True)
 class OfficeResult:
     code: int
     name: str
     seats: int | None
+    electoral_quotient: int | None
+    seat_allocations: tuple[
+        SeatAllocation,
+        ...
+    ]
     candidates: tuple[CandidateResult, ...]
 
 
@@ -251,10 +266,45 @@ def parse_office(
         )
 
     candidates: list[CandidateResult] = []
+    seat_allocations: list[
+        SeatAllocation
+    ] = []
 
     seen_candidates: set[int] = set()
 
     for alliance in office.get("agr", []):
+        parties = tuple(
+            {
+                "number": as_int(
+                    party.get("n")
+                ),
+                "acronym": party.get("sg"),
+                "name": party.get("nm"),
+            }
+            for party
+            in alliance.get("par", [])
+        )
+
+        seat_allocations.append(
+            SeatAllocation(
+                number=as_int(
+                    alliance.get("n")
+                ),
+                name=str(
+                    alliance.get("nm")
+                    or ""
+                ),
+                kind=alliance.get("tp"),
+                composition=(
+                    alliance.get("com")
+                ),
+                seats=as_int(
+                    alliance.get("vag")
+                ),
+                parties=parties,
+            )
+        )
+
         for party in alliance.get("par", []):
             for candidate in party.get("cand", []):
                 parsed = parse_candidate(
@@ -295,6 +345,14 @@ def parse_office(
 
         seats=as_int(
             office.get("nv")
+        ),
+
+        electoral_quotient=as_int(
+            office.get("qe")
+        ),
+
+        seat_allocations=tuple(
+            seat_allocations
         ),
 
         candidates=tuple(candidates),
