@@ -14,6 +14,10 @@ ELECTED_ALERT_OFFICES = frozenset({
     5,  # Senator
 })
 
+SECOND_ROUND_ALERT_OFFICES = frozenset({
+    3,  # Governor
+})
+
 
 def json_value(value: Any) -> Any:
     if isinstance(value, Decimal):
@@ -174,14 +178,33 @@ def manifest_item(
     }
 
 
+def _is_second_round(
+    value: Any,
+) -> bool:
+    status = str(
+        value or ""
+    ).strip().lower()
+
+    return (
+        "turno" in status
+        and status.startswith("2")
+    )
+
+
 def elected_alerts(
     payload: dict[str, Any],
 ) -> list[dict[str, Any]]:
     office = payload["office"]
+    office_code = int(
+        office["code"]
+    )
 
     if (
-        int(office["code"])
-        not in ELECTED_ALERT_OFFICES
+        office_code
+        not in (
+            ELECTED_ALERT_OFFICES
+            | SECOND_ROUND_ALERT_OFFICES
+        )
     ):
         return []
 
@@ -190,10 +213,36 @@ def elected_alerts(
     for candidate in payload[
         "candidates"
     ]:
-        if candidate.get(
-            "elected"
-        ) is not True:
+        second_round = (
+            office_code
+            in SECOND_ROUND_ALERT_OFFICES
+            and _is_second_round(
+                candidate.get(
+                    "result_status"
+                )
+            )
+        )
+
+        elected = (
+            office_code
+            in ELECTED_ALERT_OFFICES
+            and candidate.get(
+                "elected"
+            ) is True
+            and not second_round
+        )
+
+        if not (
+            elected
+            or second_round
+        ):
             continue
+
+        kind = (
+            "second_round"
+            if second_round
+            else "elected"
+        )
 
         alerts.append(
             {
@@ -202,6 +251,7 @@ def elected_alerts(
                     f"{office['code']}:"
                     f"{candidate['tse_candidate_seq']}"
                 ),
+                "kind": kind,
                 "scope":
                     payload["scope"]["code"],
                 "uf":
