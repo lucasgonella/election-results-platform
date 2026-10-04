@@ -257,8 +257,7 @@ def persist_result(
                     tse_election_code,
                     environment
                 )
-                DO UPDATE SET
-                    round_number = EXCLUDED.round_number
+                DO NOTHING
                 RETURNING id
                 """,
                 (
@@ -271,8 +270,24 @@ def persist_result(
             row = cursor.fetchone()
 
             if row is None:
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM elections
+                    WHERE tse_election_code = %s
+                      AND environment = %s
+                    """,
+                    (
+                        result.election_code,
+                        environment,
+                    ),
+                )
+
+                row = cursor.fetchone()
+
+            if row is None:
                 raise RuntimeError(
-                    "Could not upsert election."
+                    "Could not resolve election."
                 )
 
             election_id = row[0]
@@ -301,8 +316,7 @@ def persist_result(
                     scope_type,
                     code
                 )
-                DO UPDATE SET
-                    uf = EXCLUDED.uf
+                DO NOTHING
                 RETURNING id
                 """,
                 (
@@ -315,8 +329,24 @@ def persist_result(
             row = cursor.fetchone()
 
             if row is None:
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM scopes
+                    WHERE scope_type = %s
+                      AND code = %s
+                    """,
+                    (
+                        result.scope_type,
+                        result.scope_code,
+                    ),
+                )
+
+                row = cursor.fetchone()
+
+            if row is None:
                 raise RuntimeError(
-                    "Could not upsert scope."
+                    "Could not resolve scope."
                 )
 
             scope_id = row[0]
@@ -338,9 +368,7 @@ def persist_result(
                     )
                     VALUES (%s, %s, %s)
                     ON CONFLICT (tse_code)
-                    DO UPDATE SET
-                        name = EXCLUDED.name,
-                        seats = EXCLUDED.seats
+                    DO NOTHING
                     RETURNING id
                     """,
                     (
@@ -353,8 +381,22 @@ def persist_result(
                 row = cursor.fetchone()
 
                 if row is None:
+                    cursor.execute(
+                        """
+                        SELECT id
+                        FROM offices
+                        WHERE tse_code = %s
+                        """,
+                        (
+                            office.code,
+                        ),
+                    )
+
+                    row = cursor.fetchone()
+
+                if row is None:
                     raise RuntimeError(
-                        "Could not upsert office."
+                        "Could not resolve office."
                     )
 
                 office_id = row[0]
