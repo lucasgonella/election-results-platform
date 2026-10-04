@@ -398,3 +398,110 @@ def test_second_round_status_wins_over_elected_flag():
         alerts[0]["kind"]
         == "second_round"
     )
+
+
+
+def test_mathematically_elected_alert_without_candidate_flag():
+    result = parsed_result()
+    candidate = (
+        result.offices[0]
+        .candidates[0]
+    )
+
+    candidate.elected = False
+    candidate.result_status = None
+
+    result.offices = (
+        SimpleNamespace(
+            code=3,
+            name="Governador",
+            seats=1,
+            candidates=(candidate,),
+        ),
+    )
+    result.mathematical_definition = "e"
+    result.totalization_final = False
+
+    payload = static_payload(
+        result,
+        environment="oficial",
+        captured_at=datetime(
+            2026,
+            10,
+            4,
+            23,
+            30,
+            tzinfo=timezone.utc,
+        ),
+    )
+
+    alerts = elected_alerts(
+        payload
+    )
+
+    assert len(alerts) == 1
+    assert (
+        alerts[0]["kind"]
+        == "mathematically_elected"
+    )
+    assert (
+        alerts[0][
+            "mathematical_definition"
+        ]
+        == "e"
+    )
+    assert (
+        alerts[0]["candidate_name"]
+        is None
+    )
+
+
+def test_mathematical_second_round_uses_md_flag():
+    result = parsed_result()
+    candidate = (
+        result.offices[0]
+        .candidates[0]
+    )
+
+    candidate.elected = False
+    candidate.result_status = None
+
+    result.offices = (
+        SimpleNamespace(
+            code=3,
+            name="Governador",
+            seats=1,
+            candidates=(candidate,),
+        ),
+    )
+    result.mathematical_definition = "s"
+    result.totalization_final = False
+
+    payload = static_payload(
+        result,
+        environment="oficial",
+        captured_at=datetime(
+            2026,
+            10,
+            4,
+            23,
+            30,
+            tzinfo=timezone.utc,
+        ),
+    )
+
+    alerts = elected_alerts(
+        payload
+    )
+
+    assert len(alerts) == 1
+    assert (
+        alerts[0]["kind"]
+        == "second_round"
+    )
+    assert (
+        alerts[0][
+            "mathematical_definition"
+        ]
+        == "s"
+    )

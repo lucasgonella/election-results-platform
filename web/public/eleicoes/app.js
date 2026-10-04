@@ -149,8 +149,12 @@ function electedStateGroups() {
             );
 
         if (
-            alertKind(item)
-                !== "elected"
+            ![
+                "elected",
+                "mathematically_elected"
+            ].includes(
+                alertKind(item)
+            )
             || !SCOPE_NAMES[scope]
             || scope === "br"
             || scope === "zz"
@@ -445,31 +449,66 @@ function renderElectedAlerts() {
                 + item.office_name
             );
 
+        const kind =
+            alertKind(item);
+
+        const secondRound =
+            kind === "second_round";
+
+        const mathematicallyElected =
+            kind
+            === "mathematically_elected";
+
+        let headline;
+        let resultText;
+
+        if (secondRound) {
+            headline =
+                item.candidate_name
+                || "Eleição matematicamente definida";
+
+            resultText =
+                item.candidate_name
+                    ? "Classificado(a) para o 2º turno segundo o dado publicado pelo TSE"
+                    : "Eleição matematicamente definida para 2º turno pelo TSE";
+        } else if (
+            mathematicallyElected
+        ) {
+            headline =
+                item.candidate_name
+                || "Eleição matematicamente definida (Eleito)";
+
+            resultText =
+                item.candidate_name
+                    ? "Eleito(a) em eleição matematicamente definida pelo TSE"
+                    : "Eleição matematicamente definida (Eleito) pelo TSE";
+        } else {
+            headline =
+                item.candidate_name
+                || "Resultado definido";
+
+            resultText =
+                "Eleito(a) segundo o dado publicado pelo TSE";
+        }
+
         const candidate =
             createElement(
                 "strong",
                 "elected-alert-candidate",
-                item.candidate_name
+                headline
             );
 
-        const secondRound =
-            alertKind(item)
-            === "second_round";
-
-        const resultText =
-            secondRound
-                ? "Classificado(a) para o 2º turno segundo o dado publicado pelo TSE"
-                : "Eleito(a) segundo o dado publicado pelo TSE";
+        const partyPrefix =
+            item.party_acronym
+                ? item.party_acronym
+                    + " · "
+                : "";
 
         const detail =
             createElement(
                 "span",
                 "elected-alert-detail",
-                (
-                    item.party_acronym
-                    || "Partido não informado"
-                )
-                + " · "
+                partyPrefix
                 + resultText
             );
 

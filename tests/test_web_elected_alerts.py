@@ -169,7 +169,46 @@ def test_second_round_alert_is_distinct_from_elected_state_panel():
     )
 
     assert (
-        'alertKind(item)\n'
-        '                !== "elected"'
+        '"elected",\n'
+        '                "mathematically_elected"'
+        in app
+    )
+
+    assert (
+        '"second_round"'
+        not in (
+            app[
+                app.index(
+                    "function electedStateGroups()"
+                ):
+                app.index(
+                    "function electedOfficeRow("
+                )
+            ]
+        )
+    )
+
+
+
+def test_mathematical_definition_alert_is_rendered():
+    app = (
+        WEB
+        / "app.js"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        '"mathematically_elected"'
+        in app
+    )
+
+    assert (
+        "Eleição matematicamente definida (Eleito)"
+        in app
+    )
+
+    assert (
+        "Eleição matematicamente definida para 2º turno pelo TSE"
         in app
     )
