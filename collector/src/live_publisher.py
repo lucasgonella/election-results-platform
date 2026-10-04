@@ -253,6 +253,20 @@ def prepare() -> dict:
         active / "alerts.json"
     ).is_file()
 
+    state_meta = load_json(
+        active / "state-meta.json",
+        {},
+    )
+    seat_allocation_bootstrap = (
+        int(
+            state_meta.get(
+                "seat_allocation_version",
+                0,
+            )
+        )
+        < 1
+    )
+
     old_alerts = load_json(
         active / "alerts.json",
         {
@@ -261,17 +275,27 @@ def prepare() -> dict:
         },
     )
 
+    force_offices = set()
+
+    if alerts_bootstrap:
+        force_offices.update({
+            3,
+            5,
+        })
+
+    if seat_allocation_bootstrap:
+        force_offices.update({
+            6,
+            7,
+            8,
+        })
+
     fetched, errors = fetch_targets(
         targets,
         old_state,
         workers,
-        force_offices=(
-            frozenset({
-                3,
-                5,
-            })
-            if alerts_bootstrap
-            else frozenset()
+        force_offices=frozenset(
+            force_offices
         ),
     )
 
@@ -484,6 +508,21 @@ def prepare() -> dict:
     write_json(
         pending / "alerts.json",
         alerts,
+    )
+    write_json(
+        pending / "state-meta.json",
+        {
+            "seat_allocation_version": (
+                1
+                if not errors
+                else int(
+                    state_meta.get(
+                        "seat_allocation_version",
+                        0,
+                    )
+                )
+            ),
+        },
     )
 
     if changed:
