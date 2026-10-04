@@ -192,7 +192,7 @@ def test_second_round_alert_is_distinct_from_elected_state_panel():
                     "function electedStateGroups()"
                 ):
                 app.index(
-                    "function electedOfficeRow("
+                    "function electedCandidateList("
                 )
             ]
         )
@@ -268,7 +268,7 @@ def test_mathematically_defined_governor_can_appear_without_candidate_name():
             "function electedStateGroups()"
         ):
         app.index(
-            "function electedOfficeRow("
+            "function electedCandidateList("
         )
     ]
 
