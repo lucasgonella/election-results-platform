@@ -78,3 +78,48 @@ def test_proportional_seat_allocation_is_rendered():
         "    renderResults();"
         in app
     )
+
+
+
+def test_allocation_panel_lists_officially_elected_candidates():
+    app = (
+        WEB
+        / "app.js"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "candidateIsOfficiallyElected"
+        in app
+    )
+
+    assert (
+        "electedCandidatesForGroup"
+        in app
+    )
+
+    assert (
+        "Eleitos pelo TSE"
+        in app
+    )
+
+    assert (
+        "Nenhum nome definido até o momento"
+        in app
+    )
+
+    assert (
+        "nomes definidos"
+        in app
+    )
+
+    assert (
+        'status === "eleito"'
+        in app
+    )
+
+    assert (
+        'status.startsWith('
+        in app
+    )

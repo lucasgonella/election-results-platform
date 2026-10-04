@@ -1328,12 +1328,14 @@ footer a:hover {
 }
 
 .seat-allocation-card {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 14px;
+    display: grid;
+    grid-template-columns:
+        minmax(0, 1fr)
+        auto;
+    gap: 12px 14px;
+    align-items: start;
 
-    padding: 12px 13px;
+    padding: 14px;
 
     border: 1px solid #dce3ef;
     border-radius: 10px;
@@ -1369,6 +1371,59 @@ footer a:hover {
     white-space: nowrap;
 }
 
+.seat-allocation-elected {
+    grid-column: 1 / -1;
+
+    display: grid;
+    gap: 7px;
+
+    padding-top: 10px;
+
+    border-top: 1px solid #e3e8f0;
+}
+
+.seat-allocation-elected-title {
+    color: #626b79;
+
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.seat-allocation-elected-candidate {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: baseline;
+
+    padding: 7px 9px;
+
+    border-radius: 8px;
+
+    background: white;
+}
+
+.seat-allocation-elected-candidate strong {
+    font-size: 13px;
+}
+
+.seat-allocation-elected-candidate span {
+    color: #4f5b6d;
+    font-size: 11px;
+    text-align: right;
+}
+
+.seat-allocation-elected-pending,
+.seat-allocation-defined {
+    color: #7a8493;
+    font-size: 11px;
+}
+
+.seat-allocation-defined {
+    font-weight: 650;
+}
+
 @media (max-width: 760px) {
     .seat-allocation-header {
         display: grid;
@@ -1379,6 +1434,23 @@ footer a:hover {
     }
 
     .seat-allocation-card {
-        align-items: flex-start;
+        grid-template-columns: 1fr;
+    }
+
+    .seat-allocation-value {
+        justify-self: start;
+    }
+
+    .seat-allocation-elected {
+        grid-column: 1;
+    }
+
+    .seat-allocation-elected-candidate {
+        display: grid;
+        gap: 2px;
+    }
+
+    .seat-allocation-elected-candidate span {
+        text-align: left;
     }
 }

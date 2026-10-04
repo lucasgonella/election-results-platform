@@ -976,6 +976,140 @@ function seatGroupDetail(group) {
 }
 
 
+function candidateIsOfficiallyElected(
+    candidate
+) {
+    if (
+        candidate.elected
+        === true
+    ) {
+        return true;
+    }
+
+    const status =
+        String(
+            candidate.result_status
+            ?? ""
+        )
+            .trim()
+            .toLocaleLowerCase(
+                "pt-BR"
+            );
+
+    return (
+        status === "eleito"
+        || status.startsWith(
+            "eleito por "
+        )
+    );
+}
+
+
+function allocationCandidateMatches(
+    group,
+    candidate
+) {
+    const parties =
+        Array.isArray(
+            group.parties
+        )
+            ? group.parties
+            : [];
+
+    const partyAcronyms =
+        new Set(
+            parties
+                .map(
+                    party =>
+                        String(
+                            party.acronym
+                            ?? ""
+                        )
+                        .trim()
+                        .toUpperCase()
+                )
+                .filter(Boolean)
+        );
+
+    const candidateParty =
+        String(
+            candidate.party_acronym
+            ?? ""
+        )
+            .trim()
+            .toUpperCase();
+
+    if (
+        candidateParty
+        && partyAcronyms.has(
+            candidateParty
+        )
+    ) {
+        return true;
+    }
+
+    const groupName =
+        String(
+            group.name
+            ?? ""
+        )
+            .trim()
+            .toLocaleLowerCase(
+                "pt-BR"
+            );
+
+    const candidateAlliance =
+        String(
+            candidate.alliance_name
+            ?? ""
+        )
+            .trim()
+            .toLocaleLowerCase(
+                "pt-BR"
+            );
+
+    return (
+        groupName
+        && candidateAlliance
+        && groupName
+            === candidateAlliance
+    );
+}
+
+
+function electedCandidatesForGroup(
+    group
+) {
+    const candidates =
+        Array.isArray(
+            currentResult
+                ?.candidates
+        )
+            ? currentResult
+                .candidates
+            : [];
+
+    return candidates
+        .filter(
+            candidate =>
+                allocationCandidateMatches(
+                    group,
+                    candidate
+                )
+                &&
+                candidateIsOfficiallyElected(
+                    candidate
+                )
+        )
+        .sort(
+            (a, b) =>
+                (b.votes ?? 0)
+                -
+                (a.votes ?? 0)
+        );
+}
+
+
 function renderSeatAllocation() {
     const section =
         document.getElementById(
@@ -1138,9 +1272,98 @@ function renderSeatAllocation() {
                 }`
             );
 
+        const elected =
+            electedCandidatesForGroup(
+                group
+            );
+
+        const electedBlock =
+            createElement(
+                "div",
+                "seat-allocation-elected"
+            );
+
+        const electedTitle =
+            createElement(
+                "span",
+                "seat-allocation-elected-title",
+                "Eleitos pelo TSE"
+            );
+
+        electedBlock.appendChild(
+            electedTitle
+        );
+
+        if (!elected.length) {
+            electedBlock.appendChild(
+                createElement(
+                    "span",
+                    "seat-allocation-elected-pending",
+                    "Nenhum nome definido até o momento"
+                )
+            );
+        } else {
+            for (
+                const candidate
+                of elected
+            ) {
+                const item =
+                    createElement(
+                        "div",
+                        "seat-allocation-elected-candidate"
+                    );
+
+                const name =
+                    createElement(
+                        "strong",
+                        null,
+                        candidate.ballot_name
+                        || candidate.name
+                    );
+
+                const status =
+                    createElement(
+                        "span",
+                        null,
+                        candidate.result_status
+                        || "Eleito"
+                    );
+
+                item.append(
+                    name,
+                    status
+                );
+
+                electedBlock.appendChild(
+                    item
+                );
+            }
+        }
+
+        const expectedSeats =
+            Number(
+                group.seats
+                ?? 0
+            );
+
+        const defined =
+            elected.length;
+
+        const definedLabel =
+            createElement(
+                "span",
+                "seat-allocation-defined",
+                `${defined} de ${expectedSeats} nomes definidos`
+            );
+
+        electedBlock.appendChild(
+            definedLabel
+        );
+
         card.append(
             identity,
-            value
+            value,
+            electedBlock
         );
 
         grid.appendChild(card);
