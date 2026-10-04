@@ -129,6 +129,16 @@ def static_payload(
             "generated_at": json_value(parsed.generated_at),
             "totalized_at": json_value(parsed.totalized_at),
             "captured_at": captured_at.isoformat(),
+            "mathematical_definition": getattr(
+                parsed,
+                "mathematical_definition",
+                None,
+            ),
+            "totalization_final": getattr(
+                parsed,
+                "totalization_final",
+                None,
+            ),
             "sections": {
                 "total": stats.sections_total,
                 "totalized": stats.sections_totalized,
@@ -199,16 +209,131 @@ def elected_alerts(
         office["code"]
     )
 
-    if (
-        office_code
-        not in (
-            ELECTED_ALERT_OFFICES
-            | SECOND_ROUND_ALERT_OFFICES
+    mathematical_definition = (
+        str(
+            payload["snapshot"].get(
+                "mathematical_definition"
+            )
+            or ""
         )
-    ):
-        return []
+        .strip()
+        .lower()
+    )
 
     alerts = []
+
+    if (
+        office_code in {1, 3}
+        and mathematical_definition
+        in {"e", "s"}
+    ):
+        kind = (
+            "mathematically_elected"
+            if mathematical_definition
+            == "e"
+            else "second_round"
+        )
+
+        candidate = next(
+            (
+                item
+                for item
+                in payload["candidates"]
+                if (
+                    item.get("elected")
+                    is True
+                    or (
+                        mathematical_definition
+                        == "s"
+                        and _is_second_round(
+                            item.get(
+                                "result_status"
+                            )
+                        )
+                    )
+                )
+            ),
+            None,
+        )
+
+        alerts.append(
+            {
+                "id": (
+                    f"{payload['scope']['code']}:"
+                    f"{office['code']}:"
+                    f"decision:{kind}"
+                ),
+                "kind": kind,
+                "scope":
+                    payload["scope"]["code"],
+                "uf":
+                    payload["scope"].get("uf"),
+                "office":
+                    office["code"],
+                "office_name":
+                    office["name"],
+                "candidate_id": (
+                    candidate.get(
+                        "tse_candidate_seq"
+                    )
+                    if candidate
+                    else None
+                ),
+                "candidate_name": (
+                    (
+                        candidate.get(
+                            "ballot_name"
+                        )
+                        or candidate.get(
+                            "name"
+                        )
+                    )
+                    if candidate
+                    else None
+                ),
+                "party_acronym": (
+                    candidate.get(
+                        "party_acronym"
+                    )
+                    if candidate
+                    else None
+                ),
+                "result_status": (
+                    candidate.get(
+                        "result_status"
+                    )
+                    if candidate
+                    else (
+                        "Eleito"
+                        if kind
+                        == "mathematically_elected"
+                        else "2º turno"
+                    )
+                ),
+                "mathematical_definition":
+                    mathematical_definition,
+                "tse_idg":
+                    payload["snapshot"][
+                        "tse_idg"
+                    ],
+                "generated_at":
+                    payload["snapshot"][
+                        "generated_at"
+                    ],
+                "captured_at":
+                    payload["snapshot"][
+                        "captured_at"
+                    ],
+            }
+        )
+
+        return alerts
+
+    if (
+        office_code
+        not in ELECTED_ALERT_OFFICES
+    ):
+        return []
 
     for candidate in payload[
         "candidates"
@@ -224,9 +349,7 @@ def elected_alerts(
         )
 
         elected = (
-            office_code
-            in ELECTED_ALERT_OFFICES
-            and candidate.get(
+            candidate.get(
                 "elected"
             ) is True
             and not second_round
@@ -280,6 +403,9 @@ def elected_alerts(
                     candidate.get(
                         "result_status"
                     ),
+                "mathematical_definition":
+                    mathematical_definition
+                    or None,
                 "tse_idg":
                     payload["snapshot"][
                         "tse_idg"
