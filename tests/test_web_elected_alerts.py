@@ -283,7 +283,7 @@ def test_mathematically_defined_governor_can_appear_without_candidate_name():
     )
 
     assert (
-        "resultado definido"
+        "Resultado definido pelo TSE"
         in app
     )
 
