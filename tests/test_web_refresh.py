@@ -25,7 +25,7 @@ def test_main_portal_polls_lightweight_version_file():
 
     assert '"/data/version.json"' in app
     assert '"/data/manifest.json"' in app
-    assert "const REFRESH_MS = 30000;" in app
+    assert "const REFRESH_MS = 5000;" in app
     assert "publicationToken" in app
     assert "nextVersion" in app
     assert "=== publishedVersion" in app
