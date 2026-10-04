@@ -10,7 +10,7 @@
     const MANIFEST_URL =
         "/data/manifest.json";
 
-    const REFRESH_MS = 10000;
+    const REFRESH_MS = 5000;
 
     const OFFICE_ORDER = [
         1,
