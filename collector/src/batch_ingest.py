@@ -700,108 +700,164 @@ def run_batched_ingest(
                     )
                 )
 
-                # Database writes remain
-                # serialized after all EA20
-                # fetch/parse work completes.
-                # The two phase timings are
-                # therefore directly comparable.
+                persist_jobs = [
+                    (
+                        item,
+                        target,
+                        fetched,
+                    )
+                    for (
+                        item,
+                        target,
+                        fetched,
+                        fetch_error,
+                    )
+                    in fetch_outcomes
+                    if (
+                        fetch_error
+                        is None
+                    )
+                ]
+
                 for (
                     item,
                     target,
-                    fetched,
+                    _,
                     fetch_error,
                 ) in fetch_outcomes:
-                    if fetch_error is not None:
-                        message = (
-                            f"{type(fetch_error).__name__}: "
-                            f"{fetch_error}"
-                        )
-
-                        mark_item_error(
-                            item_id=item.id,
-                            error_message=message,
-                        )
-
-                        errors.append(
-                            (
-                                f"{target.url} -> "
-                                f"{message}"
-                            )
-                        )
-
-                        failed += 1
-                        failed_for_election += 1
-
+                    if fetch_error is None:
                         continue
 
+                    message = (
+                        f"{type(fetch_error).__name__}: "
+                        f"{fetch_error}"
+                    )
+
+                    mark_item_error(
+                        item_id=item.id,
+                        error_message=message,
+                    )
+
+                    errors.append(
+                        (
+                            f"{target.url} -> "
+                            f"{message}"
+                        )
+                    )
+
+                    failed += 1
+                    failed_for_election += 1
+
+                def persist_job(
+                    item,
+                    fetched,
+                ):
+                    result = (
+                        _persist_fetched_target(
+                            fetched=fetched,
+                            settings=(
+                                selected_settings
+                            ),
+                        )
+                    )
+
+                    mark_item_completed(
+                        item_id=item.id,
+                        status=result.status,
+                        collector_run_id=(
+                            result
+                            .collector_run_id
+                        ),
+                    )
+
+                    return result
+
+                if persist_jobs:
                     persist_started_ns = (
                         time.perf_counter_ns()
                     )
 
-                    try:
-                        result = (
-                            _persist_fetched_target(
-                                fetched=fetched,
-                                settings=(
-                                    selected_settings
-                                ),
-                            )
-                        )
-
-                        mark_item_completed(
-                            item_id=item.id,
-                            status=result.status,
-                            collector_run_id=(
-                                result
-                                .collector_run_id
+                    with ThreadPoolExecutor(
+                        max_workers=min(
+                            workers,
+                            len(
+                                persist_jobs
                             ),
-                        )
-
-                    except Exception as exc:
-                        persist_duration_ms += (
-                            _elapsed_ms(
-                                persist_started_ns
+                        ),
+                        thread_name_prefix=(
+                            "ea20-db"
+                        ),
+                    ) as executor:
+                        persist_futures = [
+                            executor.submit(
+                                persist_job,
+                                item,
+                                fetched,
                             )
-                        )
+                            for (
+                                item,
+                                _,
+                                fetched,
+                            )
+                            in persist_jobs
+                        ]
 
-                        message = (
-                            f"{type(exc).__name__}: "
-                            f"{exc}"
-                        )
-
-                        mark_item_error(
-                            item_id=item.id,
-                            error_message=message,
-                        )
-
-                        errors.append(
+                        for (
                             (
-                                f"{target.url} -> "
-                                f"{message}"
+                                item,
+                                target,
+                                _,
+                            ),
+                            future,
+                        ) in zip(
+                            persist_jobs,
+                            persist_futures,
+                            strict=True,
+                        ):
+                            try:
+                                result = (
+                                    future.result()
+                                )
+
+                            except Exception as exc:
+                                message = (
+                                    f"{type(exc).__name__}: "
+                                    f"{exc}"
+                                )
+
+                                mark_item_error(
+                                    item_id=item.id,
+                                    error_message=message,
+                                )
+
+                                errors.append(
+                                    (
+                                        f"{target.url} -> "
+                                        f"{message}"
+                                    )
+                                )
+
+                                failed += 1
+                                failed_for_election += 1
+
+                                continue
+
+                            results.append(
+                                result
                             )
-                        )
 
-                        failed += 1
-                        failed_for_election += 1
+                            candidates_processed += (
+                                result
+                                .candidates_processed
+                            )
 
-                        continue
+                            processed_for_election += 1
 
                     persist_duration_ms += (
                         _elapsed_ms(
                             persist_started_ns
                         )
                     )
-
-                    results.append(
-                        result
-                    )
-
-                    candidates_processed += (
-                        result
-                        .candidates_processed
-                    )
-
-                    processed_for_election += 1
 
         refreshed = (
             refresh_batch_progress(
