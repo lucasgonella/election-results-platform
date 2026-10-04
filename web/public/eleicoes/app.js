@@ -159,7 +159,6 @@ function electedStateGroups() {
             || scope === "br"
             || scope === "zz"
             || ![3, 5].includes(office)
-            || !item.candidate_name
         ) {
             continue;
         }
@@ -186,6 +185,14 @@ function electedStateGroups() {
             String(
                 item.candidate_id
                 ?? item.candidate_name
+                ?? (
+                    alertKind(item)
+                    + ":"
+                    + (
+                        item.result_status
+                        ?? ""
+                    )
+                )
             );
 
         if (
@@ -194,6 +201,14 @@ function electedStateGroups() {
                     String(
                         candidate.candidate_id
                         ?? candidate.candidate_name
+                        ?? (
+                            alertKind(candidate)
+                            + ":"
+                            + (
+                                candidate.result_status
+                                ?? ""
+                            )
+                        )
                     )
                     === candidateId
             )
@@ -227,12 +242,52 @@ function electedOfficeRow(
             "elected-state-office"
         );
 
-    const officeLabel =
+    const labelBlock =
+        createElement(
+            "div",
+            "elected-state-office-label-block"
+        );
+
+    labelBlock.appendChild(
         createElement(
             "span",
             "elected-state-office-label",
             label
+        )
+    );
+
+    if (candidates.length) {
+        const namedCandidates =
+            candidates.filter(
+                candidate =>
+                    Boolean(
+                        candidate
+                            .candidate_name
+                    )
+            );
+
+        const countText =
+            namedCandidates.length
+                ? (
+                    namedCandidates.length
+                    + " "
+                    + (
+                        namedCandidates.length
+                        === 1
+                            ? "nome definido"
+                            : "nomes definidos"
+                    )
+                )
+                : "resultado definido";
+
+        labelBlock.appendChild(
+            createElement(
+                "span",
+                "elected-state-office-count",
+                countText
+            )
         );
+    }
 
     const values =
         createElement(
@@ -259,22 +314,62 @@ function electedOfficeRow(
                     "elected-state-candidate"
                 );
 
+            const mathematicallyElected =
+                alertKind(candidate)
+                === "mathematically_elected";
+
+            const headline =
+                candidate.candidate_name
+                || (
+                    mathematicallyElected
+                        ? "Eleição matematicamente definida (Eleito)"
+                        : "Resultado definido pelo TSE"
+                );
+
             value.appendChild(
                 createElement(
                     "strong",
                     null,
-                    candidate.candidate_name
+                    headline
                 )
             );
+
+            const metaParts = [];
 
             if (
                 candidate.party_acronym
             ) {
+                metaParts.push(
+                    candidate.party_acronym
+                );
+            }
+
+            if (
+                candidate.result_status
+                && candidate.candidate_name
+            ) {
+                metaParts.push(
+                    candidate.result_status
+                );
+            }
+
+            if (
+                !candidate.candidate_name
+                && mathematicallyElected
+            ) {
+                metaParts.push(
+                    "Nome ainda não individualizado pelo TSE"
+                );
+            }
+
+            if (metaParts.length) {
                 value.appendChild(
                     createElement(
                         "span",
                         null,
-                        candidate.party_acronym
+                        metaParts.join(
+                            " · "
+                        )
                     )
                 );
             }
@@ -286,13 +381,12 @@ function electedOfficeRow(
     }
 
     row.append(
-        officeLabel,
+        labelBlock,
         values
     );
 
     return row;
 }
-
 
 function renderElectedByState() {
     const grid =
@@ -372,6 +466,97 @@ function renderElectedByState() {
 }
 
 
+function resultAlertCard(item) {
+    const card =
+        createElement(
+            "div",
+            "elected-alert"
+        );
+
+    const context =
+        createElement(
+            "span",
+            "elected-alert-context",
+            scopeName(
+                item.scope
+            )
+            + " · "
+            + item.office_name
+        );
+
+    const kind =
+        alertKind(item);
+
+    const secondRound =
+        kind === "second_round";
+
+    const mathematicallyElected =
+        kind
+        === "mathematically_elected";
+
+    let headline;
+    let resultText;
+
+    if (secondRound) {
+        headline =
+            item.candidate_name
+            || "Eleição matematicamente definida";
+
+        resultText =
+            item.candidate_name
+                ? "Classificado(a) para o 2º turno segundo o dado publicado pelo TSE"
+                : "Eleição matematicamente definida para 2º turno pelo TSE";
+    } else if (
+        mathematicallyElected
+    ) {
+        headline =
+            item.candidate_name
+            || "Eleição matematicamente definida (Eleito)";
+
+        resultText =
+            item.candidate_name
+                ? "Eleito(a) em eleição matematicamente definida pelo TSE"
+                : "Eleição matematicamente definida (Eleito) pelo TSE";
+    } else {
+        headline =
+            item.candidate_name
+            || "Resultado definido";
+
+        resultText =
+            "Eleito(a) segundo o dado publicado pelo TSE";
+    }
+
+    const candidate =
+        createElement(
+            "strong",
+            "elected-alert-candidate",
+            headline
+        );
+
+    const partyPrefix =
+        item.party_acronym
+            ? item.party_acronym
+                + " · "
+            : "";
+
+    const detail =
+        createElement(
+            "span",
+            "elected-alert-detail",
+            partyPrefix
+            + resultText
+        );
+
+    card.append(
+        context,
+        candidate,
+        detail
+    );
+
+    return card;
+}
+
+
 function renderElectedAlerts() {
     const container =
         document.getElementById(
@@ -432,112 +617,54 @@ function renderElectedAlerts() {
         const item
         of visible
     ) {
-        const card =
-            createElement(
-                "div",
-                "elected-alert"
-            );
-
-        const context =
-            createElement(
-                "span",
-                "elected-alert-context",
-                scopeName(
-                    item.scope
-                )
-                + " · "
-                + item.office_name
-            );
-
-        const kind =
-            alertKind(item);
-
-        const secondRound =
-            kind === "second_round";
-
-        const mathematicallyElected =
-            kind
-            === "mathematically_elected";
-
-        let headline;
-        let resultText;
-
-        if (secondRound) {
-            headline =
-                item.candidate_name
-                || "Eleição matematicamente definida";
-
-            resultText =
-                item.candidate_name
-                    ? "Classificado(a) para o 2º turno segundo o dado publicado pelo TSE"
-                    : "Eleição matematicamente definida para 2º turno pelo TSE";
-        } else if (
-            mathematicallyElected
-        ) {
-            headline =
-                item.candidate_name
-                || "Eleição matematicamente definida (Eleito)";
-
-            resultText =
-                item.candidate_name
-                    ? "Eleito(a) em eleição matematicamente definida pelo TSE"
-                    : "Eleição matematicamente definida (Eleito) pelo TSE";
-        } else {
-            headline =
-                item.candidate_name
-                || "Resultado definido";
-
-            resultText =
-                "Eleito(a) segundo o dado publicado pelo TSE";
-        }
-
-        const candidate =
-            createElement(
-                "strong",
-                "elected-alert-candidate",
-                headline
-            );
-
-        const partyPrefix =
-            item.party_acronym
-                ? item.party_acronym
-                    + " · "
-                : "";
-
-        const detail =
-            createElement(
-                "span",
-                "elected-alert-detail",
-                partyPrefix
-                + resultText
-            );
-
-        card.append(
-            context,
-            candidate,
-            detail
-        );
-
         list.appendChild(
-            card
+            resultAlertCard(item)
         );
     }
 
-    if (
-        alerts.length
-        > visible.length
-    ) {
-        list.appendChild(
+    const remaining =
+        alerts.slice(4);
+
+    if (remaining.length) {
+        const details =
+            document.createElement(
+                "details"
+            );
+
+        details.className =
+            "elected-alerts-more";
+
+        const summary =
+            createElement(
+                "summary",
+                "elected-alerts-more-summary",
+                "Mostrar mais "
+                + remaining.length
+                + " resultados definidos"
+            );
+
+        const extraList =
             createElement(
                 "div",
-                "elected-alert-more",
-                "+"
-                + (
-                    alerts.length
-                    - visible.length
-                )
-                + " outros resultados definidos"
-            )
+                "elected-alerts-more-list"
+            );
+
+        for (
+            const item
+            of remaining
+        ) {
+            extraList.appendChild(
+                resultAlertCard(item)
+            );
+        }
+
+        details.append(
+            summary,
+            extraList
+        );
+
+        list.appendChild(
+            details
         );
     }
 
@@ -546,7 +673,6 @@ function renderElectedAlerts() {
         list
     );
 }
-
 
 async function loadAlerts() {
     const response =
