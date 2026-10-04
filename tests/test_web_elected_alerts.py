@@ -66,3 +66,79 @@ def test_elected_alert_feed_is_loaded_on_publication():
         "Eleito(a) segundo o dado publicado pelo TSE"
         in app
     )
+
+
+
+def test_elected_by_state_region_is_present():
+    html = (
+        WEB
+        / "index.html"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        'id="elected-by-state"'
+        in html
+    )
+
+    assert (
+        'id="elected-by-state-grid"'
+        in html
+    )
+
+    assert (
+        "Eleitos por estado"
+        in html
+    )
+
+
+def test_elected_by_state_uses_official_alert_feed():
+    app = (
+        WEB
+        / "app.js"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "electedStateGroups()"
+        in app
+    )
+
+    assert (
+        "renderElectedByState()"
+        in app
+    )
+
+    assert (
+        '"Governador"'
+        in app
+    )
+
+    assert (
+        '"Senado"'
+        in app
+    )
+
+    assert (
+        "Aguardando definição do TSE"
+        in app
+    )
+
+    assert (
+        "candidate.party_acronym"
+        in app
+    )
+
+    assert (
+        "        renderElectedAlerts();\n"
+        "        renderElectedByState();"
+        in app
+    )
+
+    assert (
+        "    renderElectedAlerts();\n"
+        "    renderElectedByState();"
+        in app
+    )

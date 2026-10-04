@@ -117,6 +117,240 @@ function scopeName(scope) {
 }
 
 
+function electedStateGroups() {
+    const grouped =
+        new Map();
+
+    for (const item of alerts) {
+        const scope =
+            String(
+                item.scope
+                ?? ""
+            ).toLowerCase();
+
+        const office =
+            Number(
+                item.office
+            );
+
+        if (
+            !SCOPE_NAMES[scope]
+            || scope === "br"
+            || scope === "zz"
+            || ![3, 5].includes(office)
+            || !item.candidate_name
+        ) {
+            continue;
+        }
+
+        if (!grouped.has(scope)) {
+            grouped.set(
+                scope,
+                {
+                    governors: [],
+                    senators: []
+                }
+            );
+        }
+
+        const state =
+            grouped.get(scope);
+
+        const target =
+            office === 3
+                ? state.governors
+                : state.senators;
+
+        const candidateId =
+            String(
+                item.candidate_id
+                ?? item.candidate_name
+            );
+
+        if (
+            target.some(
+                candidate =>
+                    String(
+                        candidate.candidate_id
+                        ?? candidate.candidate_name
+                    )
+                    === candidateId
+            )
+        ) {
+            continue;
+        }
+
+        target.push(item);
+    }
+
+    return [
+        ...grouped.entries()
+    ].sort(
+        (a, b) =>
+            scopeName(a[0])
+                .localeCompare(
+                    scopeName(b[0]),
+                    "pt-BR"
+                )
+    );
+}
+
+
+function electedOfficeRow(
+    label,
+    candidates
+) {
+    const row =
+        createElement(
+            "div",
+            "elected-state-office"
+        );
+
+    const officeLabel =
+        createElement(
+            "span",
+            "elected-state-office-label",
+            label
+        );
+
+    const values =
+        createElement(
+            "div",
+            "elected-state-office-values"
+        );
+
+    if (!candidates.length) {
+        values.appendChild(
+            createElement(
+                "span",
+                "elected-state-pending",
+                "Aguardando definição do TSE"
+            )
+        );
+    } else {
+        for (
+            const candidate
+            of candidates
+        ) {
+            const value =
+                createElement(
+                    "div",
+                    "elected-state-candidate"
+                );
+
+            value.appendChild(
+                createElement(
+                    "strong",
+                    null,
+                    candidate.candidate_name
+                )
+            );
+
+            if (
+                candidate.party_acronym
+            ) {
+                value.appendChild(
+                    createElement(
+                        "span",
+                        null,
+                        candidate.party_acronym
+                    )
+                );
+            }
+
+            values.appendChild(
+                value
+            );
+        }
+    }
+
+    row.append(
+        officeLabel,
+        values
+    );
+
+    return row;
+}
+
+
+function renderElectedByState() {
+    const grid =
+        document.getElementById(
+            "elected-by-state-grid"
+        );
+
+    const empty =
+        document.getElementById(
+            "elected-by-state-empty"
+        );
+
+    const count =
+        document.getElementById(
+            "elected-by-state-count"
+        );
+
+    if (
+        !grid
+        || !empty
+        || !count
+    ) {
+        return;
+    }
+
+    const groups =
+        electedStateGroups();
+
+    grid.innerHTML = "";
+
+    count.textContent =
+        groups.length
+        + " "
+        + (
+            groups.length === 1
+                ? "UF com resultado definido"
+                : "UFs com resultado definido"
+        );
+
+    empty.hidden =
+        groups.length > 0;
+
+    for (
+        const [
+            scope,
+            state
+        ]
+        of groups
+    ) {
+        const card =
+            createElement(
+                "article",
+                "elected-state-card"
+            );
+
+        const title =
+            createElement(
+                "h3",
+                null,
+                scopeName(scope)
+            );
+
+        card.append(
+            title,
+            electedOfficeRow(
+                "Governador",
+                state.governors
+            ),
+            electedOfficeRow(
+                "Senado",
+                state.senators
+            )
+        );
+
+        grid.appendChild(card);
+    }
+}
+
+
 function renderElectedAlerts() {
     const container =
         document.getElementById(
@@ -1152,6 +1386,7 @@ async function refreshIfChanged() {
         ]);
 
         renderElectedAlerts();
+        renderElectedByState();
 
         const newItem =
             currentManifestItem();
@@ -1213,6 +1448,7 @@ async function initialize() {
 
     renderEnvironment();
     renderElectedAlerts();
+    renderElectedByState();
     renderScopeSelector();
     renderOfficeTabs();
 
