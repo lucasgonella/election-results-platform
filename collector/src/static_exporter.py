@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import nullcontext
 from datetime import date, datetime
 from decimal import Decimal
 import json
@@ -27,10 +28,17 @@ def load_latest_result(
     scope_code: str,
     office_code: int,
     connection_factory: Callable = get_connection,
+    connection=None,
 ) -> dict[str, Any]:
 
-    with connection_factory() as connection:
-        with connection.cursor() as cursor:
+    connection_context = (
+        nullcontext(connection)
+        if connection is not None
+        else connection_factory()
+    )
+
+    with connection_context as database:
+        with database.cursor() as cursor:
 
             cursor.execute(
                 """
