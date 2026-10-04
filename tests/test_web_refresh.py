@@ -49,7 +49,7 @@ def test_manifest_is_only_reloaded_after_version_change():
     )
 
     manifest_reload = app.index(
-        "await loadManifest();",
+        "loadManifest(),",
         equality_check,
     )
 

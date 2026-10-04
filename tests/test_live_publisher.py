@@ -3,6 +3,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 from collector.src.live_static import (
+    elected_alerts,
     manifest_item,
     static_payload,
 )
@@ -161,3 +162,81 @@ def test_manifest_item_uses_live_snapshot():
         item["path"]
         == "go/state-deputy.json"
     )
+
+
+def test_governor_elected_alert_is_derived():
+    result = parsed_result()
+
+    candidate = (
+        result.offices[0]
+        .candidates[0]
+    )
+
+    candidate.elected = True
+    candidate.result_status = "Eleito"
+
+    result.offices = (
+        SimpleNamespace(
+            code=3,
+            name="Governador",
+            seats=1,
+            candidates=(candidate,),
+        ),
+    )
+
+    payload = static_payload(
+        result,
+        environment="oficial",
+        captured_at=datetime(
+            2026,
+            10,
+            4,
+            21,
+            10,
+            tzinfo=timezone.utc,
+        ),
+    )
+
+    alerts = elected_alerts(
+        payload
+    )
+
+    assert len(alerts) == 1
+    assert alerts[0]["scope"] == "go"
+    assert alerts[0]["office"] == 3
+    assert (
+        alerts[0]["candidate_name"]
+        == "TESTE"
+    )
+    assert (
+        alerts[0]["party_acronym"]
+        == "ABC"
+    )
+
+
+def test_deputy_does_not_generate_elected_alert():
+    result = parsed_result()
+
+    candidate = (
+        result.offices[0]
+        .candidates[0]
+    )
+
+    candidate.elected = True
+
+    payload = static_payload(
+        result,
+        environment="oficial",
+        captured_at=datetime(
+            2026,
+            10,
+            4,
+            21,
+            10,
+            tzinfo=timezone.utc,
+        ),
+    )
+
+    assert elected_alerts(
+        payload
+    ) == []

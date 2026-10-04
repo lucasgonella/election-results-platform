@@ -31,6 +31,11 @@ if [[ ! -s "${STAGE_DIR}/version.json" ]]; then
     exit 2
 fi
 
+if [[ ! -s "${STAGE_DIR}/alerts.json" ]]; then
+    echo "Live alerts file not found." >&2
+    exit 2
+fi
+
 if [[ ! -f "${SSH_KEY}" ]]; then
     echo "SSH key not found: ${SSH_KEY}" >&2
     exit 2
@@ -83,6 +88,7 @@ changed = [
     not in {
         "manifest.json",
         "version.json",
+        "alerts.json",
     }
 ]
 
@@ -151,6 +157,11 @@ fi
 
 if [ ! -s "${stage_dir}/version.json" ]; then
     echo "Live remote version missing." >&2
+    exit 1
+fi
+
+if [ ! -s "${stage_dir}/alerts.json" ]; then
+    echo "Live remote alerts missing." >&2
     exit 1
 fi
 

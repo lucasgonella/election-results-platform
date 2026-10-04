@@ -52,7 +52,7 @@ def test_footer_styles_are_cache_busted():
     )
 
     assert (
-        'href="styles.css?v=5"'
+        'href="styles.css?v=6"'
         in html
     )
 
