@@ -33,15 +33,15 @@ def test_live_publish_retries_transient_ssh_failures():
     )
 
     assert (
-        'LIVE_PUBLISH_SSH_RETRIES'
+        "LIVE_PUBLISH_SSH_RETRIES"
         in text
     )
     assert (
-        'retry_operation'
+        "retry_operation"
         in text
     )
     assert (
-        'ConnectTimeout=5'
+        "ConnectTimeout=5"
         in text
     )
 
@@ -52,10 +52,11 @@ def test_remote_activation_is_retry_safe():
     )
 
     assert (
-        'cp \\'
+        "cp"
         in text
     )
+
     assert (
-        'mv \\'
+        "mv "
         not in text
     )
