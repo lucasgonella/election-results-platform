@@ -124,6 +124,14 @@ function scopeName(scope) {
 }
 
 
+function alertKind(item) {
+    return (
+        item.kind
+        || "elected"
+    );
+}
+
+
 function electedStateGroups() {
     const grouped =
         new Map();
@@ -141,7 +149,9 @@ function electedStateGroups() {
             );
 
         if (
-            !SCOPE_NAMES[scope]
+            alertKind(item)
+                !== "elected"
+            || !SCOPE_NAMES[scope]
             || scope === "br"
             || scope === "zz"
             || ![3, 5].includes(office)
@@ -394,7 +404,7 @@ function renderElectedAlerts() {
         createElement(
             "span",
             null,
-            "Avisos exibidos somente quando o dado oficial marca a candidatura como eleita."
+            "Avisos exibidos somente quando o dado oficial define eleição ou classificação para o 2º turno."
         );
 
     header.append(
@@ -442,6 +452,15 @@ function renderElectedAlerts() {
                 item.candidate_name
             );
 
+        const secondRound =
+            alertKind(item)
+            === "second_round";
+
+        const resultText =
+            secondRound
+                ? "Classificado(a) para o 2º turno segundo o dado publicado pelo TSE"
+                : "Eleito(a) segundo o dado publicado pelo TSE";
+
         const detail =
             createElement(
                 "span",
@@ -450,7 +469,8 @@ function renderElectedAlerts() {
                     item.party_acronym
                     || "Partido não informado"
                 )
-                + " · Eleito(a) segundo o dado publicado pelo TSE"
+                + " · "
+                + resultText
             );
 
         card.append(
