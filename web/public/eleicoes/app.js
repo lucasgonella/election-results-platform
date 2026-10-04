@@ -232,176 +232,139 @@ function electedStateGroups() {
 }
 
 
-function electedOfficeRow(
-    label,
+function electedCandidateList(
     candidates
 ) {
-    const row =
-        createElement(
-            "div",
-            "elected-state-office"
-        );
-
-    const labelBlock =
-        createElement(
-            "div",
-            "elected-state-office-label-block"
-        );
-
-    labelBlock.appendChild(
-        createElement(
-            "span",
-            "elected-state-office-label",
-            label
-        )
-    );
-
-    if (candidates.length) {
-        const namedCandidates =
-            candidates.filter(
-                candidate =>
-                    Boolean(
-                        candidate
-                            .candidate_name
-                    )
-            );
-
-        const countText =
-            namedCandidates.length
-                ? (
-                    namedCandidates.length
-                    + " "
-                    + (
-                        namedCandidates.length
-                        === 1
-                            ? "nome definido"
-                            : "nomes definidos"
-                    )
-                )
-                : "resultado definido";
-
-        labelBlock.appendChild(
-            createElement(
-                "span",
-                "elected-state-office-count",
-                countText
-            )
-        );
-    }
-
     const values =
         createElement(
             "div",
             "elected-state-office-values"
         );
 
-    if (!candidates.length) {
-        values.appendChild(
+    for (
+        const candidate
+        of candidates
+    ) {
+        const value =
             createElement(
-                "span",
-                "elected-state-pending",
-                "Aguardando definição do TSE"
+                "div",
+                "elected-state-candidate"
+            );
+
+        const mathematicallyElected =
+            alertKind(candidate)
+            === "mathematically_elected";
+
+        const headline =
+            candidate.candidate_name
+            || (
+                mathematicallyElected
+                    ? "Eleição matematicamente definida (Eleito)"
+                    : "Resultado definido pelo TSE"
+            );
+
+        value.appendChild(
+            createElement(
+                "strong",
+                null,
+                headline
             )
         );
-    } else {
-        for (
-            const candidate
-            of candidates
+
+        const metaParts = [];
+
+        if (
+            candidate.party_acronym
         ) {
-            const value =
-                createElement(
-                    "div",
-                    "elected-state-candidate"
-                );
-
-            const mathematicallyElected =
-                alertKind(candidate)
-                === "mathematically_elected";
-
-            const headline =
-                candidate.candidate_name
-                || (
-                    mathematicallyElected
-                        ? "Eleição matematicamente definida (Eleito)"
-                        : "Resultado definido pelo TSE"
-                );
-
-            value.appendChild(
-                createElement(
-                    "strong",
-                    null,
-                    headline
-                )
-            );
-
-            const metaParts = [];
-
-            if (
+            metaParts.push(
                 candidate.party_acronym
-            ) {
-                metaParts.push(
-                    candidate.party_acronym
-                );
-            }
-
-            if (
-                candidate.result_status
-                && candidate.candidate_name
-            ) {
-                metaParts.push(
-                    candidate.result_status
-                );
-            }
-
-            if (
-                !candidate.candidate_name
-                && mathematicallyElected
-            ) {
-                metaParts.push(
-                    "Nome ainda não individualizado pelo TSE"
-                );
-            }
-
-            if (metaParts.length) {
-                value.appendChild(
-                    createElement(
-                        "span",
-                        null,
-                        metaParts.join(
-                            " · "
-                        )
-                    )
-                );
-            }
-
-            values.appendChild(
-                value
             );
         }
+
+        if (
+            candidate.result_status
+            && candidate.candidate_name
+        ) {
+            metaParts.push(
+                candidate.result_status
+            );
+        }
+
+        if (
+            !candidate.candidate_name
+            && mathematicallyElected
+        ) {
+            metaParts.push(
+                "Nome ainda não individualizado pelo TSE"
+            );
+        }
+
+        if (metaParts.length) {
+            value.appendChild(
+                createElement(
+                    "span",
+                    null,
+                    metaParts.join(
+                        " · "
+                    )
+                )
+            );
+        }
+
+        values.appendChild(
+            value
+        );
     }
 
-    row.append(
-        labelBlock,
-        values
-    );
-
-    return row;
+    return values;
 }
 
-function renderElectedByState() {
+
+function electedStateCard(
+    scope,
+    candidates
+) {
+    const card =
+        createElement(
+            "article",
+            "elected-state-card"
+        );
+
+    card.append(
+        createElement(
+            "h4",
+            null,
+            scopeName(scope)
+        ),
+        electedCandidateList(
+            candidates
+        )
+    );
+
+    return card;
+}
+
+
+function renderOfficeResultGrid({
+    groups,
+    field,
+    gridId,
+    emptyId,
+    countId
+}) {
     const grid =
         document.getElementById(
-            "elected-by-state-grid"
+            gridId
         );
 
     const empty =
         document.getElementById(
-            "elected-by-state-empty"
+            emptyId
         );
 
     const count =
         document.getElementById(
-            "elected-by-state-count"
+            countId
         );
 
     if (
@@ -412,59 +375,64 @@ function renderElectedByState() {
         return;
     }
 
-    const groups =
-        electedStateGroups();
+    const defined =
+        groups.filter(
+            ([, state]) =>
+                state[field]
+                    .length > 0
+        );
 
     grid.innerHTML = "";
 
     count.textContent =
-        groups.length
+        defined.length
         + " "
         + (
-            groups.length === 1
-                ? "UF com resultado definido"
-                : "UFs com resultado definido"
+            defined.length === 1
+                ? "UF"
+                : "UFs"
         );
 
     empty.hidden =
-        groups.length > 0;
+        defined.length > 0;
 
     for (
         const [
             scope,
             state
         ]
-        of groups
+        of defined
     ) {
-        const card =
-            createElement(
-                "article",
-                "elected-state-card"
-            );
-
-        const title =
-            createElement(
-                "h3",
-                null,
-                scopeName(scope)
-            );
-
-        card.append(
-            title,
-            electedOfficeRow(
-                "Governador",
-                state.governors
-            ),
-            electedOfficeRow(
-                "Senado",
-                state.senators
+        grid.appendChild(
+            electedStateCard(
+                scope,
+                state[field]
             )
         );
-
-        grid.appendChild(card);
     }
 }
 
+
+function renderElectedByState() {
+    const groups =
+        electedStateGroups();
+
+    renderOfficeResultGrid({
+        groups,
+        field: "governors",
+        gridId: "governor-results-grid",
+        emptyId: "governor-results-empty",
+        countId: "governor-results-count"
+    });
+
+    renderOfficeResultGrid({
+        groups,
+        field: "senators",
+        gridId: "senate-results-grid",
+        emptyId: "senate-results-empty",
+        countId: "senate-results-count"
+    });
+}
 
 function resultAlertCard(item) {
     const card =
