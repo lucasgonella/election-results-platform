@@ -126,6 +126,9 @@ def test_parse_ea20():
     assert result.stats.sections_totalized == 50
     assert result.stats.sections_percentage == Decimal("50")
 
+    assert result.mathematical_definition is None
+    assert result.totalization_final is None
+
     assert len(result.offices) == 1
 
     office = result.offices[0]
@@ -210,4 +213,22 @@ def test_parse_proportional_seat_allocation():
         allocation.parties[0]
         ["acronym"]
         == "PTST"
+    )
+
+
+
+def test_parse_mathematical_definition():
+    payload = build_payload()
+    payload["md"] = "e"
+    payload["tf"] = "n"
+
+    result = parse_ea20(payload)
+
+    assert (
+        result.mathematical_definition
+        == "e"
+    )
+    assert (
+        result.totalization_final
+        is False
     )
