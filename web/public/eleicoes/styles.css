@@ -1092,3 +1092,157 @@ footer a:hover {
         gap: 4px;
     }
 }
+
+
+/* --------------------------------------------------
+   Elected by state
+-------------------------------------------------- */
+
+.elected-by-state {
+    margin-bottom: 20px;
+    padding: 18px;
+
+    border: 1px solid #cfd9ea;
+    border-radius: 16px;
+
+    background: #ffffff;
+}
+
+.elected-by-state-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+
+    margin-bottom: 14px;
+}
+
+.elected-by-state-header h2 {
+    margin: 0 0 4px;
+
+    font-size: 18px;
+}
+
+.elected-by-state-header p {
+    margin: 0;
+
+    color: #626b79;
+    font-size: 12px;
+}
+
+.elected-by-state-count {
+    flex: 0 0 auto;
+
+    padding: 6px 10px;
+
+    border-radius: 999px;
+
+    background: #f4f7fc;
+    color: #4f5b6d;
+
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.elected-by-state-empty {
+    padding: 14px;
+
+    border: 1px dashed #dce3ef;
+    border-radius: 10px;
+
+    color: #626b79;
+    font-size: 13px;
+}
+
+.elected-by-state-empty[hidden] {
+    display: none;
+}
+
+.elected-by-state-grid {
+    display: grid;
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(260px, 1fr)
+        );
+
+    gap: 10px;
+}
+
+.elected-state-card {
+    padding: 14px;
+
+    border: 1px solid #dce3ef;
+    border-radius: 12px;
+
+    background: #f9fbff;
+}
+
+.elected-state-card h3 {
+    margin: 0 0 12px;
+
+    font-size: 16px;
+}
+
+.elected-state-office {
+    display: grid;
+    grid-template-columns:
+        88px 1fr;
+
+    gap: 10px;
+
+    padding-top: 9px;
+
+    border-top: 1px solid #e7ecf4;
+}
+
+.elected-state-office
++ .elected-state-office {
+    margin-top: 9px;
+}
+
+.elected-state-office-label {
+    color: #626b79;
+
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.elected-state-office-values {
+    display: grid;
+    gap: 6px;
+}
+
+.elected-state-candidate {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: baseline;
+
+    font-size: 13px;
+}
+
+.elected-state-candidate span {
+    color: #626b79;
+    font-size: 11px;
+}
+
+.elected-state-pending {
+    color: #7a8493;
+    font-size: 12px;
+}
+
+@media (max-width: 760px) {
+    .elected-by-state-header {
+        display: grid;
+    }
+
+    .elected-by-state-count {
+        width: fit-content;
+    }
+
+    .elected-state-office {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+}
