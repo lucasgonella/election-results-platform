@@ -267,6 +267,16 @@ def prepare() -> dict:
         < 1
     )
 
+    result_alert_bootstrap = (
+        int(
+            state_meta.get(
+                "result_alert_version",
+                0,
+            )
+        )
+        < 2
+    )
+
     old_alerts = load_json(
         active / "alerts.json",
         {
@@ -288,6 +298,11 @@ def prepare() -> dict:
             6,
             7,
             8,
+        })
+
+    if result_alert_bootstrap:
+        force_offices.update({
+            3,
         })
 
     fetched, errors = fetch_targets(
@@ -512,12 +527,23 @@ def prepare() -> dict:
     write_json(
         pending / "state-meta.json",
         {
+            **state_meta,
             "seat_allocation_version": (
                 1
                 if not errors
                 else int(
                     state_meta.get(
                         "seat_allocation_version",
+                        0,
+                    )
+                )
+            ),
+            "result_alert_version": (
+                2
+                if not errors
+                else int(
+                    state_meta.get(
+                        "result_alert_version",
                         0,
                     )
                 )
