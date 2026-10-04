@@ -55,3 +55,24 @@ def test_footer_styles_are_cache_busted():
         'href="styles.css?v=5"'
         in html
     )
+
+
+def test_google_analytics_tag_is_present():
+    html = (
+        WEB
+        / "index.html"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "https://www.googletagmanager.com/"
+        "gtag/js?id=G-X6KE82RM68"
+        in html
+    )
+
+    assert (
+        'gtag(\n            "config",\n'
+        '            "G-X6KE82RM68"'
+        in html
+    )
