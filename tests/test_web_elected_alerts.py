@@ -130,3 +130,15 @@ def test_elected_by_state_uses_official_alert_feed():
         "candidate.party_acronym"
         in app
     )
+
+    assert (
+        "        renderElectedAlerts();\n"
+        "        renderElectedByState();"
+        in app
+    )
+
+    assert (
+        "    renderElectedAlerts();\n"
+        "    renderElectedByState();"
+        in app
+    )
