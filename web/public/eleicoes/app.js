@@ -4,7 +4,7 @@ const VERSION_URL =
 const MANIFEST_URL =
     "/data/manifest.json";
 
-const REFRESH_MS = 30000;
+const REFRESH_MS = 5000;
 
 const PAGE_SIZE = 20;
 
