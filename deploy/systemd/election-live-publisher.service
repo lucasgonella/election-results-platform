@@ -1,0 +1,29 @@
+[Unit]
+Description=Brazil Election Results Live Publisher
+Documentation=https://github.com/lucasgonella/election-results-platform
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+
+User=electioncollector
+Group=electioncollector
+
+WorkingDirectory=/opt/election-results-platform
+
+EnvironmentFile=/etc/election-results-platform/collector.env
+
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+
+ExecStart=/bin/bash /opt/election-results-platform/deploy/scripts/run-live-publisher.sh
+
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+
+TimeoutStartSec=2min
