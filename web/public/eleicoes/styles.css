@@ -1012,3 +1012,83 @@ footer a:hover {
             1fr;
     }
 }
+
+/* --------------------------------------------------
+   Elected result alerts
+-------------------------------------------------- */
+
+.elected-alerts {
+    margin-bottom: 20px;
+    padding: 18px;
+
+    border: 1px solid #cfd9ea;
+    border-radius: 16px;
+
+    background: #f4f7fc;
+}
+
+.elected-alerts[hidden] {
+    display: none;
+}
+
+.elected-alerts-header {
+    display: grid;
+    gap: 4px;
+
+    margin-bottom: 12px;
+}
+
+.elected-alerts-header strong {
+    font-size: 15px;
+}
+
+.elected-alerts-header span {
+    color: #626b79;
+    font-size: 12px;
+}
+
+.elected-alerts-list {
+    display: grid;
+    gap: 8px;
+}
+
+.elected-alert {
+    display: grid;
+    grid-template-columns:
+        minmax(145px, .8fr)
+        minmax(180px, 1fr)
+        minmax(220px, 1.4fr);
+
+    gap: 12px;
+    align-items: center;
+
+    padding: 12px 13px;
+
+    border: 1px solid #dce3ef;
+    border-radius: 10px;
+
+    background: white;
+}
+
+.elected-alert-context,
+.elected-alert-detail {
+    color: #626b79;
+    font-size: 12px;
+}
+
+.elected-alert-candidate {
+    font-size: 14px;
+}
+
+.elected-alert-more {
+    color: #626b79;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+@media (max-width: 760px) {
+    .elected-alert {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+}
