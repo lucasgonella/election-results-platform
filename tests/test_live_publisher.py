@@ -2,9 +2,9 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 
-from collector.src.live_publisher import (
-    _manifest_item,
-    static_payload_from_parsed,
+from collector.src.live_static import (
+    manifest_item,
+    static_payload,
 )
 
 
@@ -78,7 +78,7 @@ def parsed_result():
     )
 
 
-def test_static_payload_from_parsed(
+def test_static_payload(
     monkeypatch,
 ):
     monkeypatch.setenv(
@@ -97,7 +97,7 @@ def test_static_payload_from_parsed(
     )
 
     payload = (
-        static_payload_from_parsed(
+        static_payload(
             parsed_result(),
             captured_at=captured_at,
         )
@@ -130,8 +130,9 @@ def test_static_payload_from_parsed(
 
 
 def test_manifest_item_uses_live_snapshot():
-    payload = static_payload_from_parsed(
+    payload = static_payload(
         parsed_result(),
+        environment="oficial",
         captured_at=datetime(
             2026,
             10,
@@ -145,9 +146,9 @@ def test_manifest_item_uses_live_snapshot():
 
     from pathlib import Path
 
-    item = _manifest_item(
-        payload=payload,
-        relative_path=Path(
+    item = manifest_item(
+        payload,
+        Path(
             "go/state-deputy.json"
         ),
     )
