@@ -305,3 +305,96 @@ def test_static_payload_exposes_seat_allocations():
         ["acronym"]
         == "ABC"
     )
+
+
+
+def test_governor_second_round_alert_is_derived():
+    result = parsed_result()
+
+    candidate = (
+        result.offices[0]
+        .candidates[0]
+    )
+
+    candidate.elected = False
+    candidate.result_status = "2º turno"
+
+    result.offices = (
+        SimpleNamespace(
+            code=3,
+            name="Governador",
+            seats=1,
+            candidates=(candidate,),
+        ),
+    )
+
+    payload = static_payload(
+        result,
+        environment="oficial",
+        captured_at=datetime(
+            2026,
+            10,
+            4,
+            23,
+            20,
+            tzinfo=timezone.utc,
+        ),
+    )
+
+    alerts = elected_alerts(
+        payload
+    )
+
+    assert len(alerts) == 1
+    assert (
+        alerts[0]["kind"]
+        == "second_round"
+    )
+    assert (
+        alerts[0]["result_status"]
+        == "2º turno"
+    )
+
+
+def test_second_round_status_wins_over_elected_flag():
+    result = parsed_result()
+
+    candidate = (
+        result.offices[0]
+        .candidates[0]
+    )
+
+    candidate.elected = True
+    candidate.result_status = "2º turno"
+
+    result.offices = (
+        SimpleNamespace(
+            code=3,
+            name="Governador",
+            seats=1,
+            candidates=(candidate,),
+        ),
+    )
+
+    payload = static_payload(
+        result,
+        environment="oficial",
+        captured_at=datetime(
+            2026,
+            10,
+            4,
+            23,
+            20,
+            tzinfo=timezone.utc,
+        ),
+    )
+
+    alerts = elected_alerts(
+        payload
+    )
+
+    assert len(alerts) == 1
+    assert (
+        alerts[0]["kind"]
+        == "second_round"
+    )
