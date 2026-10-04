@@ -70,6 +70,27 @@ def static_payload(
         for c in office.candidates
     ]
 
+    seat_allocations = [
+        {
+            "number": allocation.number,
+            "name": allocation.name,
+            "type": allocation.kind,
+            "composition": allocation.composition,
+            "seats": allocation.seats,
+            "parties": [
+                dict(party)
+                for party
+                in allocation.parties
+            ],
+        }
+        for allocation
+        in getattr(
+            office,
+            "seat_allocations",
+            (),
+        )
+    ]
+
     return {
         "schema_version": 1,
         "environment": environment,
@@ -91,6 +112,13 @@ def static_payload(
             "code": office.code,
             "name": office.name,
             "seats": office.seats,
+            "electoral_quotient": getattr(
+                office,
+                "electoral_quotient",
+                None,
+            ),
+            "seat_allocations":
+                seat_allocations,
         },
         "snapshot": {
             "tse_idg": parsed.tse_idg,
