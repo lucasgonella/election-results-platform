@@ -10,6 +10,7 @@ import shutil
 import threading
 
 from .live_static import (
+    elected_alerts,
     manifest_item,
     static_payload,
     validate_target,
@@ -242,6 +243,13 @@ def prepare() -> dict:
         active / "manifest.json",
         None,
     )
+    old_alerts = load_json(
+        active / "alerts.json",
+        {
+            "schema_version": 1,
+            "alerts": [],
+        },
+    )
 
     fetched, errors = fetch_targets(
         targets,
@@ -353,6 +361,45 @@ def prepare() -> dict:
             relative,
         )
 
+    alert_entries = {
+        str(item["id"]): item
+        for item in old_alerts.get(
+            "alerts",
+            [],
+        )
+    }
+
+    for target, payload, _ in changed:
+        target_scope = (
+            target.scope_code.lower()
+        )
+        target_office = (
+            target.office_code
+        )
+
+        alert_entries = {
+            key: item
+            for key, item
+            in alert_entries.items()
+            if not (
+                str(
+                    item.get("scope", "")
+                ).lower()
+                == target_scope
+                and int(
+                    item.get("office", -1)
+                )
+                == target_office
+            )
+        }
+
+        for item in elected_alerts(
+            payload
+        ):
+            alert_entries[
+                str(item["id"])
+            ] = item
+
     if len(entries) != expected:
         raise RuntimeError(
             f"Live manifest incomplete: "
@@ -385,6 +432,24 @@ def prepare() -> dict:
         "environment": settings.environment,
         "generated_at": generated_at,
     }
+    alerts = {
+        "schema_version": 1,
+        "environment": settings.environment,
+        "generated_at": generated_at,
+        "alerts": sorted(
+            alert_entries.values(),
+            key=lambda item: (
+                str(
+                    item.get(
+                        "generated_at"
+                    )
+                    or ""
+                ),
+                str(item["id"]),
+            ),
+            reverse=True,
+        ),
+    }
 
     write_json(
         pending / "target-state.json",
@@ -398,6 +463,10 @@ def prepare() -> dict:
         pending / "version.json",
         version,
     )
+    write_json(
+        pending / "alerts.json",
+        alerts,
+    )
 
     if changed:
         write_json(
@@ -407,6 +476,10 @@ def prepare() -> dict:
         write_json(
             stage / "version.json",
             version,
+        )
+        write_json(
+            stage / "alerts.json",
+            alerts,
         )
     else:
         shutil.rmtree(
