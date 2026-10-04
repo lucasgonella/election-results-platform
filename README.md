@@ -4,7 +4,7 @@
 
 Plataforma para coleta, persistência e publicação de resultados eleitorais a partir dos arquivos disponibilizados pelo Tribunal Superior Eleitoral (TSE).
 
-**Demo:** https://gonella.com.br/eleicoes/
+**Demo:** https://afgnet.com.br/eleicoes/
 
 > Projeto independente. Não é um serviço oficial do TSE. A interface apenas apresenta os dados publicados pela Justiça Eleitoral e não realiza projeções, estimativas ou declarações próprias de resultado.
 
@@ -318,4 +318,4 @@ Desenvolvido por **Lucas Gonella**.
 
 - GitHub: https://github.com/lucasgonella
 - Repositório: https://github.com/lucasgonella/election-results-platform
-- Aplicação: https://gonella.com.br/eleicoes/
+- Aplicação: https://afgnet.com.br/eleicoes/
