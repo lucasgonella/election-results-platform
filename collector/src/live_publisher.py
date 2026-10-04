@@ -78,6 +78,7 @@ def fetch_targets(
     targets,
     target_state,
     workers,
+    force_offices=frozenset(),
 ):
     local = threading.local()
 
@@ -89,9 +90,14 @@ def fetch_targets(
         return value
 
     def job(target):
-        cached = target_state.get(
-            target.url,
-            {},
+        cached = (
+            {}
+            if target.office_code
+            in force_offices
+            else target_state.get(
+                target.url,
+                {},
+            )
         )
         response = client().fetch_json(
             target.url,
@@ -243,6 +249,10 @@ def prepare() -> dict:
         active / "manifest.json",
         None,
     )
+    alerts_bootstrap = not (
+        active / "alerts.json"
+    ).is_file()
+
     old_alerts = load_json(
         active / "alerts.json",
         {
@@ -255,6 +265,14 @@ def prepare() -> dict:
         targets,
         old_state,
         workers,
+        force_offices=(
+            frozenset({
+                3,
+                5,
+            })
+            if alerts_bootstrap
+            else frozenset()
+        ),
     )
 
     changed = []
