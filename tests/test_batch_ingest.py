@@ -736,7 +736,7 @@ def test_filter_processes_only_matching_target(
     assert result.selected_targets == 1
 
 
-def test_parallel_workers_fetch_concurrently_and_persist_serially(
+def test_parallel_workers_fetch_and_persist_concurrently(
     monkeypatch,
 ):
     targets = (
@@ -772,7 +772,8 @@ def test_parallel_workers_fetch_concurrently_and_persist_serially(
         ),
     )
 
-    barrier = threading.Barrier(3)
+    fetch_barrier = threading.Barrier(3)
+    persist_barrier = threading.Barrier(3)
     fetched_scopes = []
     persisted_scopes = []
 
@@ -785,7 +786,7 @@ def test_parallel_workers_fetch_concurrently_and_persist_serially(
             target.scope_code
         )
 
-        barrier.wait(
+        fetch_barrier.wait(
             timeout=2
         )
 
@@ -800,6 +801,10 @@ def test_parallel_workers_fetch_concurrently_and_persist_serially(
     ):
         persisted_scopes.append(
             fetched.target.scope_code
+        )
+
+        persist_barrier.wait(
+            timeout=2
         )
 
         return ingest_result(
@@ -856,11 +861,11 @@ def test_parallel_workers_fetch_concurrently_and_persist_serially(
         "sp",
     }
 
-    assert persisted_scopes == [
+    assert set(persisted_scopes) == {
         "go",
         "ac",
         "sp",
-    ]
+    }
 
     assert len(completed) == 3
     assert result.processed_targets == 3
