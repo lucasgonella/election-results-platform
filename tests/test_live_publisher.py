@@ -99,6 +99,7 @@ def test_static_payload(
     payload = (
         static_payload(
             parsed_result(),
+            environment="oficial",
             captured_at=captured_at,
         )
     )
