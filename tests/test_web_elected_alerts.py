@@ -142,3 +142,34 @@ def test_elected_by_state_uses_official_alert_feed():
         "    renderElectedByState();"
         in app
     )
+
+
+
+def test_second_round_alert_is_distinct_from_elected_state_panel():
+    app = (
+        WEB
+        / "app.js"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "function alertKind(item)"
+        in app
+    )
+
+    assert (
+        '"second_round"'
+        in app
+    )
+
+    assert (
+        "Classificado(a) para o 2º turno"
+        in app
+    )
+
+    assert (
+        'alertKind(item)\n'
+        '                !== "elected"'
+        in app
+    )
