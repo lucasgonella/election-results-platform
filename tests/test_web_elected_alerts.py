@@ -169,9 +169,23 @@ def test_second_round_alert_is_distinct_from_elected_state_panel():
     )
 
     assert (
-        'alertKind(item)\n'
-        '                !== "elected"'
+        '"elected",\n'
+        '                "mathematically_elected"'
         in app
+    )
+
+    assert (
+        '"second_round"'
+        not in (
+            app[
+                app.index(
+                    "function electedStateGroups()"
+                ):
+                app.index(
+                    "function electedOfficeRow("
+                )
+            ]
+        )
     )
 
 
