@@ -76,7 +76,7 @@
 
     <link
         rel="stylesheet"
-        href="styles.css?v=6"
+        href="styles.css?v=7"
     >
 </head>
 
@@ -264,6 +264,46 @@
     </section>
 
 
+    <section
+        id="seat-allocation"
+        class="seat-allocation"
+        hidden
+    >
+        <div class="seat-allocation-header">
+            <div>
+                <h2>
+                    Vagas por partido/federação
+                </h2>
+
+                <p>
+                    Distribuição corrente publicada pelo TSE
+                    para este cargo proporcional.
+                </p>
+            </div>
+
+            <span
+                id="seat-allocation-summary"
+                class="seat-allocation-summary"
+            >
+                --
+            </span>
+        </div>
+
+        <div
+            id="seat-allocation-empty"
+            class="seat-allocation-empty"
+            hidden
+        >
+            Distribuição ainda não definida pelo TSE.
+        </div>
+
+        <div
+            id="seat-allocation-grid"
+            class="seat-allocation-grid"
+        ></div>
+    </section>
+
+
     <section class="results-section">
 
         <div class="results-header">
@@ -405,7 +445,7 @@
 </div>
 
 <script src="favorites.js?v=7"></script>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 
 </body>
 </html>
