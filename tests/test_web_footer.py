@@ -26,6 +26,12 @@ def test_footer_contains_author_credit_and_repository_link():
     assert "Lucas Gonella" in html
 
     assert (
+        "https://www.linkedin.com/in/"
+        "lucasgonella/"
+        in html
+    )
+
+    assert (
         "https://github.com/lucasgonella/"
         "election-results-platform"
         in html
