@@ -9,6 +9,12 @@ from .discovery import ElectionTarget
 from .parser import ParsedResult
 
 
+ELECTED_ALERT_OFFICES = frozenset({
+    3,  # Governor
+    5,  # Senator
+})
+
+
 def json_value(value: Any) -> Any:
     if isinstance(value, Decimal):
         return float(value)
@@ -138,3 +144,77 @@ def manifest_item(
         "captured_at": payload["snapshot"]["captured_at"],
         "path": relative_path.as_posix(),
     }
+
+
+def elected_alerts(
+    payload: dict[str, Any],
+) -> list[dict[str, Any]]:
+    office = payload["office"]
+
+    if (
+        int(office["code"])
+        not in ELECTED_ALERT_OFFICES
+    ):
+        return []
+
+    alerts = []
+
+    for candidate in payload[
+        "candidates"
+    ]:
+        if candidate.get(
+            "elected"
+        ) is not True:
+            continue
+
+        alerts.append(
+            {
+                "id": (
+                    f"{payload['scope']['code']}:"
+                    f"{office['code']}:"
+                    f"{candidate['tse_candidate_seq']}"
+                ),
+                "scope":
+                    payload["scope"]["code"],
+                "uf":
+                    payload["scope"].get("uf"),
+                "office":
+                    office["code"],
+                "office_name":
+                    office["name"],
+                "candidate_id":
+                    candidate[
+                        "tse_candidate_seq"
+                    ],
+                "candidate_name": (
+                    candidate.get(
+                        "ballot_name"
+                    )
+                    or candidate.get(
+                        "name"
+                    )
+                ),
+                "party_acronym":
+                    candidate.get(
+                        "party_acronym"
+                    ),
+                "result_status":
+                    candidate.get(
+                        "result_status"
+                    ),
+                "tse_idg":
+                    payload["snapshot"][
+                        "tse_idg"
+                    ],
+                "generated_at":
+                    payload["snapshot"][
+                        "generated_at"
+                    ],
+                "captured_at":
+                    payload["snapshot"][
+                        "captured_at"
+                    ],
+            }
+        )
+
+    return alerts
