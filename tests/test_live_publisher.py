@@ -240,3 +240,68 @@ def test_deputy_does_not_generate_elected_alert():
     assert elected_alerts(
         payload
     ) == []
+
+
+
+def test_static_payload_exposes_seat_allocations():
+    result = parsed_result()
+    office = result.offices[0]
+
+    office.electoral_quotient = 100000
+    office.seat_allocations = (
+        SimpleNamespace(
+            number=10,
+            name="Federação Teste",
+            kind="f",
+            composition="ABC / XYZ",
+            seats=4,
+            parties=(
+                {
+                    "number": 99,
+                    "acronym": "ABC",
+                    "name": "Partido ABC",
+                },
+                {
+                    "number": 98,
+                    "acronym": "XYZ",
+                    "name": "Partido XYZ",
+                },
+            ),
+        ),
+    )
+
+    payload = static_payload(
+        result,
+        environment="oficial",
+        captured_at=datetime(
+            2026,
+            10,
+            4,
+            21,
+            20,
+            tzinfo=timezone.utc,
+        ),
+    )
+
+    assert (
+        payload["office"]
+        ["electoral_quotient"]
+        == 100000
+    )
+
+    allocations = (
+        payload["office"]
+        ["seat_allocations"]
+    )
+
+    assert len(allocations) == 1
+    assert allocations[0]["seats"] == 4
+    assert (
+        allocations[0]["type"]
+        == "f"
+    )
+    assert (
+        allocations[0]["parties"][0]
+        ["acronym"]
+        == "ABC"
+    )
