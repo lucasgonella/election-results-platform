@@ -1,0 +1,15 @@
+[Unit]
+Description=Schedule Brazil Election Results Live Publisher
+
+[Timer]
+OnActiveSec=5s
+OnUnitInactiveSec=5s
+
+RandomizedDelaySec=0
+AccuracySec=1s
+Persistent=false
+
+Unit=election-live-publisher.service
+
+[Install]
+WantedBy=timers.target
