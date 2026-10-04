@@ -1386,7 +1386,6 @@ async function refreshIfChanged() {
         ]);
 
         renderElectedAlerts();
-    renderElectedByState();
         renderElectedByState();
 
         const newItem =
@@ -1449,6 +1448,7 @@ async function initialize() {
 
     renderEnvironment();
     renderElectedAlerts();
+    renderElectedByState();
     renderScopeSelector();
     renderOfficeTabs();
 
