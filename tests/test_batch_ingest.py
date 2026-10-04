@@ -879,6 +879,202 @@ def test_parallel_workers_fetch_and_persist_concurrently(
     assert result.persist_duration_ms >= 0
 
 
+def test_batch_size_is_shared_across_changed_elections(
+    monkeypatch,
+):
+    federal_targets = tuple(
+        ElectionTarget(
+            election_code=21270,
+            cycle="ele2026",
+            round_number=1,
+            scope_code=scope,
+            office_code=1,
+            office_name="Presidente",
+            url=(
+                "https://example.invalid/"
+                f"federal-{scope}.json"
+            ),
+        )
+        for scope in (
+            "br",
+            "go",
+            "sp",
+        )
+    )
+
+    state_targets = tuple(
+        ElectionTarget(
+            election_code=21272,
+            cycle="ele2026",
+            round_number=1,
+            scope_code=scope,
+            office_code=3,
+            office_name="Governador",
+            url=(
+                "https://example.invalid/"
+                f"state-{scope}.json"
+            ),
+        )
+        for scope in (
+            "go",
+            "sp",
+            "mg",
+        )
+    )
+
+    federal = StatefulElectionResult(
+        election_code=21270,
+        election_type=8,
+        ea14_url="https://example.invalid/federal-ea14.json",
+        http_status=200,
+        status="changed",
+        changed_scopes=("br", "go", "sp"),
+        targets=federal_targets,
+        state_update=update(),
+    )
+
+    state = StatefulElectionResult(
+        election_code=21272,
+        election_type=1,
+        ea14_url="https://example.invalid/state-ea14.json",
+        http_status=200,
+        status="changed",
+        changed_scopes=("go", "sp", "mg"),
+        targets=state_targets,
+        state_update=update(),
+    )
+
+    monkeypatch.setattr(
+        module,
+        "run_stateful_planner",
+        lambda **kwargs:
+            StatefulPlannerResult(
+                config_url=(
+                    "https://example.invalid/"
+                    "ele-c.json"
+                ),
+                elections=(
+                    federal,
+                    state,
+                ),
+            ),
+    )
+
+    def fake_prepare_batch(
+        *,
+        election,
+    ):
+        return SimpleNamespace(
+            id=(
+                10
+                if election.election_code
+                == 21270
+                else 20
+            ),
+            status="pending",
+            total_targets=3,
+            completed_targets=0,
+        )
+
+    monkeypatch.setattr(
+        module,
+        "_prepare_election_batch",
+        fake_prepare_batch,
+    )
+
+    def fake_pending(
+        *,
+        batch_id,
+        limit,
+    ):
+        selected = (
+            federal_targets
+            if batch_id == 10
+            else state_targets
+        )
+
+        return tuple(
+            item(
+                (
+                    batch_id * 10
+                    + index
+                ),
+                target_item,
+            )
+            for index, target_item
+            in enumerate(
+                selected,
+                start=1,
+            )
+        )
+
+    monkeypatch.setattr(
+        module,
+        "get_pending_items",
+        fake_pending,
+    )
+
+    processed = []
+
+    monkeypatch.setattr(
+        module,
+        "_ingest_target",
+        lambda **kwargs: (
+            processed.append(
+                kwargs["target"]
+            )
+            or ingest_result(
+                kwargs["target"]
+            )
+        ),
+    )
+
+    monkeypatch.setattr(
+        module,
+        "mark_item_completed",
+        lambda **kwargs: None,
+    )
+
+    monkeypatch.setattr(
+        module,
+        "refresh_batch_progress",
+        lambda **kwargs:
+            batch(
+                status="pending",
+                total=3,
+                completed=0,
+            ),
+    )
+
+    result = (
+        module.run_batched_ingest(
+            settings=settings(),
+            client=SimpleNamespace(),
+            execute=True,
+            batch_size=4,
+            workers=1,
+        )
+    )
+
+    assert result.processed_targets == 4
+
+    assert sum(
+        1
+        for target_item
+        in processed
+        if target_item.election_code
+        == 21270
+    ) == 2
+
+    assert sum(
+        1
+        for target_item
+        in processed
+        if target_item.election_code
+        == 21272
+    ) == 2
+
+
 def test_workers_must_be_positive():
     with pytest.raises(
         ValueError,

@@ -339,6 +339,53 @@ def get_pending_items(
         with connection.cursor() as cursor:
             cursor.execute(
                 """
+                WITH pending AS (
+                    SELECT
+                        item.id,
+                        item.batch_id,
+                        item.scope_code,
+                        item.office_code,
+                        item.office_name,
+                        item.source_url,
+                        item.status,
+                        item.attempts,
+                        item.collector_run_id,
+                        item.last_error,
+
+                        (
+                            SELECT MAX(
+                                run.finished_at
+                            )
+                            FROM collector_runs AS run
+                            WHERE run.source_url
+                                = item.source_url
+                        ) AS last_processed_at
+
+                    FROM ea20_batch_items
+                        AS item
+
+                    WHERE item.batch_id = %s
+                      AND item.status IN (
+                          'pending',
+                          'error'
+                      )
+                ),
+
+                ranked AS (
+                    SELECT
+                        pending.*,
+
+                        ROW_NUMBER() OVER (
+                            PARTITION BY office_code
+                            ORDER BY
+                                last_processed_at
+                                    ASC NULLS FIRST,
+                                id
+                        ) AS office_rank
+
+                    FROM pending
+                )
+
                 SELECT
                     id,
                     batch_id,
@@ -350,13 +397,16 @@ def get_pending_items(
                     attempts,
                     collector_run_id,
                     last_error
-                FROM ea20_batch_items
-                WHERE batch_id = %s
-                  AND status IN (
-                      'pending',
-                      'error'
-                  )
-                ORDER BY id
+
+                FROM ranked
+
+                ORDER BY
+                    office_rank,
+                    last_processed_at
+                        ASC NULLS FIRST,
+                    office_code,
+                    id
+
                 LIMIT %s
                 """,
                 (
