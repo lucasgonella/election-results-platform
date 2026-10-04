@@ -267,11 +267,14 @@ A concorrência do collector é configurável por ambiente:
 COLLECTOR_BATCH_SIZE=25
 COLLECTOR_WORKERS=5
 COLLECTOR_CYCLES=1
+PUBLISH_PARTIAL_BATCHES=false
 ```
 
 Com `COLLECTOR_WORKERS=1`, o processamento mantém o comportamento sequencial. Valores maiores paralelizam a fase de leitura do estado, download e parsing dos targets EA20. As gravações no PostgreSQL, os checkpoints de EA14 e a publicação do bundle permanecem serializados pelo processo principal.
 
 Atualizações de checkpoint EA14 que não produzam targets EA20 são persistidas sem criar batches vazios. Esses checkpoints isolados também não disparam uma nova publicação do bundle estático; a publicação automática é enfileirada somente quando um batch com dados EA20 conclui seu checkpoint.
+
+Durante uma janela de apuração ao vivo, `PUBLISH_PARTIAL_BATCHES=true` permite publicar um novo bundle após cada execução que processe targets com sucesso, mesmo quando ainda existirem itens pendentes no batch. A publicação continua bloqueada se houver itens em erro ou health degradado. O bundle é sempre reconstruído a partir dos snapshots mais recentes de cada target, portanto localidades ainda não processadas permanecem na última versão íntegra disponível até o ciclo seguinte.
 
 O runner também publica métricas de duração em milissegundos para cada execução: `duration_ms`, `planner_duration_ms`, `fetch_duration_ms` e `persist_duration_ms`, além de `candidates_processed`. Em execuções paralelas, `fetch_duration_ms` representa o tempo de parede da fase concorrente de busca/parsing dos EA20, enquanto `persist_duration_ms` representa a fase serial de persistência dos resultados e atualização dos itens do batch. Essas métricas permitem avaliar com dados reais se aumentar `COLLECTOR_WORKERS` traz benefício ou se o gargalo está no PostgreSQL.
 
