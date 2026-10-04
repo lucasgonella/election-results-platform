@@ -171,6 +171,9 @@ class ParsedResult:
 
     offices: tuple[OfficeResult, ...]
 
+    mathematical_definition: str | None = None
+    totalization_final: bool | None = None
+
 
 def parse_candidate(
     candidate: dict[str, Any],
@@ -486,6 +489,20 @@ def parse_ea20(
         stats=stats,
 
         offices=offices,
+
+        mathematical_definition=(
+            str(
+                payload.get("md")
+                or ""
+            )
+            .strip()
+            .lower()
+            or None
+        ),
+
+        totalization_final=as_bool(
+            payload.get("tf")
+        ),
     )
 
 
