@@ -109,7 +109,7 @@ def test_favorites_markup_uses_safe_icons_and_cache_busting():
 
     assert "&#9734; Favoritos" in html
     assert "&times;" in html
-    assert 'href="styles.css?v=7"' in html
+    assert 'href="styles.css?v=8"' in html
     assert '<script src="app.js?v=9"></script>' in html
     assert "? Favoritos" not in html
 
