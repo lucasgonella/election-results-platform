@@ -9,6 +9,9 @@ STAGE_DIR="${LIVE_PUBLISH_STAGE_DIR:-${STATE_DIR}/stage}"
 
 EXPECTED_TARGETS="${LIVE_PUBLISH_EXPECTED_TARGETS:-${PUBLISH_EXPECTED_TARGETS:-137}}"
 
+SSH_RETRIES="${LIVE_PUBLISH_SSH_RETRIES:-3}"
+SSH_RETRY_DELAY="${LIVE_PUBLISH_SSH_RETRY_DELAY:-2}"
+
 SSH_KEY="${PUBLISH_SSH_KEY:-/var/lib/election-results-platform/.ssh/locaweb_publisher}"
 KNOWN_HOSTS="${PUBLISH_KNOWN_HOSTS:-/var/lib/election-results-platform/.ssh/known_hosts}"
 
@@ -48,7 +51,7 @@ fi
 
 PYTHON_BIN="${APP_DIR}/.venv/bin/python"
 
-"${PYTHON_BIN}" -     "${STAGE_DIR}"     "${EXPECTED_TARGETS}" <<'PY'
+"${PYTHON_BIN}" - "${STAGE_DIR}" "${EXPECTED_TARGETS}" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -68,6 +71,12 @@ version = json.loads(
     )
 )
 
+alerts = json.loads(
+    (stage / "alerts.json").read_text(
+        encoding="utf-8"
+    )
+)
+
 if manifest.get("result_count") != expected_targets:
     raise SystemExit(
         "ERROR: live manifest target count mismatch."
@@ -79,6 +88,14 @@ if (
 ):
     raise SystemExit(
         "ERROR: live version mismatch."
+    )
+
+if (
+    alerts.get("generated_at")
+    != version.get("generated_at")
+):
+    raise SystemExit(
+        "ERROR: live alerts version mismatch."
     )
 
 changed = [
@@ -124,27 +141,48 @@ SSH_OPTIONS=(
     -o PubkeyAcceptedAlgorithms=+ssh-rsa
     -o UserKnownHostsFile="${KNOWN_HOSTS}"
     -o StrictHostKeyChecking=yes
-    -o ConnectTimeout=10
+    -o ConnectTimeout=5
     -o ServerAliveInterval=15
 )
 
 REMOTE="${REMOTE_USER}@${REMOTE_HOST}"
 REMOTE_STAGE="${REMOTE_DIR}.live-new"
 
-echo
-echo "=== PREPARE LIVE REMOTE STAGE ==="
+retry_operation() {
+    local description="$1"
+    shift
 
-ssh     "${SSH_OPTIONS[@]}"     "${REMOTE}"     "rm -rf '${REMOTE_STAGE}' && mkdir -p '${REMOTE_STAGE}'"
+    local attempt=1
+    local status=0
 
-echo
-echo "=== UPLOAD LIVE DELTA ==="
+    while true; do
+        if "$@"; then
+            return 0
+        else
+            status=$?
+        fi
 
-tar     -C "${STAGE_DIR}"     -czf -     . | ssh     "${SSH_OPTIONS[@]}"     "${REMOTE}"     "tar -xzf - -C '${REMOTE_STAGE}'"
+        if (( attempt >= SSH_RETRIES )); then
+            echo "${description} failed after ${attempt} attempts." >&2
+            return "${status}"
+        fi
 
-echo
-echo "=== ACTIVATE LIVE DELTA ==="
+        echo "${description} failed (attempt ${attempt}/${SSH_RETRIES}). Retrying in ${SSH_RETRY_DELAY}s..." >&2
+        sleep "${SSH_RETRY_DELAY}"
+        attempt=$((attempt + 1))
+    done
+}
 
-ssh     "${SSH_OPTIONS[@]}"     "${REMOTE}"     sh -s --     "${REMOTE_DIR}"     "${REMOTE_STAGE}" <<'REMOTE'
+prepare_remote_stage() {
+    ssh         "${SSH_OPTIONS[@]}"         "${REMOTE}"         "rm -rf '${REMOTE_STAGE}' && mkdir -p '${REMOTE_STAGE}'"
+}
+
+upload_live_delta() {
+    tar         -C "${STAGE_DIR}"         -czf -         .     | ssh         "${SSH_OPTIONS[@]}"         "${REMOTE}"         "tar -xzf - -C '${REMOTE_STAGE}'"
+}
+
+activate_live_delta() {
+    ssh         "${SSH_OPTIONS[@]}"         "${REMOTE}"         sh -s --         "${REMOTE_DIR}"         "${REMOTE_STAGE}" <<'REMOTE'
 set -eu
 
 remote_dir="$1"
@@ -174,17 +212,33 @@ do
 
     mkdir -p "$(dirname "${destination}")"
 
-    mv         "${source}"         "${destination}"
+    cp         "${source}"         "${destination}"
 done
 
-mv     "${stage_dir}/manifest.json"     "${remote_dir}/manifest.json"
+cp     "${stage_dir}/manifest.json"     "${remote_dir}/manifest.json"
 
-mv     "${stage_dir}/version.json"     "${remote_dir}/version.json"
+cp     "${stage_dir}/version.json"     "${remote_dir}/version.json"
 
 rm -rf "${stage_dir}"
 
 echo "LIVE REMOTE DELTA: OK"
 REMOTE
+}
+
+echo
+echo "=== PREPARE LIVE REMOTE STAGE ==="
+
+retry_operation     "Prepare live remote stage"     prepare_remote_stage
+
+echo
+echo "=== UPLOAD LIVE DELTA ==="
+
+retry_operation     "Upload live delta"     upload_live_delta
+
+echo
+echo "=== ACTIVATE LIVE DELTA ==="
+
+retry_operation     "Activate live delta"     activate_live_delta
 
 echo
 echo "LIVE STATIC PUBLISH: OK"
