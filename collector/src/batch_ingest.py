@@ -426,6 +426,9 @@ def run_batched_ingest(
         )
 
     remaining = batch_size
+    remaining_batches = len(
+        prepared
+    )
 
     results: list[
         TargetIngestResult
@@ -479,9 +482,22 @@ def run_batched_ingest(
                 )
             )
 
+            quota = remaining
+
+            if remaining_batches > 0:
+                quota = max(
+                    1,
+                    (
+                        remaining
+                        + remaining_batches
+                        - 1
+                    )
+                    // remaining_batches,
+                )
+
             selected_items = tuple(
                 eligible[
-                    :remaining
+                    :quota
                 ]
             )
 
@@ -895,6 +911,11 @@ def run_batched_ingest(
             committed += 1
             data_committed += 1
             state_committed = True
+
+        remaining_batches = max(
+            0,
+            remaining_batches - 1,
+        )
 
         summaries.append(
             BatchElectionSummary(
