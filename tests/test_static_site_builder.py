@@ -117,6 +117,7 @@ def test_build_static_site(
         environment,
         scope_code,
         office_code,
+        connection=None,
     ):
         if office_code == 1:
             return payload(
@@ -137,6 +138,26 @@ def test_build_static_site(
         builder,
         "load_latest_result",
         fake_load_latest_result,
+    )
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(
+            self,
+            exc_type,
+            exc_value,
+            traceback,
+        ):
+            return False
+
+    connection = FakeConnection()
+
+    monkeypatch.setattr(
+        builder,
+        "get_connection",
+        lambda: connection,
     )
 
     manifest = build_static_site(
