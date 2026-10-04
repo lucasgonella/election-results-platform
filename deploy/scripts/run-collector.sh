@@ -12,6 +12,7 @@ WORKERS="${COLLECTOR_WORKERS:-1}"
 CYCLES="${COLLECTOR_CYCLES:-1}"
 
 PUBLISH_AFTER_COLLECT="${PUBLISH_AFTER_COLLECT:-false}"
+PUBLISH_PARTIAL_BATCHES="${PUBLISH_PARTIAL_BATCHES:-false}"
 
 PUBLISH_SCRIPT="${PUBLISH_SCRIPT:-${APP_DIR}/deploy/scripts/publish-results.sh}"
 
@@ -105,13 +106,29 @@ fi
 DECISION="$(
     "${PYTHON_BIN}" \
         - \
-        "${RESULT_FILE}" <<'PY'
+        "${RESULT_FILE}" \
+        "${PUBLISH_PARTIAL_BATCHES}" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 
 path = Path(sys.argv[1])
+
+partial_value = (
+    sys.argv[2]
+    .strip()
+    .lower()
+)
+
+partial_enabled = (
+    partial_value
+    in {
+        "1",
+        "true",
+        "yes",
+    }
+)
 
 result = json.loads(
     path.read_text(
@@ -121,10 +138,22 @@ result = json.loads(
 
 after = result["after"]
 
-safe = (
-    after["pending_items"] == 0
-    and after["error_items"] == 0
+error_free = (
+    after["error_items"] == 0
     and after["health"] == "ok"
+)
+
+complete_safe = (
+    error_free
+    and after["pending_items"] == 0
+)
+
+processed_data = (
+    result.get(
+        "processed_targets",
+        0,
+    )
+    > 0
 )
 
 data_update_completed = (
@@ -135,14 +164,31 @@ data_update_completed = (
     > 0
 )
 
-publish_ready = (
-    safe
+full_publish_ready = (
+    complete_safe
     and data_update_completed
+)
+
+partial_publish_ready = (
+    partial_enabled
+    and error_free
+    and processed_data
+)
+
+publish_ready = (
+    full_publish_ready
+    or partial_publish_ready
+)
+
+publish_safe = (
+    error_free
+    if partial_enabled
+    else complete_safe
 )
 
 print(
     int(publish_ready),
-    int(safe),
+    int(publish_safe),
 )
 PY
 )"
@@ -165,7 +211,15 @@ case "${PUBLISH_AFTER_COLLECT}" in
 
             {
                 echo "queued_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-                echo "reason=collector_checkpoint_completed"
+
+                case "${PUBLISH_PARTIAL_BATCHES}" in
+                    1|true|TRUE|yes|YES)
+                        echo "reason=collector_batch_progress"
+                        ;;
+                    *)
+                        echo "reason=collector_checkpoint_completed"
+                        ;;
+                esac
             } > "${PUBLISH_PENDING_FILE}"
 
             echo
@@ -177,7 +231,7 @@ case "${PUBLISH_AFTER_COLLECT}" in
 
             if [[ "${PUBLISH_SAFE}" != "1" ]]; then
                 echo
-                echo "Publish deferred: collector still has pending/error work."
+                echo "Publish deferred: collector has unsafe/error work."
                 exit 0
             fi
 

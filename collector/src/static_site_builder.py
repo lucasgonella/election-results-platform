@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from contextlib import nullcontext
 from datetime import datetime, timezone
 import json
 import os
@@ -35,10 +36,17 @@ def list_export_targets(
     *,
     environment: str,
     connection_factory: Callable = get_connection,
+    connection=None,
 ) -> tuple[StaticExportTarget, ...]:
 
-    with connection_factory() as connection:
-        with connection.cursor() as cursor:
+    connection_context = (
+        nullcontext(connection)
+        if connection is not None
+        else connection_factory()
+    )
+
+    with connection_context as database:
+        with database.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT DISTINCT
@@ -103,82 +111,85 @@ def build_static_site(
     output_dir: Path,
 ) -> dict:
 
-    targets = list_export_targets(
-        environment=environment,
-    )
-
-    if not targets:
-        raise RuntimeError(
-            "No persisted results found for "
-            f"environment {environment}."
-        )
-
-    manifest_results = []
-    total_candidates = 0
-
-    for target in targets:
-        payload = load_latest_result(
+    with get_connection() as connection:
+        targets = list_export_targets(
             environment=environment,
-            scope_code=target.scope_code,
-            office_code=target.office_code,
+            connection=connection,
         )
 
-        relative_path = result_relative_path(
-            target
-        )
+        if not targets:
+            raise RuntimeError(
+                "No persisted results found for "
+                f"environment {environment}."
+            )
 
-        write_json_atomic(
-            payload,
-            output_dir / relative_path,
-        )
+        manifest_results = []
+        total_candidates = 0
 
-        candidate_count = (
-            payload["candidate_count"]
-        )
+        for target in targets:
+            payload = load_latest_result(
+                environment=environment,
+                scope_code=target.scope_code,
+                office_code=target.office_code,
+                connection=connection,
+            )
 
-        total_candidates += candidate_count
+            relative_path = result_relative_path(
+                target
+            )
 
-        manifest_results.append(
-            {
-                "scope": (
-                    payload["scope"]["code"]
-                ),
-                "scope_type": (
-                    payload["scope"]["type"]
-                ),
-                "uf": (
-                    payload["scope"]["uf"]
-                ),
-                "office": (
-                    payload["office"]["code"]
-                ),
-                "office_name": (
-                    payload["office"]["name"]
-                ),
-                "election_code": (
-                    payload["election"]["code"]
-                ),
-                "round": (
-                    payload["election"]["round"]
-                ),
-                "candidate_count":
-                    candidate_count,
-                "tse_idg": (
-                    payload["snapshot"][
-                        "tse_idg"
-                    ]
-                ),
-                "captured_at": (
-                    payload["snapshot"][
-                        "captured_at"
-                    ]
-                ),
-                "path": (
-                    relative_path
-                    .as_posix()
-                ),
-            }
-        )
+            write_json_atomic(
+                payload,
+                output_dir / relative_path,
+            )
+
+            candidate_count = (
+                payload["candidate_count"]
+            )
+
+            total_candidates += candidate_count
+
+            manifest_results.append(
+                {
+                    "scope": (
+                        payload["scope"]["code"]
+                    ),
+                    "scope_type": (
+                        payload["scope"]["type"]
+                    ),
+                    "uf": (
+                        payload["scope"]["uf"]
+                    ),
+                    "office": (
+                        payload["office"]["code"]
+                    ),
+                    "office_name": (
+                        payload["office"]["name"]
+                    ),
+                    "election_code": (
+                        payload["election"]["code"]
+                    ),
+                    "round": (
+                        payload["election"]["round"]
+                    ),
+                    "candidate_count":
+                        candidate_count,
+                    "tse_idg": (
+                        payload["snapshot"][
+                            "tse_idg"
+                        ]
+                    ),
+                    "captured_at": (
+                        payload["snapshot"][
+                            "captured_at"
+                        ]
+                    ),
+                    "path": (
+                        relative_path
+                        .as_posix()
+                    ),
+                }
+            )
 
     generated_at = (
         datetime.now(
