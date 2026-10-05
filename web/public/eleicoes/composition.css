@@ -261,6 +261,18 @@
     font-size: 13px;
 }
 
+.composition-party-text {
+    display: grid;
+    gap: 2px;
+}
+
+.composition-pending-detail {
+    color: #7a8493;
+
+    font-size: 11px;
+    line-height: 1.35;
+}
+
 .composition-delta {
     font-weight: 750;
 }
