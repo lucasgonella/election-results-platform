@@ -579,7 +579,8 @@ function deltaText(value) {
 function renderTable(
     elementId,
     current,
-    future
+    future,
+    pendingDetails = []
 ) {
     const container =
         document.getElementById(
@@ -702,6 +703,20 @@ function renderTable(
                 "tr"
             );
 
+        const pendingText =
+            pendingDetails
+                .filter(
+                    item =>
+                        Number(
+                            item.seats
+                        ) > 0
+                )
+                .map(
+                    item =>
+                        `${item.scope} · ${item.seats}`
+                )
+                .join(" · ");
+
         row.innerHTML =
             `
             <td>
@@ -710,7 +725,14 @@ function renderTable(
                         class="composition-party-dot"
                         style="background:${colorFor("PENDENTE")}"
                     ></span>
-                    <strong>Pendente</strong>
+                    <div class="composition-party-text">
+                        <strong>Pendente</strong>
+                        ${
+                            pendingText
+                                ? `<span class="composition-pending-detail">${pendingText}</span>`
+                                : ""
+                        }
+                    </div>
                 </div>
             </td>
             <td>—</td>
@@ -794,9 +816,10 @@ async function cameraFutureComposition(
             )
         );
 
-    const result = {};
+    const future = {};
     const electedIds =
         new Set();
+    const pendingByState = [];
 
     for (const payload of payloads) {
         const candidates =
@@ -805,6 +828,9 @@ async function cameraFutureComposition(
             )
                 ? payload.candidates
                 : [];
+
+        const electedInState =
+            new Set();
 
         for (
             const candidate
@@ -833,6 +859,10 @@ async function cameraFutureComposition(
                     )
                 );
 
+            electedInState.add(
+                candidateId
+            );
+
             if (
                 electedIds.has(
                     candidateId
@@ -846,7 +876,7 @@ async function cameraFutureComposition(
             );
 
             addCount(
-                result,
+                future,
                 normalized(
                     candidate
                         .party_acronym
@@ -854,18 +884,58 @@ async function cameraFutureComposition(
                 1
             );
         }
+
+        const stateSeats =
+            Number(
+                payload
+                    ?.office
+                    ?.seats
+                || 0
+            );
+
+        const pending =
+            Math.max(
+                stateSeats
+                - electedInState.size,
+                0
+            );
+
+        if (pending > 0) {
+            pendingByState.push({
+                scope:
+                    String(
+                        payload
+                            ?.scope
+                            ?.code
+                        || ""
+                    ).toUpperCase(),
+                seats: pending
+            });
+        }
     }
 
+    pendingByState.sort(
+        (a, b) =>
+            a.scope.localeCompare(
+                b.scope,
+                "pt-BR"
+            )
+    );
+
     const elected =
-        sumComposition(result);
+        sumComposition(future);
 
     if (elected < CAMERA_TOTAL) {
-        result.PENDENTE =
+        future.PENDENTE =
             CAMERA_TOTAL
             - elected;
     }
 
-    return result;
+    return {
+        future,
+        pendingByState,
+        electedCount: elected
+    };
 }
 
 function senateElectedComposition(
@@ -1062,7 +1132,7 @@ async function initializeComposition() {
             : [];
 
     const [
-        cameraFuture,
+        camera,
         senate
     ] =
         await Promise.all([
@@ -1077,11 +1147,7 @@ async function initializeComposition() {
         ]);
 
     const cameraDefined =
-        CAMERA_TOTAL
-        - Number(
-            cameraFuture.PENDENTE
-            || 0
-        );
+        camera.electedCount;
 
     const senateDefined =
         senate.electedCount;
@@ -1095,7 +1161,7 @@ async function initializeComposition() {
 
     renderHemicycle(
         "camera-future-chart",
-        cameraFuture,
+        camera.future,
         CAMERA_TOTAL,
         13
     );
@@ -1103,7 +1169,8 @@ async function initializeComposition() {
     renderTable(
         "camera-table",
         CAMERA_CURRENT,
-        cameraFuture
+        camera.future,
+        camera.pendingByState
     );
 
     renderHemicycle(
