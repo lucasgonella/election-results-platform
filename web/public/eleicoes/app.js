@@ -148,17 +148,29 @@ function electedStateGroups() {
                 item.office
             );
 
-        if (
-            ![
+        const kind =
+            alertKind(item);
+
+        const definedGovernor =
+            office === 3
+            && [
                 "elected",
-                "mathematically_elected"
-            ].includes(
-                alertKind(item)
+                "mathematically_elected",
+                "second_round"
+            ].includes(kind);
+
+        const definedSenator =
+            office === 5
+            && kind === "elected";
+
+        if (
+            !(
+                definedGovernor
+                || definedSenator
             )
             || !SCOPE_NAMES[scope]
             || scope === "br"
             || scope === "zz"
-            || ![3, 5].includes(office)
         ) {
             continue;
         }
@@ -251,16 +263,26 @@ function electedCandidateList(
                 "elected-state-candidate"
             );
 
+        const kind =
+            alertKind(candidate);
+
         const mathematicallyElected =
-            alertKind(candidate)
+            kind
             === "mathematically_elected";
+
+        const secondRound =
+            kind === "second_round";
 
         const headline =
             candidate.candidate_name
             || (
-                mathematicallyElected
-                    ? "Eleição matematicamente definida (Eleito)"
-                    : "Resultado definido pelo TSE"
+                secondRound
+                    ? "2º turno definido pelo TSE"
+                    : (
+                        mathematicallyElected
+                            ? "Eleição matematicamente definida (Eleito)"
+                            : "Resultado definido pelo TSE"
+                    )
             );
 
         value.appendChild(
@@ -296,6 +318,12 @@ function electedCandidateList(
         ) {
             metaParts.push(
                 "Nome ainda não individualizado pelo TSE"
+            );
+        }
+
+        if (secondRound) {
+            metaParts.push(
+                "Eleição segue para o 2º turno"
             );
         }
 
