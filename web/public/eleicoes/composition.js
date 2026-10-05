@@ -91,7 +91,7 @@ const COLORS = {
     "PP": "#4f9e87",
     "PSDB": "#4492b6",
     "PT": "#cf4141",
-    "UNIÃO": "#55a897",
+    "UNIAO": "#55a897",
     "S/PARTIDO": "#555b62",
     "PENDENTE": "#d8dce2"
 };
@@ -967,10 +967,9 @@ function governorWinner(
 function senateHoldovers(
     alerts
 ) {
-    const result =
-        structuredClone(
-            SENATE_HOLDOVER_2027
-        );
+    const result = {
+        ...SENATE_HOLDOVER_2027
+    };
 
     /*
      * Se esses senadores vencerem os governos
