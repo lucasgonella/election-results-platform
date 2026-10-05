@@ -109,3 +109,45 @@ def test_sitemap_contains_election_portal():
         "</loc>"
         in sitemap
     )
+
+
+
+def test_composition_page_is_indexable_and_in_sitemap():
+    composition = (
+        PUBLIC
+        / "eleicoes"
+        / "composicao.html"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    sitemap = (
+        PUBLIC
+        / "sitemap.xml"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "Composição do Congresso 2027"
+        in composition
+    )
+
+    assert (
+        'rel="canonical"'
+        in composition
+    )
+
+    assert (
+        "https://afgnet.com.br/"
+        "eleicoes/composicao.html"
+        in composition
+    )
+
+    assert (
+        "<loc>"
+        "https://afgnet.com.br/"
+        "eleicoes/composicao.html"
+        "</loc>"
+        in sitemap
+    )
