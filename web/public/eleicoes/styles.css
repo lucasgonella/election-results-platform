@@ -612,6 +612,7 @@ footer a:hover {
     gap: 10px;
 }
 
+.composition-link,
 .favorites-open {
     padding: 10px 14px;
 
@@ -621,10 +622,18 @@ footer a:hover {
     background: white;
     color: #202226;
 
-    cursor: pointer;
     font-weight: 650;
 }
 
+.composition-link {
+    text-decoration: none;
+}
+
+.favorites-open {
+    cursor: pointer;
+}
+
+.composition-link:hover,
 .favorites-open:hover {
     background: #f0f1f3;
 }
