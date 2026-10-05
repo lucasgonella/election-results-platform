@@ -15,7 +15,7 @@ WEB = (
 )
 
 
-def test_elected_alert_region_is_present():
+def test_redundant_top_alert_region_is_removed():
     html = (
         WEB
         / "index.html"
@@ -23,18 +23,30 @@ def test_elected_alert_region_is_present():
         encoding="utf-8"
     )
 
+    app = (
+        WEB
+        / "app.js"
+    ).read_text(
+        encoding="utf-8"
+    )
+
     assert (
         'id="elected-alerts"'
-        in html
+        not in html
     )
 
     assert (
-        'aria-live="polite"'
-        in html
+        "renderElectedAlerts()"
+        not in app
+    )
+
+    assert (
+        "resultAlertCard("
+        not in app
     )
 
 
-def test_elected_alert_feed_is_loaded_on_publication():
+def test_official_alert_feed_still_drives_state_results():
     app = (
         WEB
         / "app.js"
@@ -53,60 +65,6 @@ def test_elected_alert_feed_is_loaded_on_publication():
     )
 
     assert (
-        "renderElectedAlerts()"
-        in app
-    )
-
-    assert (
-        "Resultados definidos pelo TSE"
-        in app
-    )
-
-    assert (
-        "Eleito(a) segundo o dado publicado pelo TSE"
-        in app
-    )
-
-
-
-def test_elected_by_state_region_is_present():
-    html = (
-        WEB
-        / "index.html"
-    ).read_text(
-        encoding="utf-8"
-    )
-
-    assert (
-        'id="elected-by-state"'
-        in html
-    )
-
-    assert (
-        'id="governor-results-grid"'
-        in html
-    )
-
-    assert (
-        'id="senate-results-grid"'
-        in html
-    )
-
-    assert (
-        "Resultados definidos por estado"
-        in html
-    )
-
-
-def test_elected_by_state_uses_official_alert_feed():
-    app = (
-        WEB
-        / "app.js"
-    ).read_text(
-        encoding="utf-8"
-    )
-
-    assert (
         "electedStateGroups()"
         in app
     )
@@ -115,178 +73,6 @@ def test_elected_by_state_uses_official_alert_feed():
         "renderElectedByState()"
         in app
     )
-
-    assert (
-        'field: "governors"'
-        in app
-    )
-
-    assert (
-        'field: "senators"'
-        in app
-    )
-
-    assert (
-        '"governor-results-grid"'
-        in app
-    )
-
-    assert (
-        '"senate-results-grid"'
-        in app
-    )
-
-    assert (
-        "candidate.party_acronym"
-        in app
-    )
-
-    assert (
-        "        renderElectedAlerts();\n"
-        "        renderElectedByState();"
-        in app
-    )
-
-    assert (
-        "    renderElectedAlerts();\n"
-        "    renderElectedByState();"
-        in app
-    )
-
-
-
-def test_second_round_alert_is_distinct_from_elected_state_panel():
-    app = (
-        WEB
-        / "app.js"
-    ).read_text(
-        encoding="utf-8"
-    )
-
-    assert (
-        "function alertKind(item)"
-        in app
-    )
-
-    assert (
-        '"second_round"'
-        in app
-    )
-
-    assert (
-        "Classificado(a) para o 2º turno"
-        in app
-    )
-
-    assert (
-        '"elected",\n'
-        '                "mathematically_elected"'
-        in app
-    )
-
-    assert (
-        '"second_round"'
-        not in (
-            app[
-                app.index(
-                    "function electedStateGroups()"
-                ):
-                app.index(
-                    "function electedCandidateList("
-                )
-            ]
-        )
-    )
-
-
-
-def test_mathematical_definition_alert_is_rendered():
-    app = (
-        WEB
-        / "app.js"
-    ).read_text(
-        encoding="utf-8"
-    )
-
-    assert (
-        '"mathematically_elected"'
-        in app
-    )
-
-    assert (
-        "Eleição matematicamente definida (Eleito)"
-        in app
-    )
-
-    assert (
-        "Eleição matematicamente definida para 2º turno pelo TSE"
-        in app
-    )
-
-
-
-def test_result_alerts_can_expand_all_remaining_items():
-    app = (
-        WEB
-        / "app.js"
-    ).read_text(
-        encoding="utf-8"
-    )
-
-    assert (
-        "document.createElement(\n"
-        '                "details"'
-        in app
-    )
-
-    assert (
-        "Mostrar mais "
-        in app
-    )
-
-    assert (
-        "elected-alerts-more-list"
-        in app
-    )
-
-    assert (
-        "resultAlertCard(item)"
-        in app
-    )
-
-
-def test_mathematically_defined_governor_can_appear_without_candidate_name():
-    app = (
-        WEB
-        / "app.js"
-    ).read_text(
-        encoding="utf-8"
-    )
-
-    group_block = app[
-        app.index(
-            "function electedStateGroups()"
-        ):
-        app.index(
-            "function electedCandidateList("
-        )
-    ]
-
-    assert (
-        "|| !item.candidate_name"
-        not in group_block
-    )
-
-    assert (
-        "Nome ainda não individualizado pelo TSE"
-        in app
-    )
-
-    assert (
-        "Resultado definido pelo TSE"
-        in app
-    )
-
 
 
 def test_governor_and_senate_use_separate_grids():
@@ -305,6 +91,11 @@ def test_governor_and_senate_use_separate_grids():
     )
 
     assert (
+        "Resultados definidos por estado"
+        in html
+    )
+
+    assert (
         "Governadores"
         in html
     )
@@ -315,21 +106,123 @@ def test_governor_and_senate_use_separate_grids():
     )
 
     assert (
-        'id="governor-results-count"'
+        'id="governor-results-grid"'
         in html
     )
 
     assert (
-        'id="senate-results-count"'
+        'id="senate-results-grid"'
         in html
     )
 
     assert (
-        "renderOfficeResultGrid({"
+        'field: "governors"'
         in app
     )
 
     assert (
-        "electedStateCard("
+        'field: "senators"'
+        in app
+    )
+
+
+def test_second_round_is_shown_in_governor_grid():
+    app = (
+        WEB
+        / "app.js"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    grouping = app[
+        app.index(
+            "function electedStateGroups()"
+        ):
+        app.index(
+            "function electedCandidateList("
+        )
+    ]
+
+    assert (
+        '"second_round"'
+        in grouping
+    )
+
+    assert (
+        "definedGovernor"
+        in grouping
+    )
+
+    assert (
+        'definedSenator =\n'
+        '            office === 5\n'
+        '            && kind === "elected"'
+        in grouping
+    )
+
+    assert (
+        "2º turno definido pelo TSE"
+        in app
+    )
+
+    assert (
+        "Eleição segue para o 2º turno"
+        in app
+    )
+
+
+def test_mathematically_defined_governor_can_appear_without_candidate_name():
+    app = (
+        WEB
+        / "app.js"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    grouping = app[
+        app.index(
+            "function electedStateGroups()"
+        ):
+        app.index(
+            "function electedCandidateList("
+        )
+    ]
+
+    assert (
+        "|| !item.candidate_name"
+        not in grouping
+    )
+
+    assert (
+        '"mathematically_elected"'
+        in app
+    )
+
+    assert (
+        "Eleição matematicamente definida (Eleito)"
+        in app
+    )
+
+    assert (
+        "Nome ainda não individualizado pelo TSE"
+        in app
+    )
+
+
+def test_state_results_render_after_alert_reload():
+    app = (
+        WEB
+        / "app.js"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "        renderElectedByState();"
+        in app
+    )
+
+    assert (
+        "    renderElectedByState();"
         in app
     )
