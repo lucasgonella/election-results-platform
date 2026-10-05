@@ -40,7 +40,7 @@ const SENATE_CURRENT = {
     "PT": 9,
     "REPUBLICANOS": 6,
     "S/PARTIDO": 1,
-    "UNIÃO": 3
+    "UNIAO": 3
 };
 
 /*
@@ -58,7 +58,7 @@ const SENATE_HOLDOVER_2027 = {
     "PT": 3,
     "REPUBLICANOS": 3,
     "S/PARTIDO": 1,
-    "UNIÃO": 3
+    "UNIAO": 3
 };
 
 const LABELS = {
@@ -67,6 +67,7 @@ const LABELS = {
     "FE-BRASIL": "Federação Brasil da Esperança",
     "FED-PSOL-REDE": "Federação PSOL REDE",
     "S/PARTIDO": "Sem partido",
+    "UNIAO": "UNIÃO",
     "PENDENTE": "Pendente"
 };
 
@@ -436,13 +437,17 @@ function seatPositions(
                     y:
                         centerY
                         - radius
-                        * Math.sin(angle)
+                        * Math.sin(angle),
+                    angle
                 });
             }
         }
     );
 
-    return positions;
+    return positions.sort(
+        (a, b) =>
+            b.angle - a.angle
+    );
 }
 
 function seatKeys(
