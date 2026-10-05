@@ -9,22 +9,27 @@ const SENATE_TOTAL = 81;
 const SENATE_ELECTED_2026 = 54;
 
 const CAMERA_CURRENT = {
-    "FED-UP": 98,
+    "PL": 98,
+    "PT": 65,
+    "UNIAO": 52,
     "PSD": 48,
+    "PP": 46,
     "REPUBLICANOS": 42,
     "MDB": 38,
     "PODE": 27,
-    "FED-PSDB-CIDADANIA": 19,
-    "PL": 98,
-    "FE-BRASIL": 82,
     "PSB": 17,
-    "FED-PSOL-REDE": 16,
+    "PSDB": 15,
+    "PSOL": 13,
+    "PCDOB": 11,
     "PDT": 10,
+    "PV": 6,
     "AVANTE": 5,
+    "NOVO": 5,
+    "CIDADANIA": 4,
     "SOLIDARIEDADE": 4,
     "PRD": 3,
-    "NOVO": 5,
-    "MISSÃO": 1
+    "REDE": 3,
+    "MISSAO": 1
 };
 
 const SENATE_CURRENT = {
@@ -62,35 +67,34 @@ const SENATE_HOLDOVER_2027 = {
 };
 
 const LABELS = {
-    "FED-UP": "Federação União Progressista",
-    "FED-PSDB-CIDADANIA": "Federação PSDB CIDADANIA",
-    "FE-BRASIL": "Federação Brasil da Esperança",
-    "FED-PSOL-REDE": "Federação PSOL REDE",
+    "PCDOB": "PCdoB",
+    "MISSAO": "MISSÃO",
     "S/PARTIDO": "Sem partido",
     "UNIAO": "UNIÃO",
     "PENDENTE": "Pendente"
 };
 
 const COLORS = {
-    "FED-UP": "#3f8f72",
     "PSD": "#a5ad31",
     "REPUBLICANOS": "#5c7180",
     "MDB": "#58a37b",
     "PODE": "#735fa7",
-    "FED-PSDB-CIDADANIA": "#3f91ad",
     "PL": "#32326f",
-    "FE-BRASIL": "#d8533f",
     "PSB": "#df702d",
-    "FED-PSOL-REDE": "#bd2444",
     "PDT": "#324f82",
     "AVANTE": "#7eaf98",
     "SOLIDARIEDADE": "#bd826d",
     "PRD": "#9c83be",
     "NOVO": "#eb7b25",
-    "MISSÃO": "#29384f",
+    "MISSAO": "#29384f",
     "PP": "#4f9e87",
     "PSDB": "#4492b6",
+    "CIDADANIA": "#68a6bd",
     "PT": "#cf4141",
+    "PCDOB": "#b93232",
+    "PV": "#4f9a55",
+    "PSOL": "#c43b59",
+    "REDE": "#6ca98a",
     "UNIAO": "#55a897",
     "S/PARTIDO": "#555b62",
     "PENDENTE": "#d8dce2"
@@ -107,97 +111,6 @@ function normalized(value) {
         )
         .trim()
         .toUpperCase();
-}
-
-function partySet(group) {
-    return (
-        Array.isArray(group.parties)
-            ? group.parties
-            : []
-    )
-        .map(
-            item =>
-                normalized(
-                    item.acronym
-                )
-        )
-        .filter(Boolean)
-        .sort();
-}
-
-function cameraGroupKey(group) {
-    const parties =
-        partySet(group);
-
-    const set =
-        parties.join("|");
-
-    if (
-        set === "PP|UNIAO"
-        || set === "PROGRESSISTAS|UNIAO"
-    ) {
-        return "FED-UP";
-    }
-
-    if (
-        set === "CIDADANIA|PSDB"
-    ) {
-        return "FED-PSDB-CIDADANIA";
-    }
-
-    if (
-        set === "PCDOB|PT|PV"
-        || set === "PC DO B|PT|PV"
-    ) {
-        return "FE-BRASIL";
-    }
-
-    if (
-        set === "PSOL|REDE"
-    ) {
-        return "FED-PSOL-REDE";
-    }
-
-    if (parties.length === 1) {
-        return parties[0];
-    }
-
-    const name =
-        normalized(group.name);
-
-    if (
-        name.includes("UNIAO")
-        && name.includes("PROGRESS")
-    ) {
-        return "FED-UP";
-    }
-
-    if (
-        name.includes("BRASIL")
-        && name.includes("ESPERANCA")
-    ) {
-        return "FE-BRASIL";
-    }
-
-    if (
-        name.includes("PSDB")
-        && name.includes("CIDADANIA")
-    ) {
-        return "FED-PSDB-CIDADANIA";
-    }
-
-    if (
-        name.includes("PSOL")
-        && name.includes("REDE")
-    ) {
-        return "FED-PSOL-REDE";
-    }
-
-    return (
-        group.name
-        || parties.join(" / ")
-        || "OUTROS"
-    );
 }
 
 function displayLabel(key) {
@@ -714,7 +627,7 @@ function renderTable(
         `
         <thead>
             <tr>
-                <th>Partido / Federação</th>
+                <th>Partido</th>
                 <th>Atual</th>
                 <th>2027</th>
                 <th>Variação</th>
@@ -832,6 +745,30 @@ async function fetchJson(url) {
     return response.json();
 }
 
+function candidateIsOfficiallyElected(
+    candidate
+) {
+    if (
+        candidate.elected
+        === true
+    ) {
+        return true;
+    }
+
+    const status =
+        normalized(
+            candidate.result_status
+        );
+
+    return (
+        status === "ELEITO"
+        || status.startsWith(
+            "ELEITO POR "
+        )
+    );
+}
+
+
 async function cameraFutureComposition(
     manifest
 ) {
@@ -858,45 +795,74 @@ async function cameraFutureComposition(
         );
 
     const result = {};
+    const electedIds =
+        new Set();
 
     for (const payload of payloads) {
-        const groups =
+        const candidates =
             Array.isArray(
-                payload
-                    ?.office
-                    ?.seat_allocations
+                payload?.candidates
             )
-                ? payload
-                    .office
-                    .seat_allocations
+                ? payload.candidates
                 : [];
 
-        for (const group of groups) {
-            const seats =
-                Number(
-                    group.seats
-                    || 0
-                );
-
-            if (seats <= 0) {
+        for (
+            const candidate
+            of candidates
+        ) {
+            if (
+                !candidateIsOfficiallyElected(
+                    candidate
+                )
+                || !candidate.party_acronym
+            ) {
                 continue;
             }
 
+            const candidateId =
+                String(
+                    candidate
+                        .tse_candidate_seq
+                    ?? (
+                        payload
+                            ?.scope
+                            ?.code
+                        + ":"
+                        + candidate
+                            .ballot_number
+                    )
+                );
+
+            if (
+                electedIds.has(
+                    candidateId
+                )
+            ) {
+                continue;
+            }
+
+            electedIds.add(
+                candidateId
+            );
+
             addCount(
                 result,
-                cameraGroupKey(group),
-                seats
+                normalized(
+                    candidate
+                        .party_acronym
+                ),
+                1
             );
         }
     }
 
-    const allocated =
+    const elected =
         sumComposition(result);
 
-    if (allocated < CAMERA_TOTAL) {
+    if (elected < CAMERA_TOTAL) {
         result.PENDENTE =
             CAMERA_TOTAL
-            - allocated;
+            - elected;
     }
 
     return result;
