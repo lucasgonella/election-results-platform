@@ -268,6 +268,68 @@ def test_composition_script_cache_is_bumped():
     )
 
     assert (
-        'src="composition.js?v=2"'
+        'src="composition.js?v=3"'
+        in html
+    )
+
+
+
+def test_chamber_pending_seats_are_broken_down_by_state():
+    js = (
+        WEB
+        / "composition.js"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "pendingByState"
+        in js
+    )
+
+    assert (
+        "stateSeats"
+        in js
+    )
+
+    assert (
+        "electedInState.size"
+        in js
+    )
+
+    assert (
+        "item.scope"
+        in js
+        or "payload\n"
+           "                            ?.scope"
+           in js
+    )
+
+    assert (
+        "composition-pending-detail"
+        in js
+    )
+
+    assert (
+        "camera.pendingByState"
+        in js
+    )
+
+
+def test_composition_pending_assets_are_cache_busted():
+    html = (
+        WEB
+        / "composicao.html"
+    ).read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        'href="composition.css?v=2"'
+        in html
+    )
+
+    assert (
+        'src="composition.js?v=3"'
         in html
     )
