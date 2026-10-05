@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+
+    <title>
+        Composição do Congresso 2027 | Eleições 2026
+    </title>
+
+    <meta
+        name="description"
+        content="Compare a composição atual e a composição de 2027 da Câmara dos Deputados e do Senado Federal, com dados oficiais."
+    >
+
+    <meta
+        name="robots"
+        content="index,follow"
+    >
+
+    <link
+        rel="canonical"
+        href="https://afgnet.com.br/eleicoes/composicao.html"
+    >
+
+    <link
+        rel="stylesheet"
+        href="styles.css?v=11"
+    >
+
+    <link
+        rel="stylesheet"
+        href="composition.css?v=1"
+    >
+</head>
+
+<body>
+
+<main class="container composition-page">
+
+    <header class="composition-hero">
+
+        <div>
+            <a
+                class="composition-back"
+                href="./"
+            >
+                ← Resultados
+            </a>
+
+            <p class="eyebrow">
+                ELEIÇÕES 2026
+            </p>
+
+            <h1>
+                Composição do Congresso
+            </h1>
+
+            <p class="subtitle">
+                Compare a composição atual com a configuração
+                que assume em 2027, com base em dados oficiais.
+            </p>
+        </div>
+
+        <div class="composition-badges">
+            <span class="composition-badge">
+                Câmara · 513
+            </span>
+
+            <span class="composition-badge">
+                Senado · 81
+            </span>
+        </div>
+
+    </header>
+
+
+    <section
+        id="composition-status"
+        class="composition-status"
+    >
+        Carregando composição oficial...
+    </section>
+
+
+    <section
+        class="composition-house"
+        aria-labelledby="camera-title"
+    >
+
+        <header class="composition-house-header">
+
+            <div>
+                <p class="composition-kicker">
+                    CÂMARA DOS DEPUTADOS
+                </p>
+
+                <h2 id="camera-title">
+                    513 cadeiras
+                </h2>
+
+                <p>
+                    Em 2026, todas as cadeiras foram disputadas.
+                    A composição de 2027 é calculada diretamente
+                    das vagas publicadas pelo TSE nos 27 estados.
+                </p>
+            </div>
+
+            <span
+                id="camera-progress"
+                class="composition-progress"
+            >
+                --
+            </span>
+
+        </header>
+
+
+        <div class="composition-comparison">
+
+            <article class="composition-panel">
+                <div class="composition-panel-header">
+                    <div>
+                        <span>Composição</span>
+                        <strong>Atual</strong>
+                    </div>
+
+                    <span>513 cadeiras</span>
+                </div>
+
+                <div
+                    id="camera-current-chart"
+                    class="hemicycle"
+                ></div>
+            </article>
+
+            <article class="composition-panel">
+                <div class="composition-panel-header">
+                    <div>
+                        <span>Nova legislatura</span>
+                        <strong>2027</strong>
+                    </div>
+
+                    <span id="camera-2027-total">
+                        --
+                    </span>
+                </div>
+
+                <div
+                    id="camera-future-chart"
+                    class="hemicycle"
+                ></div>
+            </article>
+
+        </div>
+
+
+        <div
+            id="camera-table"
+            class="composition-table-wrap"
+        ></div>
+
+        <p class="composition-source">
+            Base atual:
+            <a
+                href="https://www.camara.leg.br/Internet/Deputado/bancada.asp"
+                target="_blank"
+                rel="noopener noreferrer"
+            >
+                Câmara dos Deputados
+            </a>.
+            Nova composição: resultados oficiais publicados pelo TSE
+            e distribuídos pelo portal.
+        </p>
+
+    </section>
+
+
+    <section
+        class="composition-house"
+        aria-labelledby="senate-title"
+    >
+
+        <header class="composition-house-header">
+
+            <div>
+                <p class="composition-kicker">
+                    SENADO FEDERAL
+                </p>
+
+                <h2 id="senate-title">
+                    81 cadeiras
+                </h2>
+
+                <p>
+                    Em 2026 foram escolhidos 54 senadores.
+                    As outras 27 cadeiras são de mandatos iniciados
+                    em 2023 e seguem até 2031.
+                </p>
+            </div>
+
+            <span
+                id="senate-progress"
+                class="composition-progress"
+            >
+                --
+            </span>
+
+        </header>
+
+
+        <div class="composition-comparison">
+
+            <article class="composition-panel">
+                <div class="composition-panel-header">
+                    <div>
+                        <span>Composição</span>
+                        <strong>Atual</strong>
+                    </div>
+
+                    <span>81 cadeiras</span>
+                </div>
+
+                <div
+                    id="senate-current-chart"
+                    class="hemicycle"
+                ></div>
+            </article>
+
+            <article class="composition-panel">
+                <div class="composition-panel-header">
+                    <div>
+                        <span>Nova legislatura</span>
+                        <strong>2027</strong>
+                    </div>
+
+                    <span id="senate-2027-total">
+                        --
+                    </span>
+                </div>
+
+                <div
+                    id="senate-future-chart"
+                    class="hemicycle"
+                ></div>
+            </article>
+
+        </div>
+
+
+        <div
+            id="senate-table"
+            class="composition-table-wrap"
+        ></div>
+
+        <div class="composition-note">
+            <strong>Como calculamos o Senado 2027</strong>
+            <p>
+                Somamos os senadores eleitos em 2026 aos 27 mandatos
+                que continuam até 2031. Substituições já definidas por
+                governadores eleitos são consideradas; eventuais mudanças
+                decorrentes do segundo turno, decisões judiciais, suplências
+                ou troca de partido podem alterar a composição até a posse.
+            </p>
+        </div>
+
+        <p class="composition-source">
+            Base atual e mandatos:
+            <a
+                href="https://www25.senado.leg.br/web/transparencia/sen/em-exercicio/-/e/por-partido"
+                target="_blank"
+                rel="noopener noreferrer"
+            >
+                Senado Federal
+            </a>.
+            Eleitos em 2026: resultados oficiais do TSE.
+        </p>
+
+    </section>
+
+
+    <footer>
+        <p>
+            O portal não realiza projeções eleitorais.
+            A página consolida resultados oficiais já publicados
+            e mandatos que permanecem em vigor.
+        </p>
+
+        <p class="footer-credits">
+            <a href="./">
+                Voltar para a apuração
+            </a>
+        </p>
+    </footer>
+
+</main>
+
+<script src="composition.js?v=1"></script>
+
+</body>
+</html>
