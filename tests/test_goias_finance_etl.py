@@ -31,10 +31,13 @@ class GoFinanceTests(unittest.TestCase):
                     "SP;7;124;Outro Estado;CCC;45678\n",
             })
             create_zip(fin, {
-                "receitas_candidatos_2026_BR.csv":
+                "receitas_candidatos_2026_GO.csv":
                     "SQ_CANDIDATO;SQ_RECEITA;VR_RECEITA;NR_CPF_CNPJ_DOADOR;NM_DOADOR;DT_RECEITA\n"
                     "123;91;1250,50;12345678909;Pessoa Exemplo;01/10/2026\n",
-                "despesas_contratadas_candidatos_2026_BR.csv":
+                "receitas_candidatos_2026_BRASIL.csv":
+                    "SQ_CANDIDATO;SQ_RECEITA;VR_RECEITA;NR_CPF_CNPJ_DOADOR;NM_DOADOR;DT_RECEITA\\n"
+                    "123;91;1250,50;12345678909;Pessoa Exemplo;01/10/2026\\n",
+                "despesas_contratadas_candidatos_2026_GO.csv":
                     "SQ_CANDIDATO;SQ_DESPESA;VR_DESPESA_CONTRATADA\n"
                     "123;33;250,50\n",
             })
@@ -54,7 +57,7 @@ class GoFinanceTests(unittest.TestCase):
                     "SG_UF;CD_CARGO;SQ_CANDIDATO;NM_CANDIDATO\nGO;7;1;Exemplo\n"
             })
             create_zip(tmp/"f.zip", {
-                "receitas_candidatos_2026_BR.csv":
+                "receitas_candidatos_2026_GO.csv":
                     "SQ_CANDIDATO;SQ_RECEITA;VR_RECEITA\n1;1;100,00\n"
             })
             with self.assertRaises(ValueError):

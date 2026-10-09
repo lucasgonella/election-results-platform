@@ -1,6 +1,13 @@
 name: Import TSE finance data for Goiás
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/goias_finance_etl.py'
+      - '.github/workflows/goias-finance-data.yml'
   workflow_dispatch:
+  schedule:
+    - cron: '23 9,15,21 * * *'
 permissions:
   contents: write
 concurrency:
