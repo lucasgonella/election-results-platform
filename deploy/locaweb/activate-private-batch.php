@@ -30,7 +30,7 @@ function activatePrivateBatch(string $private, string $id): array {
         $file = $files . '/' . $path;
         if (!is_file($file) || is_link($file)) throw new RuntimeException('incomplete_batch');
         $raw = @file_get_contents($file);
-        if ($raw === false || strlen($raw) > 700000) throw new RuntimeException('invalid_file');
+        if ($raw === false || strlen($raw) > 6291456) throw new RuntimeException('invalid_file');
         try { $parsed = json_decode($raw, true, 512, JSON_THROW_ON_ERROR); }
         catch (JsonException $e) { throw new RuntimeException('invalid_json'); }
         if (!is_array($parsed)) throw new RuntimeException('invalid_json');
