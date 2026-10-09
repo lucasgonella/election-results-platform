@@ -47,6 +47,19 @@ jobs:
           test -s web/public/eleicoes/goias/raio-x/index.html
           echo "Destination validated; FTP port 21, plain FTP (NO TLS)."
 
+
+      - name: Verify real financial data in repository
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path('web/public/eleicoes/goias/raio-x/data/go-2026.json').read_text())
+          assert data['scope']=='GO' and data['year']==2026
+          assert len(data['candidates'])>100 and len(data['transfers'])>0
+          assert all(x['office'] in ('deputado federal','deputado estadual') for x in data['candidates'])
+          print('GO candidates:',len(data['candidates']),'money transfers:',len(data['transfers']))
+          PY
+
       - name: Upload Raio-X static files over plain FTP 21
         shell: bash
         run: |
@@ -75,3 +88,13 @@ jobs:
             'https://afgnet.com.br/eleicoes/goias/raio-x/' \
             | grep -q 'Raio-X Eleitoral Goiás'
           echo "Public frontend verified via HTTPS."
+
+      - name: Verify live financial data
+        run: |
+          curl -fLsS --retry 3 https://afgnet.com.br/eleicoes/goias/raio-x/data/go-2026.json -o /tmp/go-live.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/go-live.json'))
+          assert d['scope']=='GO' and d['year']==2026 and len(d['candidates'])>100
+          print('Live candidates:',len(d['candidates']),'transfers:',len(d['transfers']))
+          PY
