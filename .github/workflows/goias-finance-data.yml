@@ -1,0 +1,90 @@
+name: Import TSE finance data for Goiás
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/goias_finance_etl.py'
+      - '.github/workflows/goias-finance-data.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '23 9,15,21 * * *'
+permissions:
+  contents: write
+concurrency:
+  group: goias-finance-etl
+  cancel-in-progress: false
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Unit test financial importer
+        run: python3 -m unittest discover -s tests -p 'test_goias_finance_etl.py' -v
+      - name: Download official TSE datasets
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tse-go
+          curl -fL --retry 3 --connect-timeout 30 --max-time 1500 \
+            'https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_cand/consulta_cand_2026.zip' \
+            -o /tmp/tse-go/candidates.zip
+          curl -fL --retry 3 --connect-timeout 30 --max-time 1500 \
+            'https://cdn.tse.jus.br/estatistica/sead/odsele/prestacao_contas/prestacao_de_contas_eleitorais_candidatos_2026.zip' \
+            -o /tmp/tse-go/finance.zip
+          unzip -tqq /tmp/tse-go/candidates.zip
+          unzip -tqq /tmp/tse-go/finance.zip
+      - name: Generate GO-only data from TSE
+        run: |
+          python3 tools/goias_finance_etl.py \
+            --candidates /tmp/tse-go/candidates.zip \
+            --finance /tmp/tse-go/finance.zip \
+            --output web/public/eleicoes/goias/raio-x/data/go-2026.json
+      - name: Validate and publish only complete dataset
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('web/public/eleicoes/goias/raio-x/data/go-2026.json').read_text())
+          assert d['scope']=='GO' and d['year']==2026
+          assert len(d['candidates'])>100
+          assert d['transfers']
+          assert all(c['office'] in ('deputado estadual','deputado federal') for c in d['candidates'])
+          print('Validated candidate count:',len(d['candidates']))
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add web/public/eleicoes/goias/raio-x/data/go-2026.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'data(go): update official candidate finance export'
+          git push origin HEAD:main
+      - name: Upload validated GO dataset via plain FTP 21
+        env:
+          FTP_HOST: ${{ secrets.LOCAWEB_FTP_HOST }}
+          FTP_USER: ${{ secrets.LOCAWEB_FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.LOCAWEB_FTP_PASSWORD }}
+          FTP_DIR: ${{ vars.LOCAWEB_FTP_GOIAS_DIR }}
+        run: |
+          set -euo pipefail
+          test -n "$FTP_HOST" && test -n "$FTP_USER" && test -n "$FTP_PASSWORD" && test -n "$FTP_DIR"
+          [[ "$FTP_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
+          [[ "$FTP_DIR" =~ ^[A-Za-z0-9_./-]+$ ]]
+          [[ "$FTP_DIR" != *..* && "$FTP_DIR" != /* && "$FTP_DIR" != *//* ]]
+          [[ "$FTP_DIR" == */eleicoes/goias/raio-x || "$FTP_DIR" == eleicoes/goias/raio-x ]]
+          NETRC="$(mktemp)"; trap 'rm -f "$NETRC"' EXIT
+          chmod 600 "$NETRC"
+          printf 'machine %s login %s password %s\\n' "$FTP_HOST" "$FTP_USER" "$FTP_PASSWORD" > "$NETRC"
+          curl --fail --silent --show-error --retry 3 --proto '=ftp' --ftp-create-dirs \\
+            --netrc-file "$NETRC" --upload-file web/public/eleicoes/goias/raio-x/data/go-2026.json \\
+            "ftp://$FTP_HOST:21/$FTP_DIR/data/go-2026.json"
+          curl --fail --silent --show-error --retry 3 \\
+            https://afgnet.com.br/eleicoes/goias/raio-x/data/go-2026.json \\
+            -o /tmp/go-verified.json
+          python3 - <<'PY'
+          import json
+          with open('/tmp/go-verified.json') as f: data=json.load(f)
+          assert data['scope']=='GO' and data['year']==2026 and len(data['candidates'])>100
+          print('Official GO data published:',len(data['candidates']))
+          PY
