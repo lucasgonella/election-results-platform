@@ -1,0 +1,77 @@
+name: Deploy Raio-X Goiás via FTP port 21
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/public/eleicoes/goias/raio-x/**'
+      - '.github/workflows/deploy-goias-ftp.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: goias-ftp-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FTP_HOST: ${{ secrets.LOCAWEB_FTP_HOST }}
+      FTP_USER: ${{ secrets.LOCAWEB_FTP_USER }}
+      FTP_PASSWORD: ${{ secrets.LOCAWEB_FTP_PASSWORD }}
+      FTP_DIR: ${{ vars.LOCAWEB_FTP_GOIAS_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify destination and FTP configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for value in FTP_HOST FTP_USER FTP_PASSWORD FTP_DIR; do
+            if [[ -z "${!value}" ]]; then
+              echo "::error::Missing $value. Set required repository secrets and LOCAWEB_FTP_GOIAS_DIR variable."
+              exit 1
+            fi
+          done
+          [[ "$FTP_HOST" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "::error::Invalid FTP host"; exit 1; }
+          [[ "$FTP_DIR" =~ ^[A-Za-z0-9_./-]+$ ]] || { echo "::error::Invalid FTP path"; exit 1; }
+          [[ "$FTP_DIR" != /* && "$FTP_DIR" != *..* && "$FTP_DIR" != *//* ]] || { echo "::error::Unsafe FTP path"; exit 1; }
+          [[ "$FTP_DIR" == */eleicoes/goias/raio-x || "$FTP_DIR" == eleicoes/goias/raio-x ]] || {
+            echo "::error::Destination must end with eleicoes/goias/raio-x"
+            exit 1
+          }
+          test -s web/public/eleicoes/goias/raio-x/index.html
+          echo "Destination validated; FTP port 21, plain FTP (NO TLS)."
+
+      - name: Upload Raio-X static files over plain FTP 21
+        shell: bash
+        run: |
+          set -euo pipefail
+          NETRC="$(mktemp)"
+          trap 'rm -f "$NETRC"' EXIT
+          chmod 600 "$NETRC"
+          # Password in a temporary file, never echoed or committed.
+          printf 'machine %s login %s password %s\n' "$FTP_HOST" "$FTP_USER" "$FTP_PASSWORD" > "$NETRC"
+          ROOT="web/public/eleicoes/goias/raio-x"
+          while IFS= read -r -d '' file; do
+            relative="${file#"$ROOT"/}"
+            remote="ftp://$FTP_HOST:21/$FTP_DIR/$relative"
+            echo "Deploying $relative"
+            curl --fail --show-error --silent --retry 2 --retry-delay 2 \
+              --proto '=ftp' --ftp-create-dirs --netrc-file "$NETRC" \
+              --upload-file "$file" "$remote"
+          done < <(find "$ROOT" -type f \( -name '*.html' -o -name '*.css' -o -name '*.js' -o -name '*.json' \) -print0 | sort -z)
+
+      - name: Verify public frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent --retry 4 --retry-delay 3 \
+            -H 'Cache-Control: no-cache' \
+            'https://afgnet.com.br/eleicoes/goias/raio-x/' \
+            | grep -q 'Raio-X Eleitoral Goiás'
+          echo "Public frontend verified via HTTPS."
