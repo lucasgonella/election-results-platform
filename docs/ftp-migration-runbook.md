@@ -410,3 +410,31 @@ no checkout original e o conector rejeitou `github_create_tree` com
 validação pode ser preparado em repositório local isolado no caminho gravável,
 mas não há revisão nova no GitHub nem CI Linux da etapa 9 enquanto o envio não
 for permitido. Isso é bloqueio externo de execução, não falha de teste Linux.
+
+### Etapa 11 — somente a conta FTP existente
+
+A decisão atual exclui nova conta, mudança de plano e contratação adicional.
+O [plano de execução](ftp-existing-account-plan.md) define inboxes, configuração,
+diagnóstico sintético, critérios de aprovação de escrita e recuperação. As
+alternativas de identidade/plano discutidas anteriormente são históricas e não
+integram a ação autorizada. Chave/configurações privadas, gates e workflows de
+Goiás permanecem preservados.
+
+O PR recebeu `5647d9e` após a sessão anterior; CI/HTTPS/FTP Linux dessa revisão
+passaram, inclusive Python 3.13/3.14. Isso resolve a validação de código da etapa
+9, não a liberação operacional. A etapa 11 acrescenta somente teste diagnóstico
+de transporte com payload sintético fixo e namespace explícito, sem publicar
+dados nem instalar PHP. O veto eleitoral por controle exposto continua intacto.
+
+Login/PWD/MLST da conta existente foram revalidados sem escrita e sem ler
+conteúdo protegido: PWD `/`, chave/PHP alcançáveis, inboxes/probe com resposta
+550. GitHub environments não puderam ser consultados pelo proxy; SSH/app01
+continuam bloqueados nesta sessão. A pesquisa oficial AM encontrou relatório
+estadual anterior, sem explicação específica dos IDGs de 09/10. Manter pending,
+watermarks e bloqueio de reabertura.
+
+O primeiro ensaio proposto escreve apenas em
+`/ftp-inbox/elections/staging/ftp-staging-pr75-etapa11`, conforme efeitos e limpeza
+limitada documentados no plano. **Aprovação específica ainda necessária:**
+nenhum STOR/MKD/rename/DELE/RMD remoto foi executado. Ensaios PHP/FPM/NFS/cache e
+ativação fixture têm escopo separado e ainda dependem de rota/caminhos reais.

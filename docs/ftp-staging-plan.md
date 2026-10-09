@@ -1,4 +1,4 @@
-# Etapa 9 — plano de staging real
+# Etapas 9 e 11 — plano de staging real
 
 Complemento do runbook, revisão base 3e8bb1f / PR #75. Não autoriza execução
 remota. Preserva arquitetura, serviços, pending e watermarks.
@@ -26,13 +26,17 @@ Solicitação humana ao provedor, sem credenciais:
 3. Confirmar UID efetivo, acesso PHP à inbox, quota/inodes, topologia NFS/FPM e
    afinidade a um host identificável. Não enfraquecer modos existentes.
 
-Menor mudança candidata: restringir a conta atual às inboxes e destino Goiás
-aprovados. Se somente usuário secundário confinado for suportado, criação e
-substituição dos valores dos secrets existentes exigem autorização e análise do
-impacto em Goiás; não duplicar secrets. Chmod na mesma home acessível não resolve.
-Se o plano não suportar confinamento, propor hospedagem/ambiente separado com
-identidades distintas mantendo o mesmo protocolo. Não implementar solução
-paralela. Mover apenas HMAC não protege PHP modificável pelo transporte.
+Decisão da etapa 11: usar exclusivamente a conta FTP existente, sem nova conta,
+troca de plano ou contratação adicional. As alternativas antes discutidas estão
+descartadas. Usar os secrets e arquivos de credenciais atuais, sem duplicação.
+O acesso amplo e a ausência de isolamento permanecem registrados. Pode-se
+confirmar com o provedor a restrição da própria conta, sem mudar permissões da
+chave/configurações nem afetar SSH/PHP/Goiás; não presumir que isso seja suportado.
+Mover apenas HMAC não protege PHP modificável pelo transporte. O uploader
+eleitoral continua recusando acesso ao controle; aceite do risco não habilita gates.
+
+O [plano da etapa 11](ftp-existing-account-plan.md) define destinos, configurações,
+diagnóstico sintético preparado, aprovação específica de escrita e recuperação.
 
 Aceitação: confirmação do provedor, mapa real e negação MLST/CWD para toda área
 de controle/PHP, sem leitura de conteúdo; revisão de traversal/links pelo provedor.
@@ -54,8 +58,10 @@ de controle/PHP, sem leitura de conteúdo; revisão de traversal/links pelo prov
     public/probe-marker.json
 ```
 
-Novo vhost TLS deve apontar somente para `ftp-staging-pr75/public`; confirmar
-ausência de aliases expondo privados. O endpoint calcula sua configuração como
+Uma rota HTTPS isolada no serviço contratado existente deve apontar somente para
+`ftp-staging-pr75/public`, se o provedor confirmar suporte e houver autorização;
+não contratar serviço nem criar vhost automaticamente. Confirmar ausência de
+aliases expondo privados. O endpoint calcula sua configuração como
 `dirname(__DIR__,2)/.election-publisher`: respeitar essa profundidade.
 PWD/caminhos FTP após confinamento ainda desconhecidos. Para código o caminho
 deve terminar em `code/staging`, conforme validação existente; não retirar o gate.
