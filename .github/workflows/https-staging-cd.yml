@@ -6,8 +6,17 @@ on:
     paths:
       - 'deploy/locaweb/**'
       - 'deploy/scripts/publish-live-results-https.py'
+      - 'deploy/scripts/release-https-staging.sh'
+      - 'deploy/scripts/rollback-https-staging.sh'
       - '.github/workflows/https-staging-cd.yml'
   workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Isolated staging release operation'
+        required: true
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
 
 permissions:
   contents: read
@@ -28,16 +37,11 @@ jobs:
       # The app01 deployment runner needs Python only; it does not execute PHP.
       - name: Validate Python client on app01
         run: python3 -m py_compile deploy/scripts/publish-live-results-https.py
-      - name: Install in isolated release directory (no systemd changes)
+      - name: Deploy isolated release (no systemd changes)
+        if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy'
         env:
           REV: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          BASE="$HOME/election-https-staging-releases"
-          TARGET="$BASE/$REV"
-          mkdir -p "$TARGET/deploy/locaweb" "$TARGET/deploy/scripts"
-          install -m 0600 deploy/locaweb/election-publish.php "$TARGET/deploy/locaweb/"
-          install -m 0600 deploy/locaweb/activate-sandbox.php "$TARGET/deploy/locaweb/"
-          install -m 0700 deploy/scripts/publish-live-results-https.py "$TARGET/deploy/scripts/"
-          echo "Staged release $REV at $TARGET"
-          echo "The app01 service, public Locaweb site and collector are unchanged."
+        run: bash deploy/scripts/release-https-staging.sh "$REV"
+      - name: Roll back isolated release pointer
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'rollback'
+        run: bash deploy/scripts/rollback-https-staging.sh
