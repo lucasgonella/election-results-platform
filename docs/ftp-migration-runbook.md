@@ -1,4 +1,4 @@
-# Preparação da migração FTP — etapa 7 / PR #75
+# Preparação da migração FTP — etapas 7 e 8 / PR #75
 
 Este documento registra diagnóstico somente leitura de **09/10/2026, aproximadamente 18h15–18h35, America/Sao_Paulo**. Nenhum serviço, timer, endpoint, configuração, banco ou arquivo remoto foi modificado. Os procedimentos de escrita abaixo dependem de autorização posterior; não são comandos para executar nesta etapa.
 
@@ -149,3 +149,80 @@ python deploy/scripts/audit-ftp-migration.py --report <arquivo-local-novo.json> 
 O FTP lê somente variáveis já provisionadas no ambiente; sem elas, informa indisponibilidade e consulta apenas FEAT sem login. O relatório não deve ser commitado: contém metadados operacionais datados. Testes de adoção/ativação usam fixtures; nenhuma coleta oficial ou publicação real foi executada nesta etapa.
 
 Validação final local da etapa 7: **226 testes aprovados e 1 excluído**, o teste Bash legado bloqueado pelo Windows. PHP lint aprovado; pacote público autossuficiente validado com PHP CLI. Testes novos cobrem adoção/idempotência, marcador/state/assinatura alterados, pending incompatível, certificado sobre release corrompida, rollback para baseline legada, lock oficial concorrente, idg inteiro/string e ordem de chaves, reabertura bloqueada, artefato aprovado/corrompido, staging fora de public_root e recuperação dos entrypoints preservando data/Goiás. `git diff --check` aprovado. Teste real de transferência/ativação na hospedagem não foi executado.
+
+## Etapa 8 — evidências adicionais de 09/10/2026
+
+Diagnóstico remoto exclusivamente de leitura, aproximadamente 18h59–19h10 America/Sao_Paulo. SSH executou Python por stdin para `stat`, `os.access`, leitura de `/proc/mounts` e comparação dos resultados eleitorais. Não foram lidos conteúdos de chaves, configurações privadas ou estado selado. Nenhum endpoint foi ativado; não houve comandos FTP de escrita, alteração de serviços ou testes remotos com arquivos temporários. As leituras do estado live não congelam o serviço: são observações datadas, não um checkpoint de adoção.
+
+### Identidade FTP e separação de transporte/controle
+
+Nesta sessão, `LOCAWEB_FTP_HOST`, `LOCAWEB_FTP_USER` e `LOCAWEB_FTP_PASSWORD` estão ausentes do ambiente do processo. A etapa 7 confirmou a existência dos secrets no GitHub, mas seus valores não são recuperáveis pela API de secrets. Não foram solicitadas novas senhas nem iniciado workflow para extrair credenciais. A conexão sem login a `ftp.afgnet.com.br:21` respondeu a FEAT, anunciando MLST, SIZE, EPSV e UTF8. **Não houve autenticação FTP**: login, PWD, UID, chroot, mapeamento FTP→SSH e direitos da conta continuam NÃO VERIFICADOS.
+
+Metadados revalidados por SSH, sem leitura dos arquivos:
+
+| Caminho relativo à home SSH | Existência / modo / proprietário | Limite da evidência |
+| --- | --- | --- |
+| `.election-publisher` | Existe, 0700, UID/GID 542178. | SSH tem acesso de leitura/escrita segundo `os.access`; FTP desconhecido. |
+| `.election-publisher/hmac.key` | Existe, 0600, UID/GID 542178. | Somente stat/access; conteúdo não lido. FTP desconhecido. |
+| `.election-publisher/official-publish.lock` | Existe, 0644, UID/GID 542178. | Não aberto nem adquirido. |
+| `public_html/api/election-publish.php` | Existe, 0644, UID/GID 542178. | SSH tem acesso segundo `os.access`; conteúdo remoto não lido. FTP desconhecido. |
+| `.election-publisher/ftp-config.json` | Ausente nesse caminho fixo do endpoint novo. | Não comprova ausência de outras configurações privadas. |
+| `public_html/api/election-ftp-control.php` | Ausente no destino esperado. | Controlador FTP não instalado nesse caminho. |
+| `.election-publisher/ftp-state` e `.election-publisher/sealed` | Ausentes nesses dois caminhos examinados. | `cfg.private` é configurável; não são prova de ausência global de estado selado. |
+
+A ausência de `ftp-config.json` impede determinar o destino efetivo de `cfg.private/sealed` do novo protocolo. Não se deve inventar um path operacional a partir do exemplo de configuração. O PHP-FPM observado na etapa 7 compartilha o UID SSH; identidade FTP continua desconhecida.
+
+**Menor ajuste recomendado, condicionado ao diagnóstico autenticado:** restringir a conta FTP existente a um namespace de transporte que exponha somente inboxes aprovadas e os destinos legados necessários a Goiás. A restrição deve excluir chave, configuração, estado selado, locks e PHP executável, incluindo caminhos absolutos, `..` e links simbólicos. Preferir configuração de raiz virtual/chroot/allowlist suportada pelo provedor, preservando secrets e destinos existentes. Não mover a chave para um diretório dentro da mesma raiz FTP nem usar chmod mais permissivo. Se a hospedagem não puder impor essa fronteira à conta existente, a separação de identidade/conta pelo provedor exige decisão e autorização posteriores; não duplicar credenciais por iniciativa do agente.
+
+Para liberar: em uma sessão autorizada que já receba os secrets existentes, executar login, PWD, SYST e MLST/MLSD seletivos. Comparar UID/mode/paths com a tabela SSH. Não listar conteúdo privado indiscriminadamente, não usar RETR de arquivos sensíveis e não imprimir usuário/senha. Listagem negada isoladamente não prova impossibilidade de escrita: confirmar também a política de confinamento/allowlist do provedor, já que testes de escrita estão proibidos nesta etapa.
+
+### Amazonas: origem oficial confirmada, causa ainda não confirmada
+
+Os URLs foram obtidos das chaves do `target-state.json` no app01, sem adivinhar caminhos. Foram feitos dois GETs diretos, ambos HTTP 200, em **21:58:58–21:58:59 UTC**:
+
+| Cargo / URL oficial | IDG | Geração (`dg`/`hg`) | Totalização (`dt`/`ht`) | `tf` | SHA-256 dos bytes recebidos |
+| --- | --- | --- | --- | --- | --- |
+| [Federal AM](https://resultados.tse.jus.br/oficial/ele2026/6259/dados/am/am-c0006-e006259-u.json) | 3374388 | 09/10/2026 15:11:57 | 05/10/2026 05:05:12 | n | `43148bcdb03d765b640ec7d154a475b2b44efa949471d77aba96a8eb747681a4` |
+| [Estadual AM](https://resultados.tse.jus.br/oficial/ele2026/6259/dados/am/am-c0007-e006259-u.json) | 3376197 | 09/10/2026 15:11:59 | 05/10/2026 05:05:12 | n | `f9aea70e97c6b479b969bdc8a20407deca70d056cc174df788c7a093f29eeb2e` |
+
+Last-Modified: respectivamente `09/10/2026 18:13:42 GMT` e `18:13:44 GMT`. Ambos indicam 8157/8157 seções totalizadas (100%). Os IDs e horários coincidem com o pending observado na etapa 7 e com os resultados em stage revalidados nesta etapa. Os resultados incrementais estavam em stage; a inspeção de `pending/<uf>/<cargo>.json` não encontrou esses arquivos, portanto não se atribui ao pending uma estrutura de arquivos igual à de stage.
+
+A release pública selecionada continua `fd062ecbbafbe78ddfc240658e70525b6bf9e0cf28a8e21d64e0fb4b55d985ba`. Os dois resultados nela mantêm IDGs 2799854/2791077, geração 05/10 06:08:17, totalização 05/10 05:07:34 e `totalization_final=true`.
+
+Comparação baseline→stage por **identidade `tse_candidate_seq`**, não por posição: mesmos conjuntos de 135 candidatos federais e 278 estaduais; totais de votos e seções iguais. Não foram encontradas mudanças nos campos de votos dos candidatos. Mudaram `result_status` de todos, `elected` de 8 federais/24 estaduais, `display_order` de 102/219 candidatos, `seat_allocations` dos dois cargos e `candidate_status` de um candidato estadual. Portanto não é apenas atualização de captura e não basta comparar total de votos para liberar a entrega.
+
+**CONFIRMADO PELO CÓDIGO:** `collector/src/parser.py`, `as_bool`, converte `s→true` e `n→false`; `parse_ea20` usa `tf`, `dg/hg` e `dt/ht` diretamente. O false observado corresponde ao campo original do TSE, não a erro dessa conversão. A origem oficial atual dos dados está confirmada por HTTPS; isso não prova a causa administrativa/judicial da mudança.
+
+A [FAQ técnica do TSE 2026](https://www.tse.jus.br/eleicoes/informacoes-tecnicas-sobre-a-divulgacao-de-resultados/) descreve IDG como identificador único de geração; não oferece nessa resposta garantia de ordenação monotônica. Também alerta para geração paralela e diferenças de sincronização na CDN. Isso permite considerar sincronização ou reprocessamento como hipóteses, não concluir que explicam este caso. O [TRE-AM publicou a conclusão do primeiro turno em 05/10 às 12h36](https://www.tre-am.jus.br/comunicacao/noticias/2026/Outubro/eleicoes-2026-justica-eleitoral-divulga-relatorio-de-conclusao-do-primeiro-turno), com bancada federal e 24 cadeiras estaduais definidas; a notícia antecede os arquivos de 09/10 e não certifica sua situação atual.
+
+**NÃO VERIFICADO:** reabertura/retotalização oficialmente autorizada para esses dois cargos, causa da retirada das indicações de eleito/alocações e significado operacional do recuo do horário. A pesquisa oficial consultada não forneceu ato que explique essas gerações; isso não prova inexistência do ato. O link EA20 foi localizado na documentação oficial, mas o PDF não pôde ser obtido/validado nesta sessão. Para liberar, obter esclarecimento técnico do TSE/TRE-AM ou relatório/ato oficial referente à eleição 6259, abrangência AM, cargos 6/7 e essas gerações, acompanhado de dados oficiais coerentes. Qualquer eventual regra de exceção exige análise e testes próprios, revisão e autorização. **Preservar `totalization_reopened_requires_review`, baseline, watermarks e pending; não adotar stage como baseline para contornar o gate.**
+
+### NFS e staging real: risco adicional comprovado
+
+Leitura de `/proc/mounts` confirmou `/home/storage` em **NFS v3**, com opções relevantes `rw,noexec,acregmin=60,acdirmin=60,soft,nocto,nolock,noacl,local_lock=all`. A etapa 7 já confirmou device 33 comum à home/áreas pública e privada.
+
+**CONFIRMADO:** a montagem anuncia locks locais, sem coordenação NFS de locks. **INFERIDO:** `flock` pode serializar processos no mesmo host, mas não oferece a garantia necessária entre hosts diferentes usando essa montagem. **NÃO VERIFICADO:** quantidade de nós PHP/web, afinidade do endpoint, montagens nos outros nós e visibilidade de rename/cache entre clientes. A existência de flock/rename/fsync no CLI não resolve esse bloqueio. Cache de atributos e `nocto` exigem verificar visibilidade entre processos/nós; não se presume atraso exato de 60 segundos para todas as leituras HTTP.
+
+| Ensaio mínimo | Categoria | Evidência / critério de aprovação |
+| --- | --- | --- |
+| Metadados de paths, UID/modes/device, mount options, quota, versão CLI | Somente leitura | Confinamento, destinos e capacidade documentados; não confundir CLI com FPM nem df com quota. |
+| Topologia PHP/web, pool/UID, restrições FPM, OPcache e política de cache | Somente leitura do painel/configuração sanitizada pelo operador | Identificar todos os hosts que podem ativar/servir e as restrições efetivas. Não instalar phpinfo nem chamar endpoint mutável para diagnosticar. |
+| HEAD/GET de marcador e arquivos estáticos já existentes | Somente leitura | Registrar Cache-Control, ETag, Age/Last-Modified e hashes; demonstra configuração observada, não atomicidade. |
+| Harness PHP-FPM com fixtures em namespace staging dedicado | **Cria arquivos; autorização específica necessária** | Runtime web efetivo, mesma montagem e permissões equivalentes, sem caminhos/key/dados de produção; UID, fsync e limites verificados. Não ativar endpoint nesta etapa. |
+| Lock concorrente e recuperação após saída de worker | **Cria/abre lock de teste; autorização necessária** | Dois workers no mesmo host e em hosts distintos disputam o mesmo lock; nunca há dois ativadores. Testar também lock compartilhado com harness do legado. Se multihost + lock local, reprovar e exigir confinamento de execução ou solução de locks do provedor, com autorização. |
+| Rename de marcador de fixture sob leitores concorrentes | **Escrita temporária; autorização necessária** | Leitores locais/FPM/HTTP em todos os nós observam somente JSON antigo ou novo íntegro; nenhum 404/JSON parcial. Registrar latência de visibilidade; mesmo filesystem para temporário/destino. |
+| Cache/OPcache e troca/rollback de PHP fixture | **Escrita temporária; autorização necessária** | Código/HTML/JSON correspondem à versão ativada em todos os nós; rollback recupera versão coerente, respeitando caches. |
+| FTP interrompido, hash incorreto, ativação/resposta perdida e rollback | **Uploads e escrita; autorização necessária** | Somente conta/destinos staging aprovados e fixtures locais de 137 targets; release anterior preservada, idempotência e reconciliação demonstradas. Nunca arquivos eleitorais reais. |
+
+Preparar staging privado separado para inbox/controle e uma árvore pública de teste com acesso restrito e fixtures, sem reutilizar `/data`, chave ou estado real. Sua criação, eventual harness/endpoint temporário, uploads e limpeza são mudanças a autorizar separadamente. Antes do ensaio registrar paths/hosts/limites, responsáveis e plano de remoção exclusivo desse namespace; após autorização, guardar evidências e repetir rollback. Nada dessa sequência foi executado nesta etapa.
+
+### Matriz atualizada dos quatro impeditivos
+
+| Impeditivo | Evidência e diagnóstico | Risco | Solução recomendada | Estado | Ação para liberação |
+| --- | --- | --- | --- | --- | --- |
+| Identidade/raiz FTP | Porta 21/FEAT funcionam; três variáveis ausentes na sessão; nenhum login. PWD/UID/destinos desconhecidos. | Entrega em diretório incorreto ou público; isolamento presumido. | Usar sessão autorizada com os secrets existentes; diagnóstico seletivo de leitura. | IMPEDITIVO | Comprovar autenticação/PWD/mapeamento e paths permitidos, sem solicitar novas senhas. |
+| Fronteira transporte/controle | Chave 0600 e PHP 0644 pertencem ao UID SSH 542178; alcance FTP desconhecido; config FTP fixa ainda ausente. | Mesmo UID e home irrestrita podem permitir adulteração do controle/estado e acesso à chave. | Restrição efetiva da conta existente por raiz virtual/chroot/allowlist; decisão do provedor se isso for impossível. | IMPEDITIVO | Evidência de confinamento incluindo traversal/symlinks e exclusão de chave, configuração, sealed e PHP; não enfraquecer modos. |
+| Amazonas final→não final | GET oficial confirma IDGs do pending, tf=n, horário recuado e 100% de seções; stage perde marcações de eleito/alocações, sem mudança de votos. Causa oficial não demonstrada. | Publicar estado não final/regressivo ou perder eleitos apesar de votos iguais. | Esclarecimento/ato oficial e revisão da situação, preservando o gate. | IMPEDITIVO para primeira entrega | Evidência oficial específica e payload coerente; eventual tratamento autorizado e testado, sem apagar estado. |
+| PHP-FPM/NFS/cache/rollback | NFS v3 `nolock,local_lock=all,nocto` e caches; CLI testado na etapa 7; topologia web desconhecida. | Ativadores multihost concorrentes; marcador/código divergente em caches; recuperação não comprovada. | Confirmar topologia/garantia de lock e executar plano staging isolado após autorização. | IMPEDITIVO para corte | Ensaio em todos os nós relevantes, lock exclusivo, rename/visibilidade e rollback aprovados; se locks multihost não forem garantidos, manter bloqueio. |
+
+Nenhum dos quatro impeditivos foi resolvido por completo. Diagnóstico da origem dos dados AM e opções NFS avançou; solução operacional permanece pendente. O projeto **não está apto ao corte de produção**, inclusive supervisionado, até essas condições serem atendidas. Alteração desta etapa: somente este runbook; arquitetura/código/serviços permanecem preservados. Não se repete a suíte local da etapa 7 por mudança exclusivamente documental; validar diff e fontes.
