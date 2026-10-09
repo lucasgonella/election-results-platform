@@ -70,3 +70,5 @@ Workflow: `.github/workflows/deploy-goias-ftp.yml`. Publica apenas HTML/CSS/JS/J
 Configure em GitHub Actions Secrets: `LOCAWEB_FTP_HOST`, `LOCAWEB_FTP_USER`, `LOCAWEB_FTP_PASSWORD`; e Actions Variable: `LOCAWEB_FTP_GOIAS_DIR`, caminho relativo à raiz FTP (por exemplo `public_html/eleicoes/goias/raio-x` **somente se** a raiz FTP for a home da hospedagem; ou `eleicoes/goias/raio-x` se a raiz FTP já for `public_html`).
 
 FTP tradicional transmite senha e arquivos sem criptografia. O workflow testa a URL pública depois de publicar e falha se o conteúdo não for encontrado. O workflow não configura secrets automaticamente: essa configuração depende do proprietário da conta.
+
+Deploy FTP autorizado e configurado para primeira execução em outubro de 2026.
