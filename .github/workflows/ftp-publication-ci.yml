@@ -1,0 +1,24 @@
+name: FTP publication validation
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Require PHP and validate syntax
+        run: |
+          php --version
+          php -l deploy/locaweb/ftp-publication.php
+          php -l deploy/locaweb/election-ftp-control.php
+      - run: python -m pip install -r collector/requirements-dev.txt
+      - run: python -m pytest -q tests/test_ftp_publication.py tests/test_ftp_frontend.py tests/test_ftp_code_artifact.py
+      - run: |
+          node --check web/public/eleicoes/app.js
+          node --check web/public/eleicoes/favorites.js

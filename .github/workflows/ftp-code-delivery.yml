@@ -1,0 +1,25 @@
+name: Manually deliver validated application code by FTP
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        type: choice
+        options: [portal, control]
+        required: true
+      environment:
+        type: choice
+        options: [staging, production]
+        default: staging
+        required: true
+permissions:
+  contents: read
+jobs:
+  delivery:
+    uses: ./.github/workflows/deploy-locaweb-ftp.yml
+    with:
+      component: ${{ inputs.component }}
+      environment: ${{ inputs.environment }}
+    secrets:
+      LOCAWEB_FTP_HOST: ${{ secrets.LOCAWEB_FTP_HOST }}
+      LOCAWEB_FTP_USER: ${{ secrets.LOCAWEB_FTP_USER }}
+      LOCAWEB_FTP_PASSWORD: ${{ secrets.LOCAWEB_FTP_PASSWORD }}

@@ -1,0 +1,63 @@
+name: Reusable validated FTP code delivery
+on:
+  workflow_call:
+    inputs:
+      component:
+        type: string
+        required: true
+      environment:
+        type: string
+        required: true
+    secrets:
+      LOCAWEB_FTP_HOST:
+        required: true
+      LOCAWEB_FTP_USER:
+        required: true
+      LOCAWEB_FTP_PASSWORD:
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: locaweb-ftp-code-${{ inputs.environment }}
+  cancel-in-progress: false
+jobs:
+  deliver:
+    if: github.ref == 'refs/heads/main' && (inputs.environment == 'staging' || inputs.environment == 'production') && (inputs.component == 'portal' || inputs.component == 'control')
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install -r collector/requirements-dev.txt
+      - name: Validate the revision to be packaged
+        run: |
+          php -l deploy/locaweb/ftp-publication.php
+          php -l deploy/locaweb/election-ftp-control.php
+          node --check web/public/eleicoes/app.js
+          node --check web/public/eleicoes/favorites.js
+          python -m pytest -q
+      - name: Build immutable allowlisted artifact
+        env:
+          COMPONENT: ${{ inputs.component }}
+        run: python deploy/scripts/ftp-code-artifact.py package --component "$COMPONENT" --directory "$RUNNER_TEMP/package"
+      - name: Archive exactly the validated artifact for recovery
+        uses: actions/upload-artifact@v4
+        with:
+          name: locaweb-${{ inputs.component }}-${{ github.sha }}
+          path: ${{ runner.temp }}/package/
+          retention-days: 30
+      - name: FTP 21 to private code inbox (no live activation)
+        env:
+          COMPONENT: ${{ inputs.component }}
+          LOCAWEB_FTP_CODE_INBOX_DIR: ${{ vars.LOCAWEB_FTP_CODE_INBOX_DIR }}
+          LOCAWEB_FTP_HOST: ${{ secrets.LOCAWEB_FTP_HOST }}
+          LOCAWEB_FTP_USER: ${{ secrets.LOCAWEB_FTP_USER }}
+          LOCAWEB_FTP_PASSWORD: ${{ secrets.LOCAWEB_FTP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$LOCAWEB_FTP_CODE_INBOX_DIR"
+          for artifact in "$RUNNER_TEMP"/package/*; do
+            python deploy/scripts/ftp-code-artifact.py upload --component "$COMPONENT" --directory "$artifact"
+          done
