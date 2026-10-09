@@ -62,3 +62,11 @@ A página mostra uma mensagem de indisponibilidade honesta quando ainda não exi
 A pipeline `https-staging-cd.yml` é isolada na app01 e **não publica automaticamente o conteúdo web da Locaweb**. O publicador autenticado atual trata apenas JSONs de apuração eleitoral sob `/data/`. Não usá-lo para enviar arquivos arbitrários da interface.
 
 Para entrar em produção é necessário um mecanismo de deploy para arquivos estáticos da Locaweb ou uma única instalação manual supervisionada. Proteger com revisão e testes antes de ativar publicamente.
+
+## CI/CD FTP porta 21
+
+Workflow: `.github/workflows/deploy-goias-ftp.yml`. Publica apenas HTML/CSS/JS/JSON do módulo para a Locaweb via FTP sem TLS, conforme autorização explícita do proprietário. Não altera `/data/` eleitoral nem o coletor.
+
+Configure em GitHub Actions Secrets: `LOCAWEB_FTP_HOST`, `LOCAWEB_FTP_USER`, `LOCAWEB_FTP_PASSWORD`; e Actions Variable: `LOCAWEB_FTP_GOIAS_DIR`, caminho relativo à raiz FTP (por exemplo `public_html/eleicoes/goias/raio-x` **somente se** a raiz FTP for a home da hospedagem; ou `eleicoes/goias/raio-x` se a raiz FTP já for `public_html`).
+
+FTP tradicional transmite senha e arquivos sem criptografia. O workflow testa a URL pública depois de publicar e falha se o conteúdo não for encontrado. O workflow não configura secrets automaticamente: essa configuração depende do proprietário da conta.
