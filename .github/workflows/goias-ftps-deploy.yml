@@ -1,0 +1,62 @@
+name: Deploy Goiás Raio-X via FTPS
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/public/eleicoes/goias/raio-x/index.html'
+      - '.github/workflows/goias-ftps-deploy.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: goias-ftps-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: vars.ENABLE_GOIAS_FTPS_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    environment: goias-production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check JavaScript syntax and publication scope
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          p=Path('web/public/eleicoes/goias/raio-x/index.html')
+          html=p.read_text()
+          scripts=re.findall(r'<script(?:\\s[^>]*)?>(.*?)</script>', html, re.S)
+          assert len(scripts)==1
+          Path('/tmp/goias-frontend.js').write_text(scripts[0])
+          assert 'go-2026.json' in html
+          PY
+          node --check /tmp/goias-frontend.js
+      - name: Upload ONLY Goiás frontend through explicit FTPS port 21
+        env:
+          FTP_HOST: ${{ secrets.LOCAWEB_FTP_HOST }}
+          FTP_USER: ${{ secrets.LOCAWEB_FTP_USERNAME }}
+          FTP_PASS: ${{ secrets.LOCAWEB_FTP_PASSWORD }}
+          FTP_REMOTE_DIR: ${{ vars.LOCAWEB_GOIAS_REMOTE_DIR }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          : "${FTP_HOST:?Missing LOCAWEB_FTP_HOST}"
+          : "${FTP_USER:?Missing LOCAWEB_FTP_USERNAME}"
+          : "${FTP_PASS:?Missing LOCAWEB_FTP_PASSWORD}"
+          : "${FTP_REMOTE_DIR:?Missing LOCAWEB_GOIAS_REMOTE_DIR}"
+          [[ "$FTP_HOST" =~ ^[A-Za-z0-9.-]+$ ]] || exit 2
+          [[ "$FTP_REMOTE_DIR" =~ ^/?[A-Za-z0-9_/-]+$ ]] || exit 2
+          # Remote path is relative to FTP login root; e.g. public_html/eleicoes/goias/raio-x
+          DEST="ftp://${FTP_HOST}:21/${FTP_REMOTE_DIR#/}/index.html"
+          curl --fail --silent --show-error --retry 3 \
+            --ssl-reqd --ftp-ssl-control --ftp-pasv \
+            --ftp-create-dirs --user "$FTP_USER:$FTP_PASS" \
+            --upload-file web/public/eleicoes/goias/raio-x/index.html \
+            "$DEST"
+          # Read back the remote file and verify exact contents.
+          curl --fail --silent --show-error --retry 3 \
+            --ssl-reqd --ftp-ssl-control --ftp-pasv \
+            --user "$FTP_USER:$FTP_PASS" "$DEST" -o /tmp/goias-deployed.html
+          cmp web/public/eleicoes/goias/raio-x/index.html /tmp/goias-deployed.html
+          echo "FTPS deployed and verified by byte-for-byte readback"
