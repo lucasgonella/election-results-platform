@@ -1,0 +1,55 @@
+name: Import TSE finance data for Goiás
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 9,15,21 * * *'
+permissions:
+  contents: write
+concurrency:
+  group: goias-finance-etl
+  cancel-in-progress: false
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Download official TSE datasets
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tse-go
+          curl -fL --retry 3 --connect-timeout 30 --max-time 1500 \
+            'https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_cand/consulta_cand_2026.zip' \
+            -o /tmp/tse-go/candidates.zip
+          curl -fL --retry 3 --connect-timeout 30 --max-time 1500 \
+            'https://cdn.tse.jus.br/estatistica/sead/odsele/prestacao_contas/prestacao_de_contas_eleitorais_candidatos_2026.zip' \
+            -o /tmp/tse-go/finance.zip
+          unzip -tqq /tmp/tse-go/candidates.zip
+          unzip -tqq /tmp/tse-go/finance.zip
+      - name: Generate GO-only data from TSE
+        run: |
+          python3 tools/goias_finance_etl.py \
+            --candidates /tmp/tse-go/candidates.zip \
+            --finance /tmp/tse-go/finance.zip \
+            --output web/public/eleicoes/goias/raio-x/data/go-2026.json
+      - name: Validate and publish only complete dataset
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('web/public/eleicoes/goias/raio-x/data/go-2026.json').read_text())
+          assert d['scope']=='GO' and d['year']==2026
+          assert len(d['candidates'])>100
+          assert d['transfers']
+          assert all(c['office'] in ('deputado estadual','deputado federal') for c in d['candidates'])
+          print('Validated candidate count:',len(d['candidates']))
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add web/public/eleicoes/goias/raio-x/data/go-2026.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'data(go): update official candidate finance export'
+          git push origin HEAD:main
