@@ -1,0 +1,55 @@
+name: Validate HTTPS publisher
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/locaweb/**'
+      - 'deploy/scripts/publish-live-results-https.py'
+      - 'tests/test_https_staging.py'
+      - '.github/workflows/https-publisher-ci.yml'
+  pull_request:
+    paths:
+      - 'deploy/locaweb/**'
+      - 'deploy/scripts/publish-live-results-https.py'
+      - 'tests/test_https_staging.py'
+      - '.github/workflows/https-publisher-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Compile client
+        run: python -m py_compile deploy/scripts/publish-live-results-https.py
+      - name: Validate Python tests
+        run: python -m unittest discover -s tests -p 'test_https_staging.py' -v
+      - name: Validate PHP syntax
+        run: |
+          php -l deploy/locaweb/election-publish.php
+          php -l deploy/locaweb/activate-sandbox.php
+      - name: Ensure production activation is not enabled
+        run: |
+          ! grep -Eq "'activate'|\"activate\"" deploy/locaweb/election-publish.php
+      - name: Package verified deployment sources
+        run: |
+          mkdir -p dist
+          tar -czf dist/election-https-staging.tar.gz \
+            deploy/locaweb/election-publish.php \
+            deploy/locaweb/activate-sandbox.php \
+            deploy/scripts/publish-live-results-https.py
+          sha256sum dist/election-https-staging.tar.gz > dist/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: https-staging-verified
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
