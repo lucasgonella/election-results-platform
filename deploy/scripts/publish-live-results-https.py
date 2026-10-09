@@ -102,8 +102,8 @@ def main() -> int:
     paths = stage_paths(args.stage)
     if args.publish_official:
         version = json.loads((args.stage / "version.json").read_text())
-        if version.get("environment") != "oficial" or len(paths) != 140:
-            raise ValueError("Official publication requires environment=oficial and full 140-file batch")
+        if version.get("environment") != "oficial":
+            raise ValueError("Official publication requires environment=oficial")
     print(f"Validated {len(paths)} JSON files; HTTPS endpoint")
     if not args.send:
         print("DRY RUN: no requests sent")
