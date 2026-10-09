@@ -86,7 +86,7 @@ def build(candidates_zip: Path, finance_zip: Path):
     transfers = []
     seen = set()
     matched = {"revenue": 0, "expense": 0}
-    for row, filename in read_csv_zip(finance_zip, lambda n: (("receitas_candidatos_" in n) or ("despesas_contratadas_candidatos_" in n))):
+    for row, filename in read_csv_zip(finance_zip, lambda n: n.endswith(("receitas_candidatos_2026_go.csv", "despesas_contratadas_candidatos_2026_go.csv"))):
         low = filename.lower()
         kind = "revenue" if "receita" in low else "expense"
         cid = field(row, "SQ_CANDIDATO")
@@ -108,7 +108,7 @@ def build(candidates_zip: Path, finance_zip: Path):
                           "SQ_PRESTADOR_CONTAS", "NR_DOCUMENTO")
         if not record_id:
             raise ValueError(f"Cannot deduplicate {kind} transactions: missing identifier")
-        key = (kind, cid, record_id, str(amount), filename.rsplit("/", 1)[-1])
+        key = (kind, cid, record_id, str(amount))
         if key in seen:
             continue
         seen.add(key)
