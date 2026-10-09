@@ -16,6 +16,7 @@ def scan():
     print("PUBLIC DATA", "candidates",len(data["candidates"]),"edges",len(data["transfers"]))
     ids=[c["id"] for c in data["candidates"]]
     print("DUPLICATE CANDIDATE IDS",len(ids)-len(set(ids)))
+    wanted=set(ids)
     edges=data["transfers"]
     edge_ids=[x["id"] for x in edges]
     print("DUPLICATE EDGE IDS",len(edge_ids)-len(set(edge_ids)))
@@ -37,7 +38,7 @@ def scan():
                 reader=csv.DictReader(io.TextIOWrapper(f,encoding="latin-1",newline=""),delimiter=";")
                 for row in reader:
                     cid=row.get("SQ_CANDIDATO","").strip()
-                    if cid not in ids: continue
+                    if cid not in wanted: continue
                     kind="receita" if "receitas_candidatos_" in low else "despesa"
                     paths[(name,kind)]+=1
                     rid=(row.get("SQ_RECEITA") if kind=="receita" else row.get("SQ_DESPESA")) or ""
