@@ -1,0 +1,25 @@
+name: Audit GO TSE finance duplicates
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/goias_finance_audit.py'
+      - '.github/workflows/goias-finance-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download original TSE accounting
+        run: |
+          mkdir -p /tmp/tse-go
+          curl -fLsS --retry 3 --max-time 1500 \
+            'https://cdn.tse.jus.br/estatistica/sead/odsele/prestacao_contas/prestacao_de_contas_eleitorais_candidatos_2026.zip' \
+            -o /tmp/tse-go/finance.zip
+          unzip -tqq /tmp/tse-go/finance.zip
+      - name: Inspect duplicate entries read-only
+        run: python3 tools/goias_finance_audit.py
