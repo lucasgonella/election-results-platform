@@ -106,7 +106,7 @@ if ($action === 'activate_test') {
     // Authenticated operation. Strictly private; no public data writes.
     require_once __DIR__ . '/activate-private-batch.php';
     try {
-        $result = activatePrivateBatch($private, $id);
+        $result = activatePrivateBatch($base, $id);
         reply(200, $result['status'], array_diff_key($result, ['status' => 1]));
     } catch (RuntimeException $e) {
         $status = $e->getMessage();
