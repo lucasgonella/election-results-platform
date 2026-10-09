@@ -35,9 +35,10 @@ class SnapshotTests(unittest.TestCase):
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(json.dumps(data))
 
-    def call(self, helper, function, *args):
-        php = f'require $argv[1]; try {{ echo json_encode({function}($argv[2], $argv[3]{", true" if args else ""})); }} catch (RuntimeException $e) {{ fwrite(STDERR, $e->getMessage()); exit(42); }}'
-        return subprocess.run(["php", "-r", php, str(helper), str(self.base), args[0] if args else self.initial],
+    def call(self, helper, function, identifier=None, rollback=False):
+        suffix = ", true" if rollback else ""
+        php = f'require $argv[1]; try {{ echo json_encode({function}($argv[2], $argv[3]{suffix})); }} catch (RuntimeException $e) {{ fwrite(STDERR, $e->getMessage()); exit(42); }}'
+        return subprocess.run(["php", "-r", php, str(helper), str(self.base), identifier or self.initial],
                               text=True, capture_output=True, timeout=20)
 
     def test_full_then_incremental_then_rollback(self):
@@ -57,7 +58,7 @@ class SnapshotTests(unittest.TestCase):
         self.assertEqual(new.returncode, 0, new.stderr)
         old = self.call(PROMOTE, "promotePrivateSnapshot", first_id)
         self.assertEqual(old.returncode, 42)
-        back = self.call(PROMOTE, "promotePrivateSnapshot", first_id, True)
+        back = self.call(PROMOTE, "promotePrivateSnapshot", first_id, rollback=True)
         self.assertEqual(back.returncode, 0, back.stderr)
         self.assertEqual((self.base / "snapshot-sandbox/current").read_text().strip(), first_id)
         self.assertFalse((Path(self.t.name) / "public_html").exists())
