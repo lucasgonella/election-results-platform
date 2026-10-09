@@ -49,7 +49,7 @@ def read_csv_zip(path, predicate):
         for name in matches:
             with archive.open(name) as stream:
                 reader = csv.DictReader(io.TextIOWrapper(stream, encoding="latin-1", newline=""), delimiter=";")
-                if not reader.fieldnames or len(reader.fieldnames) < 4:
+                if not reader.fieldnames or len(reader.fieldnames) < 3:
                     raise ValueError(f"Unrecognized CSV {name}")
                 for row in reader:
                     yield row, name
