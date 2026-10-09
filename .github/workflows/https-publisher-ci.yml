@@ -44,9 +44,12 @@ jobs:
           php -l deploy/locaweb/activate-private-batch.php
           php -l deploy/locaweb/build-private-snapshot.php
           php -l deploy/locaweb/promote-private-snapshot.php
-      - name: Ensure production activation is not enabled
+          php -l deploy/locaweb/publish-official-snapshot.php
+      - name: Check protected official publishing prerequisites
         run: |
-          ! grep -Eq "'activate'|\"activate\"" deploy/locaweb/election-publish.php
+          grep -q 'ENABLE_OFFICIAL_PUBLICATION' deploy/locaweb/publish-official-snapshot.php
+          grep -q 'full_batch_required' deploy/locaweb/publish-official-snapshot.php
+          grep -q 'official_only' deploy/locaweb/publish-official-snapshot.php
       - name: Package verified deployment sources
         run: |
           mkdir -p dist
@@ -56,6 +59,7 @@ jobs:
             deploy/locaweb/activate-private-batch.php \
             deploy/locaweb/build-private-snapshot.php \
             deploy/locaweb/promote-private-snapshot.php \
+            deploy/locaweb/publish-official-snapshot.php \
             deploy/scripts/publish-live-results-https.py
           sha256sum dist/election-https-staging.tar.gz > dist/SHA256SUMS
       - uses: actions/upload-artifact@v4
