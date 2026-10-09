@@ -1,0 +1,44 @@
+name: CD — HTTPS staging on app01
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/locaweb/**'
+      - 'deploy/scripts/publish-live-results-https.py'
+      - '.github/workflows/https-staging-cd.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: https-staging-app01
+  cancel-in-progress: false
+
+jobs:
+  stage-on-app01:
+    if: vars.ENABLE_HTTPS_STAGING_CD == 'true'
+    runs-on: [self-hosted, linux, x64, election-app01]
+    environment: https-staging
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate files on runner
+        run: |
+          python3 -m py_compile deploy/scripts/publish-live-results-https.py
+          php -l deploy/locaweb/election-publish.php
+          php -l deploy/locaweb/activate-sandbox.php
+      - name: Install in isolated release directory (no systemd changes)
+        env:
+          REV: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          BASE="$HOME/election-https-staging-releases"
+          TARGET="$BASE/$REV"
+          mkdir -p "$TARGET/deploy/locaweb" "$TARGET/deploy/scripts"
+          install -m 0600 deploy/locaweb/election-publish.php "$TARGET/deploy/locaweb/"
+          install -m 0600 deploy/locaweb/activate-sandbox.php "$TARGET/deploy/locaweb/"
+          install -m 0700 deploy/scripts/publish-live-results-https.py "$TARGET/deploy/scripts/"
+          echo "Staged release $REV at $TARGET"
+          echo "The app01 service, public Locaweb site and collector are unchanged."
