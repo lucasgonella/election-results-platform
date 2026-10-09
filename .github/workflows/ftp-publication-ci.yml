@@ -17,8 +17,9 @@ jobs:
           php --version
           php -l deploy/locaweb/ftp-publication.php
           php -l deploy/locaweb/election-ftp-control.php
+          php -l deploy/locaweb/prepare-ftp-baseline.php
       - run: python -m pip install -r collector/requirements-dev.txt
-      - run: python -m pytest -q tests/test_ftp_publication.py tests/test_ftp_frontend.py tests/test_ftp_code_artifact.py
+      - run: python -m pytest -q tests/test_ftp_publication.py tests/test_ftp_baseline.py tests/test_ftp_frontend.py tests/test_ftp_code_artifact.py tests/test_ftp_code_activation.py
       - run: |
           node --check web/public/eleicoes/app.js
           node --check web/public/eleicoes/favorites.js

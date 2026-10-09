@@ -21,10 +21,30 @@ concurrency:
   group: locaweb-ftp-code-${{ inputs.environment }}
   cancel-in-progress: false
 jobs:
+  configuration:
+    if: github.ref == 'refs/heads/main' && (inputs.environment == 'staging' || inputs.environment == 'production') && (inputs.component == 'portal' || inputs.component == 'control')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require pre-existing environment and production approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/environments/$DEPLOY_ENVIRONMENT" > "$RUNNER_TEMP/environment.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          config = json.loads((Path(os.environ['RUNNER_TEMP']) / 'environment.json').read_text())
+          if os.environ['DEPLOY_ENVIRONMENT'] == 'production':
+              assert any(rule.get('type') == 'required_reviewers' and rule.get('reviewers') for rule in config.get('protection_rules', [])), 'Production approval is required'
+          PY
   deliver:
+    needs: configuration
     if: github.ref == 'refs/heads/main' && (inputs.environment == 'staging' || inputs.environment == 'production') && (inputs.component == 'portal' || inputs.component == 'control')
     environment: ${{ inputs.environment }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -35,13 +55,20 @@ jobs:
         run: |
           php -l deploy/locaweb/ftp-publication.php
           php -l deploy/locaweb/election-ftp-control.php
+          php -l deploy/locaweb/prepare-ftp-baseline.php
           node --check web/public/eleicoes/app.js
           node --check web/public/eleicoes/favorites.js
           python -m pytest -q
-      - name: Build immutable allowlisted artifact
+      - name: Build immutable allowlisted artifact and record approved checksum
         env:
           COMPONENT: ${{ inputs.component }}
-        run: python deploy/scripts/ftp-code-artifact.py package --component "$COMPONENT" --directory "$RUNNER_TEMP/package"
+        run: |
+          set -euo pipefail
+          python deploy/scripts/ftp-code-artifact.py package --component "$COMPONENT" --directory "$RUNNER_TEMP/package"
+          for artifact in "$RUNNER_TEMP"/package/*; do
+            printf 'Approved %s artifact: `%s`\n' "$COMPONENT" "$(basename "$artifact")" >> "$GITHUB_STEP_SUMMARY"
+          done
+          find "$RUNNER_TEMP/package" -type f -name '*.php' -exec php -l {} \;
       - name: Archive exactly the validated artifact for recovery
         uses: actions/upload-artifact@v4
         with:

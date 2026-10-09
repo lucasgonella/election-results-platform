@@ -39,9 +39,15 @@ function fp_read(string $root, string $path): string {
     if ($raw === false) fp_fail('storage_error');
     return $raw;
 }
-function fp_inventory(string $release, string $key): array {
-    $raw = fp_read($release, 'inventory.json');
-    $sig = trim(fp_read($release, 'inventory.sig'));
+function fp_inventory(string $release, string $key, ?string $adoptedRoot = null): array {
+    $inventoryRoot = $release;
+    if (!file_exists($release . '/inventory.json') && !file_exists($release . '/inventory.sig') && $adoptedRoot !== null) {
+        $id = basename($release);
+        if (!preg_match('/^[a-f0-9]{64}$/D', $id)) fp_fail('invalid_baseline');
+        $inventoryRoot = $adoptedRoot . '/' . $id;
+    }
+    $raw = fp_read($inventoryRoot, 'inventory.json');
+    $sig = trim(fp_read($inventoryRoot, 'inventory.sig'));
     if (!hash_equals(hash_hmac('sha256', $raw, $key), $sig)) fp_fail('corrupt_baseline');
     $inventory = json_decode($raw, true, 64, JSON_THROW_ON_ERROR);
     $expected = array_merge(array_keys(fp_paths()), ['manifest.json', 'version.json', 'alerts.json']);
@@ -54,11 +60,23 @@ function fp_inventory(string $release, string $key): array {
 function fp_marker(array $cfg): ?array {
     return is_file($cfg['site'] . '/version.json') ? fp_json($cfg['site'] . '/version.json') : null;
 }
+function fp_canonical_value(mixed $value): mixed {
+    if (!is_array($value)) return $value;
+    if (!array_is_list($value)) ksort($value);
+    foreach ($value as $key=>$item) $value[$key] = fp_canonical_value($item);
+    return $value;
+}
+function fp_source_fingerprint(array $payload): string {
+    $snapshot = $payload['snapshot'];
+    unset($snapshot['captured_at']);
+    $snapshot['tse_idg'] = (string)$snapshot['tse_idg'];
+    return hash('sha256', json_encode(fp_canonical_value([$snapshot, $payload['candidates'], $payload['office']]), JSON_THROW_ON_ERROR));
+}
 function fp_receipt(array $cfg, string $id): array {
     $marker = fp_marker($cfg);
     // The marker is the durable commit point, even if the response/journal acknowledgement was lost.
     if (($marker['delivery_id'] ?? '') === $id) {
-        fp_inventory($cfg['site'] . '/releases/' . $marker['snapshot_id'], $cfg['key']);
+        fp_inventory($cfg['site'] . '/releases/' . $marker['snapshot_id'], $cfg['key'], $cfg['private'] . '/adopted-baselines');
         return ['status'=>'published', 'delivery_id'=>$id, 'snapshot_id'=>$marker['snapshot_id']];
     }
     $path = $cfg['private'] . '/receipts/' . $id . '.json';
@@ -76,7 +94,13 @@ function fp_run(array $cfg, string $action, string $id): array {
     if ($site !== $publicRoot . DIRECTORY_SEPARATOR . 'data' || str_starts_with($private . DIRECTORY_SEPARATOR, $inbox . DIRECTORY_SEPARATOR) || str_starts_with($inbox . DIRECTORY_SEPARATOR, $private . DIRECTORY_SEPARATOR)) fp_fail('invalid_configuration');
     $lock = fopen($private . '/activation.lock', 'c');
     if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) fp_fail('publication_busy');
+    $legacyLock = null;
     try {
+        if (isset($cfg['legacy_lock'])) {
+            if (is_link($cfg['legacy_lock'])) fp_fail('invalid_configuration');
+            $legacyLock = fopen($cfg['legacy_lock'], 'c');
+            if (!$legacyLock || !flock($legacyLock, LOCK_EX | LOCK_NB)) fp_fail('publication_busy');
+        }
         foreach (['receipts', 'journals', 'sealed'] as $dir) if (!is_dir($private . '/' . $dir) && !mkdir($private . '/' . $dir, 0700)) fp_fail('storage_error');
         if ($action === 'status') return fp_receipt($cfg, $id);
         if ($action === 'rollback') {
@@ -87,7 +111,7 @@ function fp_run(array $cfg, string $action, string $id): array {
             if (($current['rollback_of'] ?? '') === $id) return ['status'=>'rolled_back', 'snapshot_id'=>$current['snapshot_id']];
             if (($current['delivery_id'] ?? '') !== $id || !is_array($journal['previous'])) fp_fail('rollback_conflict');
             $previous = $journal['previous'];
-            fp_inventory($site . '/releases/' . $previous['snapshot_id'], $cfg['key']);
+            fp_inventory($site . '/releases/' . $previous['snapshot_id'], $cfg['key'], $private . '/adopted-baselines');
             $previous['activation_revision'] = bin2hex(random_bytes(16));
             $previous['rollback_of'] = $id;
             fp_write($site . '/version.json', $previous);
@@ -126,7 +150,7 @@ function fp_run(array $cfg, string $action, string $id): array {
         if ($current !== null) {
             if (!preg_match('/^[a-f0-9]{64}$/D', $current['snapshot_id'] ?? '')) fp_fail('invalid_baseline');
             $baseline = $site . '/releases/' . $current['snapshot_id'];
-            fp_inventory($baseline, $cfg['key']);
+            fp_inventory($baseline, $cfg['key'], $private . '/adopted-baselines');
         } elseif (array_diff($allowed, array_keys($files))) fp_fail('baseline_absent');
         $release = $site . '/releases/' . $id;
         if (!is_dir($site . '/releases') && !mkdir($site . '/releases', 0755)) fp_fail('storage_error');
@@ -141,36 +165,10 @@ function fp_run(array $cfg, string $action, string $id): array {
             if (file_put_contents($build . '/' . $path, $bytes) !== strlen($bytes)) fp_fail('storage_error');
             $inventory[$path] = hash('sha256', $bytes);
         }
-        $manifest = fp_json($build . '/manifest.json');
-        $version = fp_json($build . '/version.json');
-        $alerts = fp_json($build . '/alerts.json');
-        foreach ([$manifest, $alerts] as $meta) if (($meta['environment'] ?? null) !== ($version['environment'] ?? null) || ($meta['generated_at'] ?? null) !== ($version['generated_at'] ?? null)) fp_fail('metadata_mismatch');
-        if (!is_string($version['environment'] ?? null) || !is_string($version['generated_at'] ?? null) || count($manifest['results'] ?? []) !== 137) fp_fail('invalid_manifest');
-        if ($version['environment'] !== ($cfg['environment'] ?? null) || !in_array($cfg['round'] ?? null, [1,2], true)) fp_fail('unauthorized_environment');
-        $entries = [];
-        foreach ($manifest['results'] as $entry) {
-            $path = $entry['path'] ?? '';
-            if (!isset(fp_paths()[$path]) || isset($entries[$path])) fp_fail('invalid_manifest');
-            $entries[$path] = $entry;
-        }
         $waterPath = $private . '/watermarks.json';
         $water = is_file($waterPath) ? fp_json($waterPath) : [];
-        foreach (fp_paths() as $path=>[$scope, $office]) {
-            $payload = fp_json($build . '/' . $path); $entry = $entries[$path];
-            $snapshot = $payload['snapshot'] ?? [];
-            $time = strtotime($snapshot['generated_at'] ?? '');
-            if (!preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/D', $snapshot['generated_at'] ?? '')) fp_fail('invalid_source_time');
-            if (($payload['schema_version'] ?? null) !== 1 || ($payload['environment'] ?? '') !== $version['environment'] || strtolower($payload['scope']['code'] ?? '') !== $scope || ($payload['office']['code'] ?? null) !== $office || ($entry['scope'] ?? '') !== $scope || ($entry['office'] ?? null) !== $office || ($entry['election_code'] ?? null) !== ($payload['election']['code'] ?? null) || ($entry['round'] ?? null) !== ($payload['election']['round'] ?? null) || ($entry['tse_idg'] ?? null) !== ($snapshot['tse_idg'] ?? null) || ($entry['captured_at'] ?? null) !== ($snapshot['captured_at'] ?? null) || !is_array($payload['candidates'] ?? null) || ($payload['candidate_count'] ?? null) !== count($payload['candidates']) || ($entry['candidate_count'] ?? null) !== count($payload['candidates']) || !$time || !is_string($snapshot['tse_idg'] ?? null)) fp_fail('invalid_result');
-            $identity = [$version['environment'], $payload['election']['code'], $payload['election']['round']];
-            if (!is_int($identity[1]) || $identity[1] < 1 || $identity[2] !== $cfg['round']) fp_fail('unauthorized_election');
-            $sourceSnapshot = $snapshot;
-            unset($sourceSnapshot['captured_at']); // Re-observing identical official data is harmless.
-            $fingerprint = hash('sha256', json_encode([$sourceSnapshot, $payload['candidates'], $payload['office']], JSON_THROW_ON_ERROR));
-            $old = $water[$path] ?? null;
-            // Same source generation with changed content is ambiguous and fails closed.
-            if ($old && ($old['identity'] !== $identity || $time < $old['time'] || ($time === $old['time'] && ($old['idg'] !== $snapshot['tse_idg'] || $old['fingerprint'] !== $fingerprint)))) fp_fail('result_regression');
-            $water[$path] = ['identity'=>$identity, 'time'=>$time, 'idg'=>$snapshot['tse_idg'], 'fingerprint'=>$fingerprint];
-        }
+        $water = fp_validate_release($build, $cfg, $water);
+        $version = fp_json($build . '/version.json');
         fp_write($build . '/inventory.json', $inventory);
         $inventoryRaw = (string)file_get_contents($build . '/inventory.json');
         if (file_put_contents($build . '/inventory.sig', hash_hmac('sha256', $inventoryRaw, $cfg['key'])) !== 64) fp_fail('storage_error');
@@ -187,5 +185,43 @@ function fp_run(array $cfg, string $action, string $id): array {
         $receipt = ['status'=>'published', 'delivery_id'=>$id, 'snapshot_id'=>$id];
         fp_write($private . '/receipts/' . $id . '.json', $receipt);
         return $receipt;
-    } finally { flock($lock, LOCK_UN); fclose($lock); }
+    } finally {
+        if (is_resource($legacyLock)) { flock($legacyLock, LOCK_UN); fclose($legacyLock); }
+        flock($lock, LOCK_UN); fclose($lock);
+    }
+}
+
+/** Shared read-only validation for normal publication and assisted adoption. */
+function fp_validate_release(string $build, array $cfg, array $water = []): array {
+        $manifest = fp_json($build . '/manifest.json');
+        $version = fp_json($build . '/version.json');
+        $alerts = fp_json($build . '/alerts.json');
+        foreach ([$manifest, $alerts] as $meta) if (($meta['environment'] ?? null) !== ($version['environment'] ?? null) || ($meta['generated_at'] ?? null) !== ($version['generated_at'] ?? null)) fp_fail('metadata_mismatch');
+        if (!is_string($version['environment'] ?? null) || !is_string($version['generated_at'] ?? null) || count($manifest['results'] ?? []) !== 137) fp_fail('invalid_manifest');
+        if ($version['environment'] !== ($cfg['environment'] ?? null) || !in_array($cfg['round'] ?? null, [1,2], true)) fp_fail('unauthorized_environment');
+        $entries = [];
+        foreach ($manifest['results'] as $entry) {
+            $path = $entry['path'] ?? '';
+            if (!isset(fp_paths()[$path]) || isset($entries[$path])) fp_fail('invalid_manifest');
+            $entries[$path] = $entry;
+        }
+        foreach (fp_paths() as $path=>[$scope, $office]) {
+            $payload = fp_json($build . '/' . $path); $entry = $entries[$path];
+            $snapshot = $payload['snapshot'] ?? [];
+            $sourceId = $snapshot['tse_idg'] ?? null;
+            if ((!is_int($sourceId) && !is_string($sourceId)) || !preg_match('/^[0-9]{1,20}$/D', (string)$sourceId)) fp_fail('invalid_source_id');
+            $time = strtotime($snapshot['generated_at'] ?? '');
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/D', $snapshot['generated_at'] ?? '')) fp_fail('invalid_source_time');
+            if (($payload['schema_version'] ?? null) !== 1 || ($payload['environment'] ?? '') !== $version['environment'] || strtolower($payload['scope']['code'] ?? '') !== $scope || ($payload['office']['code'] ?? null) !== $office || ($entry['scope'] ?? '') !== $scope || ($entry['office'] ?? null) !== $office || ($entry['election_code'] ?? null) !== ($payload['election']['code'] ?? null) || ($entry['round'] ?? null) !== ($payload['election']['round'] ?? null) || ($entry['tse_idg'] ?? null) !== $sourceId || ($entry['captured_at'] ?? null) !== ($snapshot['captured_at'] ?? null) || !is_array($payload['candidates'] ?? null) || ($payload['candidate_count'] ?? null) !== count($payload['candidates']) || ($entry['candidate_count'] ?? null) !== count($payload['candidates']) || !$time) fp_fail('invalid_result');
+            $identity = [$version['environment'], $payload['election']['code'], $payload['election']['round']];
+            if (!is_int($identity[1]) || $identity[1] < 1 || $identity[2] !== $cfg['round']) fp_fail('unauthorized_election');
+            $fingerprint = fp_source_fingerprint($payload);
+            $old = $water[$path] ?? null;
+            if ($old && ($old['totalization_final'] ?? null) === true && ($snapshot['totalization_final'] ?? null) !== true) fp_fail('totalization_reopened_requires_review');
+            // Same source generation with changed content is ambiguous and fails closed.
+            if ($old && ($old['identity'] !== $identity || $time < $old['time'] || ($time === $old['time'] && ($old['idg'] !== (string)$sourceId || $old['fingerprint'] !== $fingerprint)))) fp_fail('result_regression');
+            $water[$path] = ['identity'=>$identity, 'time'=>$time, 'idg'=>(string)$sourceId, 'fingerprint'=>$fingerprint,
+                'totalization_final'=>$snapshot['totalization_final'] ?? null];
+        }
+        return $water;
 }

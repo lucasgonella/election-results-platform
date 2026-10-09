@@ -102,3 +102,9 @@ Antes de alterar o protocolo, leia [docs/ftp-publication.md](docs/ftp-publicatio
 Não contorne as travas de baseline legada ou estado live existente apagando arquivos. Adoção inicial em produção requer reconciliação e autorização. O workflow reutilizável novo entrega código em inbox privada; não ativa código em execução. Não descreva essa entrega como deploy de aplicação já ativada. Fluxos GO/SSH/HTTPS antigos continuam preservados e não compartilham o lock novo. Não habilite dois escritores.
 
 Testes obrigatórios do protocolo: `python -m pytest -q tests/test_ftp_publication.py`, PHP lint e validação dos leitores JavaScript; depois suíte adequada ao impacto. Use fixtures locais. Retenção atual conserva tudo; nenhuma limpeza automática deve ser acrescentada sem proteger releases e entregas em voo.
+
+## Preparação operacional — etapa 7
+
+Consulte [docs/ftp-migration-runbook.md](docs/ftp-migration-runbook.md) antes de adoção, instalação ou corte. Diagnóstico real confirmou a baseline e o state, mas FTP PWD/isolamento, runtime web/NFS em staging e reabertura dos targets AM continuam impeditivos. O validador suporta idg inteiro/string numérica e bloqueia reabertura de totalização finalizada; não retirar essa trava para publicar o pending observado.
+
+A certificação legada fica em área privada, sem editar a release antiga. `prepare-ftp-baseline.php` prepara plano assinado; `collector.src.ftp_baseline` adiciona checkpoint somente após assinatura/marker/state coincidentes e não apaga estado. O novo controlador pode compartilhar o lock oficial legado via configuração externa. O pacote PHP público é autossuficiente; helpers de adoção ficam privados. `prepare-ftp-code-activation.py` prepara somente planos e arquivos novos, sem ativar public_root. Testar também `test_ftp_baseline.py` e `test_ftp_code_activation.py`. Toda execução dos comandos operacionais do runbook exige autorização correspondente.

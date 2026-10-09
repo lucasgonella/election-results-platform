@@ -313,6 +313,8 @@ Rollback de código: restaurar artefato anterior verificado por FTP e ativação
 
 ## Informações de produção ainda não confirmadas
 
+Atualização da etapa 7: [docs/ftp-migration-runbook.md](docs/ftp-migration-runbook.md) contém evidências reais de layout/UIDs/NFS/PHP CLI, validação dos 140 hashes e reconciliação de state/alerts. A certificação legada agora pode ficar fora da release em inventário privado assinado; adoção e planos de código foram testados localmente. FTP PWD/isolamento e runtime web continuam não confirmados. Deltas AM observados reabrem totalização, condição que agora bloqueia publicação até revisão. Nenhuma adoção, instalação ou ativação foi executada em produção.
+
 - Exclusividade global de `/data`, publicações concorrentes e estado atual após a observação datada.
 - Demais parâmetros efetivos, identidades e permissões do runner e do protocolo de controle futuro.
 - Versões de PHP/PostgreSQL, restrições da hospedagem, permissões, firewall/TLS e configuração de cache web.

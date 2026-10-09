@@ -2,6 +2,8 @@
 
 Estado: branch de revisão, **sem instalação, deploy ou corte**. Serviços, timers e publicadores legados foram preservados. Os comandos operacionais abaixo são referência para uma implantação futura autorizada, não instruções para executar agora.
 
+Atualização da etapa 7: veja [o runbook de migração](ftp-migration-runbook.md) para diagnóstico real, adoção assistida e planos de ativação/recuperação de código. O bloqueio de baseline sem inventário foi resolvido no procedimento/testes locais com certificado privado; a adoção real não foi realizada. O controlador pode adquirir também o lock oficial legado. O idg real numérico é suportado e reabertura de totalização finalizada é bloqueada até revisão. As seções abaixo registram também os limites encontrados na etapa 6; prevalece o runbook para o estado operacional atual.
+
 ## Fluxo implementado
 
 ```mermaid

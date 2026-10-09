@@ -29,6 +29,18 @@ def package(component, root, output):
         if path.suffix not in extensions:
             continue
         contents[relative.as_posix()] = path.read_bytes()
+    if component == 'control':
+        if (source/'prepare-ftp-baseline.php').is_symlink():
+            raise ValueError('unsafe_artifact')
+        # A single self-contained public file can be installed by atomic rename.
+        # Keep offline adoption tools private; no runtime dependency on a second
+        # PHP file being overwritten in the middle of a request.
+        helper = contents['ftp-publication.php'].decode('utf-8').split('declare(strict_types=1);', 1)[1]
+        endpoint = contents['election-ftp-control.php'].decode('utf-8').split('declare(strict_types=1);', 1)[1]
+        endpoint = endpoint.replace("require_once __DIR__ . '/ftp-publication.php';", '')
+        contents = {'election-ftp-control.php': ('<?php\ndeclare(strict_types=1);\n' + helper + '\n' + endpoint).encode('utf-8'),
+                    'tools/ftp-publication.php': (source/'ftp-publication.php').read_bytes(),
+                    'tools/prepare-ftp-baseline.php': (source/'prepare-ftp-baseline.php').read_bytes()}
     if not contents:
         raise ValueError('empty_artifact')
     manifest = canonical({'component':component,'files':{name:{'sha256':hashlib.sha256(raw).hexdigest(),'size':len(raw)} for name,raw in contents.items()}})
