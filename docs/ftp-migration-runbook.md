@@ -293,6 +293,8 @@ Workflows novos preservam secrets existentes e não alteram workflows financeiro
 
 CI FTP executa a suíte em Python 3.13 e 3.14, incluindo PHP e harness; aprovação do CI não resolve infraestrutura. Os environments/vars e o acesso do GITHUB_TOKEN ao preflight de environment ainda exigem validação na configuração real; falha de leitura interrompe o workflow. Não foi disparado workflow de entrega para testar esse acesso.
 
+O caller e o reutilizável declaram `actions: read`, permissão mínima documentada para [Get an environment](https://docs.github.com/en/rest/deployments/environments#get-an-environment). Isso corrige a omissão local de permissão sem criar token ou conceder escrita administrativa. A validação do acesso/configuração no ambiente real permanece necessária.
+
 ### Checklist exato de implantação — somente após liberação
 
 1. **Provedor:** restringir FTP e criar destinos privados staging/production aprovados; comprovar ausência de acesso a todo controle e código, inclusive traversal/links. Revalidar PWD/mapeamento; definir quota/retensão e reservas de espaço.

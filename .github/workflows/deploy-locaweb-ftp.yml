@@ -17,6 +17,7 @@ on:
         required: true
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: locaweb-ftp-code-${{ inputs.environment }}
   cancel-in-progress: false
