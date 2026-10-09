@@ -102,6 +102,15 @@ $metaPath = $dir . '/batch.json';
 if (!is_file($metaPath)) reply(404, 'batch_not_found');
 $meta = json_decode((string) file_get_contents($metaPath), true);
 if (!is_array($meta) || !is_array($meta['paths'] ?? null)) reply(500, 'invalid_batch_state');
+if ($action === 'publish_official') {
+    require_once __DIR__ . '/publish-official-snapshot.php';
+    try {
+        $result = publishOfficialSnapshot($base, $id);
+        reply(200, $result['status'], array_diff_key($result, ['status' => 1]));
+    } catch (RuntimeException $e) {
+        reply(409, $e->getMessage(), ['mode' => 'official']);
+    }
+}
 if ($action === 'activate_test') {
     // Authenticated operation. Strictly private; no public data writes.
     require_once __DIR__ . '/activate-private-batch.php';
