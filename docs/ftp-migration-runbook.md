@@ -330,3 +330,83 @@ Publicação/rollback e recuperação de baseline legada continuam cobertos pela
 **BLOQUEADO para implantação de produção.** Preparação local pode ser revisada no PR; impedimentos restantes exigem autorização/configuração da hospedagem, ensaio real ou esclarecimento oficial. Nenhum deles pode ser eliminado com chmod mais permissivo, remoção de gates ou descarte de pending.
 
 Validação final local desta missão: **254 testes aprovados, 1 excluído** (sintaxe Bash legado indisponível no Windows); lint dos dez arquivos PHP aprovado e `git diff --check` aprovado. Harness local comprovou runtime CLI, exclusão de dois processos concorrentes, troca A/B e recuperação do marcador em fixtures. Essas evidências não representam PHP-FPM, multinó ou NFS reais. CI Linux valida a suíte completa e sintaxe do wrapper novo em Python 3.13/3.14; consultar os checks da revisão exata no PR #75 antes de aprovar. Nenhuma alteração de produção foi realizada.
+
+
+## Etapa 9 — infraestrutura e staging
+
+Consulte [o plano de staging](ftp-staging-plan.md) para evidência oficial de FTP Multiusuário, critérios de confinamento, layout proposto, comandos futuros, matriz de ensaios e ações externas. Capacidade do contrato e environments não foram confirmados na sessão inicial: SSH e rede GitHub bloqueados pelo ambiente local. Nenhuma escrita remota foi realizada.
+
+### Retomada local — validação ainda bloqueada
+
+Na retomada de 09/10/2026, HEAD local e remoto do PR #75 continuam em
+`3e8bb1fe2dcc72f6ab0e65dbfe9ee86139c56ffa`, com a etapa 9 não commitada.
+A consulta pelo conector GitHub confirmou PR aberto/em rascunho e sucesso dos
+workflows CI, Validate HTTPS publisher e FTP publication validation dessa revisão,
+incluindo jobs Python 3.13/3.14. Isso não valida as alterações locais da etapa 9.
+
+- `.local-test-etapa9` e o cache anterior estão inacessíveis. Um diretório novo
+  `.test-validation-etapa9`, dentro do checkout gravável, permitiu criar, ler e
+  remover um arquivo comum. TEMP/TMP foram apontados a ele somente nos processos
+  de validação, sem modificar configuração persistente.
+- `tempfile.mkdtemp()` cria um subdiretório, mas sua primeira listagem retorna
+  `PermissionError [WinError 5]`. O código instalado usa `os.mkdir(..., 0o700)`;
+  pytest usa o mesmo modo para `--basetemp`. A falha foi reproduzida na preparação
+  de fixtures e na limpeza final do pytest, antes das verificações funcionais.
+  A incompatibilidade com o token restrito do sandbox é a hipótese sustentada
+  por essa comparação; a ACL interna também não pôde ser lida. Não houve mudança
+  de ACL, modo de criação dos temporários ou política de segurança.
+- Cinco casos de operações FTP foram novamente tentados: mutação de artefatos
+  portal/control, arquivo extra, veto de upload sem aprovação e inventário sem
+  segredo de fixture. Todos tiveram erro de preparação do temporário. Não foi
+  possível confirmar que são os mesmos cinco da sessão anterior, pois o cache
+  com seus identificadores está inacessível.
+- A suíte completa foi tentada e parou com dez erros de importação: a DLL de
+  psycopg foi bloqueada por Application Control. A tentativa adicional com
+  `--continue-on-collection-errors` também falhou nos temporários e na limpeza;
+  não há resultado completo aprovado.
+- Verificações independentes dos componentes bloqueados: 57 testes de
+  parser/cliente/discovery/frontend e 3 testes de auditoria/override/leitura
+  passaram; 1 teste de sintaxe JavaScript foi pulado por ausência de Node.
+  `python -m compileall -q collector deploy/scripts tests` e
+  `git diff --check` passaram. PHP e Node não estão disponíveis no PATH desta
+  sessão; Bash do Git está instalado, mas sua execução foi bloqueada por
+  Application Control. Os lints PHP/JavaScript/Bash locais permanecem pendentes.
+
+Os logs de tentativa são locais em `.test-validation-etapa9`, fora dos artefatos
+de publicação; os subdiretórios inacessíveis foram preservados. Como a condição
+de validação integral não foi atendida, não houve commit, push ou atualização
+remota da etapa 9. Permanecem os impeditivos operacionais B/C/D, provisionamento,
+quota e configuração dos environments descritos acima. Nenhum diagnóstico
+remoto concluído foi repetido, nem houve deploy, merge ou escrita remota.
+
+### Etapa 10 — validação de código em CI Linux
+
+A etapa 10 autoriza commit exclusivo e envio para `feat/ftp-release-publication`
+para validar as quatro alterações da etapa 9 em GitHub Actions/Linux. O bloqueio
+Windows permanece documentado acima; não foram alteradas ACLs, políticas ou
+permissões dos temporários para contorná-lo.
+
+CI e FTP publication validation não possuem filtro de paths em pull_request:
+cobrem o gerador de staging, seu teste e os dois documentos. A matriz FTP executa
+a suíte completa em Python 3.13/3.14, incluindo inventário/checksums sem configuração
+secreta, fixtures completas/delta, harness, artefatos e recuperação. O teste do
+inventário também exige cobertura de todos os arquivos permitidos e 140/4 arquivos
+nas fixtures completa/delta. Os workflows existentes validam sintaxe PHP, Node e
+Bash; o CI geral compila Python. Os resultados e o SHA exato ficam no PR #75.
+
+Os workflows de deploy exigem push em main ou disparo manual; não são acionados
+pelo envio nesta branch. Testes de promoção/rollback usam árvores temporárias no
+runner. O workflow HTTPS arquiva um artefato de código no próprio GitHub, sem
+transferência para hospedagem. Não executar workflows de entrega/deploy.
+
+**Validação de código não libera operação em produção.** Permanecem confinamento
+FTP, inboxes/quotas/environments, esclarecimento AM e ensaios autorizados
+FPM/NFS/cache/rollback. O [plano de staging](ftp-staging-plan.md) define os próximos
+passos; provisionamento e ensaios de escrita exigem autorização específica.
+
+Bloqueio de envio comprovado nesta sessão: Git não pode criar `.git/index.lock`
+no checkout original e o conector rejeitou `github_create_tree` com
+`MCP tool call requires approval, but approval policy is never`. O commit de
+validação pode ser preparado em repositório local isolado no caminho gravável,
+mas não há revisão nova no GitHub nem CI Linux da etapa 9 enquanto o envio não
+for permitido. Isso é bloqueio externo de execução, não falha de teste Linux.

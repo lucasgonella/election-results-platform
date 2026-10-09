@@ -82,6 +82,25 @@ def test_cutover_override_preserves_timer_and_replaces_entrypoint():
     assert '[Timer]' not in text and 'User=' not in text
 
 
+def test_staging_transfer_inventory_excludes_fixture_secret(tmp_path):
+    spec=importlib.util.spec_from_file_location('staging',ROOT/'deploy/scripts/prepare-ftp-staging.py')
+    staging=importlib.util.module_from_spec(spec);spec.loader.exec_module(staging)
+    root=tmp_path/'ftp-staging-fixture';staging.prepare(root)
+    inventory=json.loads((root/'transfer-manifest.json').read_text())
+    assert inventory['fixture_only'] is True
+    assert inventory['remote_installation_authorized'] is False
+    assert inventory['excluded']==['private/staging-config.json']
+    expected={path.relative_to(root).as_posix() for path in root.rglob('*')
+              if path.is_file() and path.relative_to(root).as_posix()
+              not in {'private/staging-config.json','transfer-manifest.json'}}
+    assert set(inventory['files'])==expected
+    assert len([name for name in expected if name.startswith('fixtures/full/')])==140
+    assert len([name for name in expected if name.startswith('fixtures/delta/')])==4
+    import hashlib
+    for name, digest in inventory['files'].items():
+        assert hashlib.sha256((root/name).read_bytes()).hexdigest()==digest
+
+
 def test_staging_probe_local_runtime_rename_read_and_lock(tmp_path):
     spec=importlib.util.spec_from_file_location('staging',ROOT/'deploy/scripts/prepare-ftp-staging.py')
     staging=importlib.util.module_from_spec(spec);spec.loader.exec_module(staging)

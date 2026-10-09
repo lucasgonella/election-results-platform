@@ -4,6 +4,7 @@ Uses the same 137-target fixtures as the publication tests (dev dependencies).
 Future remote installation/writes require separate authorization.
 """
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import secrets
@@ -30,6 +31,17 @@ def prepare(output):
     config={'fixture_only':True,'environment':'fixture','root':str(output.resolve()),'fixture_key':secrets.token_hex(32)}
     path=output/'private/staging-config.json';path.write_text(json.dumps(config),encoding='utf-8');path.chmod(0o600)
     (output/'public/probe-marker.json').write_text('{"fixture":"replace_a"}',encoding='utf-8')
+    # Transfer allowlist: deliberately excludes the local fixture key/config.
+    # The remote probe needs a NEW server-side key and a remote-root binding.
+    files = {}
+    for path in sorted(output.rglob('*')):
+        if path.is_file() and path != output/'private/staging-config.json':
+            files[path.relative_to(output).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    (output/'transfer-manifest.json').write_text(json.dumps({
+        'fixture_only': True, 'files': files,
+        'excluded': ['private/staging-config.json'],
+        'remote_installation_authorized': False,
+    }, sort_keys=True), encoding='utf-8')
     return {'status':'fixture_prepared','targets':137}
 
 
