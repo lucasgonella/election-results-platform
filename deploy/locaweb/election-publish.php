@@ -102,6 +102,18 @@ $metaPath = $dir . '/batch.json';
 if (!is_file($metaPath)) reply(404, 'batch_not_found');
 $meta = json_decode((string) file_get_contents($metaPath), true);
 if (!is_array($meta) || !is_array($meta['paths'] ?? null)) reply(500, 'invalid_batch_state');
+if ($action === 'activate_test') {
+    // Authenticated operation. Strictly private; no public data writes.
+    require_once __DIR__ . '/activate-private-batch.php';
+    try {
+        $result = activatePrivateBatch($private, $id);
+        reply(200, $result['status'], array_diff_key($result, ['status' => 1]));
+    } catch (RuntimeException $e) {
+        $status = $e->getMessage();
+        $code = in_array($status, ['activation_busy','stale_version'], true) ? 409 : 422;
+        reply($code, $status, ['mode' => 'sandbox']);
+    }
+}
 if ($action === 'inspect') {
     $present = [];
     foreach ($meta['paths'] as $p) {
