@@ -8,6 +8,10 @@ declare(strict_types=1);
 function publishOfficialSnapshot(string $base, string $batchId): array {
     if (!is_file($base . '/ENABLE_OFFICIAL_PUBLICATION')) throw new RuntimeException('production_disabled');
     if (!preg_match('/^[a-f0-9]{32}$/D', $batchId)) throw new RuntimeException('invalid_batch_id');
+    $meta = json_decode((string)@file_get_contents($base . '/batches/' . $batchId . '/batch.json'), true);
+    if (!is_array($meta) || !is_array($meta['paths'] ?? null) || count($meta['paths']) !== 140) {
+        throw new RuntimeException('full_batch_required');
+    }
     $batch = $base . '/batches/' . $batchId . '/files';
     $v = json_decode((string)@file_get_contents($batch . '/version.json'), true);
     if (!is_array($v) || ($v['environment'] ?? '') !== 'oficial' ||
