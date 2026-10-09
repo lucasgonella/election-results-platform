@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import gzip
 import hmac
 import json
 import os
@@ -88,6 +89,7 @@ def main() -> int:
     parser.add_argument("--key-file", default="/etc/election-results-platform/secrets/hmac.key")
     parser.add_argument("--stage", required=True, type=Path, help="Pre-existing stage; never runs prepare/commit")
     parser.add_argument("--send", action="store_true", help="Without this flag only validates and reports")
+    parser.add_argument("--batch-id", help="Resume an existing 32-character hex batch ID; otherwise create a new batch")
     parser.add_argument("--activate-test", action="store_true", help="Activate ONLY in private Locaweb sandbox after successful upload and inspection")
     args = parser.parse_args()
     if args.activate_test and not args.send:
@@ -102,18 +104,35 @@ def main() -> int:
     key = bytes.fromhex(Path(args.key_file).read_text().strip())
     if len(key) != 32:
         raise ValueError("HMAC key must be 32 bytes")
-    batch_id = secrets.token_hex(16)
-    request(args.url, key, {"action": "begin", "batch_id": batch_id, "paths": paths})
+    batch_id = args.batch_id or secrets.token_hex(16)
+    if len(batch_id) != 32 or any(ch not in "0123456789abcdef" for ch in batch_id):
+        raise ValueError("Invalid batch ID")
+    print(f"BATCH ID: {batch_id}", flush=True)
+    if not args.batch_id:
+        request(args.url, key, {"action": "begin", "batch_id": batch_id, "paths": paths})
+    remote = request(args.url, key, {"action": "inspect", "batch_id": batch_id})
+    if remote.get("expected") != len(paths):
+        raise RuntimeError("Remote batch differs from current stage")
+    present = set(remote.get("present", []))
     for path in paths:
         data = (args.stage / path).read_bytes()
-        if len(data) > 700000:
-            raise ValueError(f"File exceeds staging limit: {path}")
+        if len(data) > 6291456:
+            raise ValueError(f"Uncompressed file exceeds safe limit: {path}")
+        if path in present:
+            print(f"already stored {path}")
+            continue
+        compressed = gzip.compress(data, compresslevel=6) if len(data) > 400000 else data
+        encoding = "gzip" if len(data) > 400000 and len(compressed) < len(data) else "identity"
+        payload = compressed if encoding == "gzip" else data
+        if len(payload) > 700000:
+            raise ValueError(f"Compressed file still exceeds upload limit: {path}")
         result = request(args.url, key, {
             "action": "upload",
             "batch_id": batch_id,
             "path": path,
             "sha256": hashlib.sha256(data).hexdigest(),
-            "content_b64": base64.b64encode(data).decode("ascii"),
+            "content_b64": base64.b64encode(payload).decode("ascii"),
+            "content_encoding": encoding,
         })
         print(f"stored {result['path']}")
     result = request(args.url, key, {"action": "inspect", "batch_id": batch_id})
