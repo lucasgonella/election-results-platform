@@ -24,11 +24,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Validate files on runner
-        run: |
-          python3 -m py_compile deploy/scripts/publish-live-results-https.py
-          php -l deploy/locaweb/election-publish.php
-          php -l deploy/locaweb/activate-sandbox.php
+      # PHP syntax and sandbox tests run in the GitHub-hosted CI workflow.
+      # The app01 deployment runner needs Python only; it does not execute PHP.
+      - name: Validate Python client on app01
+        run: python3 -m py_compile deploy/scripts/publish-live-results-https.py
       - name: Install in isolated release directory (no systemd changes)
         env:
           REV: ${{ github.sha }}
