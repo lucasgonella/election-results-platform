@@ -9,14 +9,13 @@ function publishOfficialSnapshot(string $base, string $batchId): array {
     if (!is_file($base . '/ENABLE_OFFICIAL_PUBLICATION')) throw new RuntimeException('production_disabled');
     if (!preg_match('/^[a-f0-9]{32}$/D', $batchId)) throw new RuntimeException('invalid_batch_id');
     $meta = json_decode((string)@file_get_contents($base . '/batches/' . $batchId . '/batch.json'), true);
-    if (!is_array($meta) || !is_array($meta['paths'] ?? null) || count($meta['paths']) !== 140) {
-        throw new RuntimeException('full_batch_required');
+    if (!is_array($meta) || !is_array($meta['paths'] ?? null) || count($meta['paths']) < 4 || count($meta['paths']) > 140) {
+        throw new RuntimeException('invalid_batch');
     }
     $batch = $base . '/batches/' . $batchId . '/files';
     $v = json_decode((string)@file_get_contents($batch . '/version.json'), true);
     if (!is_array($v) || ($v['environment'] ?? '') !== 'oficial' ||
         !is_string($v['generated_at'] ?? null)) throw new RuntimeException('official_only');
-    require_once __DIR__ . '/build-private-snapshot.php';
     $lock = @fopen($base . '/official-publish.lock', 'c');
     if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) throw new RuntimeException('publication_busy');
     try {
@@ -31,13 +30,13 @@ function publishOfficialSnapshot(string $base, string $batchId): array {
             throw new RuntimeException('invalid_timestamp');
         }
         if ($newTime <= $oldTime) throw new RuntimeException('stale_version');
-        // Build the full snapshot using the registered private baseline.
-        // Public publication NEVER uses the sandbox current pointer as an authority:
-        // only a freshly staged official batch can trigger it.
-        $built = buildPrivateSnapshot($base, $batchId);
-        $sid = $built['snapshot_id'] ?? null;
-        if (!is_string($sid) || !preg_match('/^[a-f0-9]{64}$/D', $sid)) throw new RuntimeException('invalid_snapshot');
-        $src = $base . '/snapshot-sandbox/releases/' . $sid;
+        // Build exclusively from verified staged files plus the currently published
+        // immutable release. The sandbox pointer is deliberately NOT trusted.
+        $sid = hash('sha256', $batchId . "\n" . $v['generated_at']);
+        $src = $batch;
+        $priorId = $old['snapshot_id'] ?? null;
+        $prior = is_string($priorId) && preg_match('/^[a-f0-9]{64}$/D', $priorId)
+            ? $site . '/releases/' . $priorId : null;
         $manifest = json_decode((string)@file_get_contents($src . '/manifest.json'), true);
         $alerts = json_decode((string)@file_get_contents($src . '/alerts.json'), true);
         if (($manifest['generated_at'] ?? null) !== $v['generated_at'] ||
@@ -54,6 +53,16 @@ function publishOfficialSnapshot(string $base, string $batchId): array {
             }
             $paths[$p] = true;
         }
+        $updated = array_fill_keys($meta['paths'], true);
+        foreach (['manifest.json','alerts.json','version.json'] as $required) {
+            if (!isset($updated[$required])) throw new RuntimeException('missing_metadata');
+        }
+        foreach ($updated as $p => $_) {
+            if (!isset($paths[$p]) && !in_array($p, ['manifest.json','alerts.json','version.json'], true)) {
+                throw new RuntimeException('unexpected_target');
+            }
+        }
+        if ($prior === null && count($updated) !== 140) throw new RuntimeException('full_batch_required');
         $releases = $site . '/releases';
         if (!is_dir($releases) && !@mkdir($releases, 0755, true)) throw new RuntimeException('storage_failed');
         $dest = $releases . '/' . $sid;
@@ -63,14 +72,17 @@ function publishOfficialSnapshot(string $base, string $batchId): array {
             foreach (array_merge(array_keys($paths), ['manifest.json','alerts.json','version.json']) as $p) {
                 $parent = dirname($tmp . '/' . $p);
                 if (!is_dir($parent) && !@mkdir($parent, 0755, true)) throw new RuntimeException('storage_failed');
-                if (!@copy($src.'/'.$p, $tmp.'/'.$p)) throw new RuntimeException('copy_failed');
+                $source = isset($updated[$p]) ? $src . '/' . $p : ($prior === null ? '' : $prior . '/' . $p);
+                if (!is_file($source) || is_link($source)) throw new RuntimeException('missing_baseline');
+                if (!@copy($source, $tmp.'/'.$p)) throw new RuntimeException('copy_failed');
                 @chmod($tmp.'/'.$p, 0644);
             }
             if (!@rename($tmp, $dest)) throw new RuntimeException('release_move_failed');
         }
         foreach (array_merge(array_keys($paths), ['manifest.json','alerts.json','version.json']) as $p) {
-            if (!is_file($dest.'/'.$p) || is_link($dest.'/'.$p) ||
-                !hash_equals(hash_file('sha256', $src.'/'.$p), hash_file('sha256', $dest.'/'.$p))) {
+            $source = isset($updated[$p]) ? $src . '/' . $p : ($prior === null ? '' : $prior . '/' . $p);
+            if (!is_file($dest.'/'.$p) || is_link($dest.'/'.$p) || !is_file($source) ||
+                !hash_equals(hash_file('sha256', $source), hash_file('sha256', $dest.'/'.$p))) {
                 throw new RuntimeException('release_checksum_error');
             }
         }
