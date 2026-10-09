@@ -86,7 +86,7 @@ def build(candidates_zip: Path, finance_zip: Path):
     transfers = []
     seen = set()
     matched = {"revenue": 0, "expense": 0}
-    for row, filename in read_csv_zip(finance_zip, lambda n: ("receita" in n or "despesa" in n) and "candidat" in n):
+    for row, filename in read_csv_zip(finance_zip, lambda n: (("receitas_candidatos_" in n) or ("despesas_contratadas_candidatos_" in n))):
         low = filename.lower()
         kind = "revenue" if "receita" in low else "expense"
         cid = field(row, "SQ_CANDIDATO")
