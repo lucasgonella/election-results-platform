@@ -4,6 +4,17 @@ const MANIFEST_URL =
 const ALERTS_URL =
     "/data/alerts.json";
 
+// Optional immutable snapshot reference; old deployments continue to use /data.
+let compositionDataBase = "/data";
+function compositionDataBaseForVersion(version) {
+    const id = version?.snapshot_id;
+    if (id == null) return "/data";
+    if (typeof id !== "string" || !/^[a-f0-9]{32,64}$/.test(id)) {
+        throw new Error("Invalid snapshot_id");
+    }
+    return `/data/releases/${id}`;
+}
+
 const CAMERA_TOTAL = 513;
 const SENATE_TOTAL = 81;
 const SENATE_ELECTED_2026 = 54;
@@ -810,7 +821,7 @@ async function cameraFutureComposition(
             targets.map(
                 target =>
                     fetchJson(
-                        "/data/"
+                        compositionDataBase + "/"
                         + target.path
                     )
             )
@@ -1111,16 +1122,18 @@ function setStatus(
 }
 
 async function initializeComposition() {
+    const version = await fetchJson("/data/version.json");
+    compositionDataBase = compositionDataBaseForVersion(version);
     const [
         manifest,
         alertPayload
     ] =
         await Promise.all([
             fetchJson(
-                MANIFEST_URL
+                compositionDataBase + "/manifest.json"
             ),
             fetchJson(
-                ALERTS_URL
+                compositionDataBase + "/alerts.json"
             )
         ]);
 
