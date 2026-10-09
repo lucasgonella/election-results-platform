@@ -9,6 +9,18 @@ const ALERTS_URL =
 
 const REFRESH_MS = 5000;
 
+// Legacy /data remains the default until version.json advertises a verified release.
+let activeDataBase = "/data";
+function dataBaseForVersion(version) {
+    const id = version?.snapshot_id;
+    if (id == null) return "/data";
+    if (typeof id !== "string" || !/^[a-f0-9]{32,64}$/.test(id)) {
+        throw new Error("Invalid snapshot_id");
+    }
+    return `/data/releases/${id}`;
+}
+
+
 const PAGE_SIZE = 20;
 
 const PROPORTIONAL_OFFICES =
@@ -462,10 +474,10 @@ function renderElectedByState() {
     });
 }
 
-async function loadAlerts() {
+async function loadAlerts(base = activeDataBase) {
     const response =
         await fetch(
-            ALERTS_URL,
+            `${base}/alerts.json`,
             {
                 cache: "no-store"
             }
@@ -1724,7 +1736,7 @@ async function loadSelectedResult() {
 
     const response =
         await fetch(
-            `/data/${item.path}`,
+            `${activeDataBase}/${item.path}`,
             {
                 cache: "no-store"
             }
@@ -1794,11 +1806,11 @@ async function loadVersion() {
 }
 
 
-async function loadManifest() {
+async function loadManifest(base = activeDataBase) {
 
     const response =
         await fetch(
-            MANIFEST_URL,
+            `${base}/manifest.json`,
             {
                 cache: "no-store"
             }
@@ -1837,11 +1849,13 @@ async function refreshIfChanged() {
 
         const oldItem =
             currentManifestItem();
+        const candidateBase = dataBaseForVersion(version);
 
         await Promise.all([
-            loadManifest(),
-            loadAlerts()
+            loadManifest(candidateBase),
+            loadAlerts(candidateBase)
         ]);
+        activeDataBase = candidateBase;
 
         renderElectedByState();
 
@@ -1886,6 +1900,7 @@ async function initialize() {
     const version =
         await loadVersion();
 
+    activeDataBase = dataBaseForVersion(version);
     await Promise.all([
         loadManifest(),
         loadAlerts()
