@@ -114,6 +114,16 @@ if ($action === 'activate_test') {
         reply($code, $status, ['mode' => 'sandbox']);
     }
 }
+if ($action === 'build_snapshot_test') {
+    require_once __DIR__ . '/build-private-snapshot.php';
+    try {
+        $result = buildPrivateSnapshot($base, $id);
+        reply(200, $result['status'], array_diff_key($result, ['status' => 1]));
+    } catch (RuntimeException $e) {
+        $code = $e->getMessage() === 'snapshot_busy' ? 409 : 422;
+        reply($code, $e->getMessage(), ['mode' => 'sandbox']);
+    }
+}
 if ($action === 'inspect') {
     $present = [];
     foreach ($meta['paths'] as $p) {
