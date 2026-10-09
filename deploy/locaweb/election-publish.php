@@ -144,6 +144,7 @@ if ($action === 'inspect') {
         'batch_id' => $id,
         'expected' => count($meta['paths']),
         'received' => count($present),
+        'present' => $present,
         'complete' => count($present) === count($meta['paths']),
         'mode' => 'staging_only',
     ]);
@@ -152,12 +153,20 @@ if ($action !== 'upload') reply(400, 'unknown_action');
 $path = $req['path'] ?? null;
 $hash = $req['sha256'] ?? null;
 $encoded = $req['content_b64'] ?? null;
+$encoding = $req['content_encoding'] ?? 'identity';
 if (!safePath($path) || !in_array($path, $meta['paths'], true) ||
     !is_string($hash) || !preg_match('/^[a-f0-9]{64}$/D', $hash) ||
-    !is_string($encoded)) reply(400, 'invalid_upload');
+    !is_string($encoded) || !in_array($encoding, ['identity','gzip'], true)) reply(400, 'invalid_upload');
 $bytes = base64_decode($encoded, true);
-if ($bytes === false || strlen($bytes) > 700000 ||
-    !hash_equals($hash, hash('sha256', $bytes))) reply(422, 'checksum_mismatch');
+if ($bytes === false || strlen($bytes) > 700000) reply(422, 'payload_limit');
+if ($encoding === 'gzip') {
+    $decoded = @gzdecode($bytes, 6291456);
+    if ($decoded === false) reply(422, 'invalid_gzip');
+    $bytes = $decoded;
+}
+if (strlen($bytes) > 6291456 || !hash_equals($hash, hash('sha256', $bytes))) {
+    reply(422, 'checksum_mismatch');
+}
 try {
     json_decode($bytes, true, 512, JSON_THROW_ON_ERROR);
 } catch (JsonException $e) {

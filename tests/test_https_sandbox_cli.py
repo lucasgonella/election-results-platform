@@ -43,7 +43,7 @@ class TestSandboxCLI(unittest.TestCase):
             calls.append(payload["action"])
             action = payload["action"]
             if action == "inspect":
-                return {"status": "inspected", "complete": True, "received": 4}
+                return {"status": "inspected", "complete": True, "received": 4, "expected": 4, "present": []}
             if action == "activate_test":
                 return {
                     "status": activation_status, "mode": "sandbox",
