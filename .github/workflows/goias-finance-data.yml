@@ -1,5 +1,10 @@
 name: Import TSE finance data for Goiás
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/goias_finance_etl.py'
+      - '.github/workflows/goias-finance-data.yml'
   workflow_dispatch:
   schedule:
     - cron: '23 9,15,21 * * *'
@@ -53,3 +58,31 @@ jobs:
           if git diff --cached --quiet; then exit 0; fi
           git commit -m 'data(go): update official candidate finance export'
           git push origin HEAD:main
+      - name: Upload validated GO dataset via plain FTP 21
+        env:
+          FTP_HOST: ${{ secrets.LOCAWEB_FTP_HOST }}
+          FTP_USER: ${{ secrets.LOCAWEB_FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.LOCAWEB_FTP_PASSWORD }}
+          FTP_DIR: ${{ vars.LOCAWEB_FTP_GOIAS_DIR }}
+        run: |
+          set -euo pipefail
+          test -n "$FTP_HOST" && test -n "$FTP_USER" && test -n "$FTP_PASSWORD" && test -n "$FTP_DIR"
+          [[ "$FTP_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
+          [[ "$FTP_DIR" =~ ^[A-Za-z0-9_./-]+$ ]]
+          [[ "$FTP_DIR" != *..* && "$FTP_DIR" != /* && "$FTP_DIR" != *//* ]]
+          [[ "$FTP_DIR" == */eleicoes/goias/raio-x || "$FTP_DIR" == eleicoes/goias/raio-x ]]
+          NETRC="$(mktemp)"; trap 'rm -f "$NETRC"' EXIT
+          chmod 600 "$NETRC"
+          printf 'machine %s login %s password %s\\n' "$FTP_HOST" "$FTP_USER" "$FTP_PASSWORD" > "$NETRC"
+          curl --fail --silent --show-error --retry 3 --proto '=ftp' --ftp-create-dirs \\
+            --netrc-file "$NETRC" --upload-file web/public/eleicoes/goias/raio-x/data/go-2026.json \\
+            "ftp://$FTP_HOST:21/$FTP_DIR/data/go-2026.json"
+          curl --fail --silent --show-error --retry 3 \\
+            https://afgnet.com.br/eleicoes/goias/raio-x/data/go-2026.json \\
+            -o /tmp/go-verified.json
+          python3 - <<'PY'
+          import json
+          with open('/tmp/go-verified.json') as f: data=json.load(f)
+          assert data['scope']=='GO' and data['year']==2026 and len(data['candidates'])>100
+          print('Official GO data published:',len(data['candidates']))
+          PY
