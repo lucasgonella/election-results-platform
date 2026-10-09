@@ -34,6 +34,9 @@ class GoFinanceTests(unittest.TestCase):
                 "receitas_candidatos_2026_GO.csv":
                     "SQ_CANDIDATO;SQ_RECEITA;VR_RECEITA;NR_CPF_CNPJ_DOADOR;NM_DOADOR;DT_RECEITA\n"
                     "123;91;1250,50;12345678909;Pessoa Exemplo;01/10/2026\n",
+                "receitas_candidatos_2026_BRASIL.csv":
+                    "SQ_CANDIDATO;SQ_RECEITA;VR_RECEITA;NR_CPF_CNPJ_DOADOR;NM_DOADOR;DT_RECEITA\\n"
+                    "123;91;1250,50;12345678909;Pessoa Exemplo;01/10/2026\\n",
                 "despesas_contratadas_candidatos_2026_GO.csv":
                     "SQ_CANDIDATO;SQ_DESPESA;VR_DESPESA_CONTRATADA\n"
                     "123;33;250,50\n",
