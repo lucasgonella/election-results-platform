@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import socket
+import ftplib
 import pytest
 
 from collector.src.ftp_delivery import canonical, freeze, publish, upload
@@ -52,7 +54,7 @@ def env(tmp_path):
     for directory in ['public/data','private','inbox','spool']:
         (tmp_path/directory).mkdir(parents=True)
     config = {'site':str(tmp_path/'public/data'),'public_root':str(tmp_path/'public'),
-              'private':str(tmp_path/'private'),'inbox':str(tmp_path/'inbox'),'key':KEY.hex(),'enabled':True,'environment':'fixture','round':1}
+              'private':str(tmp_path/'private'),'inbox':str(tmp_path/'inbox'),'key':KEY.hex(),'enabled':True,'environment':'fixture','round':1,'activation_host':socket.gethostname()}
     return tmp_path, config
 
 
@@ -167,6 +169,7 @@ def test_ftp_failure_never_marks_ready(tmp_path):
     delivery=freeze(dataset(tmp_path/'stage'),tmp_path/'spool',KEY,None)
     sent=[]
     class BrokenFTP:
+        def sendcmd(self,command): raise ftplib.error_perm('550 unavailable')
         def connect(self,host,port,timeout): assert port==21
         def login(self,*args): pass
         def set_pasv(self,value): pass
@@ -181,6 +184,7 @@ def test_ftp_roundtrip_and_completion_last(tmp_path):
     delivery=freeze(dataset(tmp_path/'stage'),tmp_path/'spool',KEY,None)
     stored={}; renamed=[]
     class FTP:
+        def sendcmd(self,command): raise ftplib.error_perm('550 unavailable')
         def connect(self,host,port,timeout): assert port==21
         def login(self,*args): pass
         def set_pasv(self,value): assert value is True

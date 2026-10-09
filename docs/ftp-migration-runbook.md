@@ -226,3 +226,105 @@ Preparar staging privado separado para inbox/controle e uma árvore pública de 
 | PHP-FPM/NFS/cache/rollback | NFS v3 `nolock,local_lock=all,nocto` e caches; CLI testado na etapa 7; topologia web desconhecida. | Ativadores multihost concorrentes; marcador/código divergente em caches; recuperação não comprovada. | Confirmar topologia/garantia de lock e executar plano staging isolado após autorização. | IMPEDITIVO para corte | Ensaio em todos os nós relevantes, lock exclusivo, rename/visibilidade e rollback aprovados; se locks multihost não forem garantidos, manter bloqueio. |
 
 Nenhum dos quatro impeditivos foi resolvido por completo. Diagnóstico da origem dos dados AM e opções NFS avançou; solução operacional permanece pendente. O projeto **não está apto ao corte de produção**, inclusive supervisionado, até essas condições serem atendidas. Alteração desta etapa: somente este runbook; arquitetura/código/serviços permanecem preservados. Não se repete a suíte local da etapa 7 por mudança exclusivamente documental; validar diff e fontes.
+
+## Missão final — preparação com credenciais existentes
+
+Evidências de 09/10/2026, aproximadamente 19h15–19h40 America/Sao_Paulo. Esta seção substitui as lacunas de autenticação anteriores, sem transformar observações antigas em fatos atuais. Não houve escrita remota, deploy, instalação de endpoint, mudança de unidade/timer, upload ou coleta pelo agente.
+
+### FTP autenticado e risco de controle confirmado
+
+O arquivo Windows `.secrets/ftp.env` existe e contém os nomes `LOCAWEB_FTP_HOST`, `LOCAWEB_FTP_USER`, `LOCAWEB_FTP_PASSWORD`, `LOCAWEB_FTP_PORT`. Está ignorado pelo Git; nenhum valor foi impresso. Autenticação via FTP 21 bem-sucedida, **PWD inicial `/`**. Operações utilizadas: login, PWD, FEAT/OPTS MLST e MLST/MLSD de metadados; nenhum RETR de conteúdo sensível, STOR, MKD, DELE ou rename.
+
+| Caminho FTP | Caminho SSH / evidência de correspondência |
+| --- | --- |
+| `/` | `/home/storage/4/b7/e0/afgnet1`; MLST UID 542178; `../../` resolve novamente para `/`. |
+| `/public_html` | `.../afgnet1/public_html`; MLST unique `21g7a4c0c`, inode SSH 8014860 (`0x7a4c0c`), device 33, UID 542178. |
+| `/.election-publisher/hmac.key` | `.../afgnet1/.election-publisher/hmac.key`; MLST unique `21gb11d68`, inode SSH 11607400 (`0xb11d68`), UID/GID 542178, modo 0600, 65 bytes. Conteúdo não lido. |
+| `/public_html/api/election-publish.php` | Mesmo inode correspondente ao SSH; arquivo PHP legado alcançável pela conta. Conteúdo remoto não lido. |
+
+MLST da chave e do PHP anuncia `perm=radfwMT`, incluindo capacidade anunciada de leitura/escrita; `.election-publisher` também é alcançável. **Isolamento insuficiente confirmado**, independentemente de chmod. Não foi testado STOR para provar escrita: o alcance da chave já invalida a fronteira exigida. O UID dos objetos não prova sozinho o UID efetivo do daemon FTP, mas o acesso anunciado aos mesmos objetos demonstra o problema operacional.
+
+`/etc/passwd` e o caminho SSH absoluto responderam 550; nenhuma symlink foi anunciada na listagem da raiz. Isso sugere confinamento à home, não isolamento de controle dentro dela, nem prova ausência de links/traversal em toda a árvore. Não houve tentativa de explorar ou ler arquivos externos.
+
+Não existem `ftp-inbox`, `ftp-inbox/elections` ou `ftp-inbox/code` na home SSH; nenhum diretório de transporte com nome ftp/inbox/staging foi encontrado na raiz. `.election-publisher/staging` existe, mas **não usar** como inbox nova: pertence à área de controle exposta. Destinos propostos, ainda não provisionados:
+
+```text
+SSH: /home/storage/4/b7/e0/afgnet1/ftp-inbox/elections/{staging,production}
+SSH: /home/storage/4/b7/e0/afgnet1/ftp-inbox/code/{staging,production}/{portal,control}
+FTP atual: /ftp-inbox/... (mapeamento após restrição da conta deve ser revalidado)
+```
+
+O provedor deve restringir a conta existente a destinos de transporte e Goiás aprovados, excluindo chave/configuração/estado/inventários/journals/recibos/PHP. Preservar `public_html/eleicoes/goias/raio-x` e os secrets existentes. Se chroot/allowlist com namespace virtual não for suportado, exigir decisão de separação de identidade pelo provedor; nenhuma conta ou senha duplicada foi criada. Não criar inbox dentro de public_html nem enfraquecer modos. A configuração do confinamento e criação dos destinos exigem autorização de infraestrutura e não foram executadas.
+
+### app01 preparado, sem instalação
+
+`/etc/election-results-platform/secrets/ftp.env`: **0600, UID 999/GID 982**, legível por `electioncollector`; contém exatamente os quatro nomes FTP acima. Virtualenv `/opt/election-results-platform/.venv/bin/python`: Python **3.14.4**, requests/dotenv/psycopg disponíveis. Unidade existente continua como electioncollector, usando o wrapper legado; timer ativo/habilitado. HEAD instalado continua `c273dfcaed764a7d04564b1d053e08f599dbbb10`. `live_publisher.py`, `parser.py` e `discovery.py` conferem byte a byte com a branch; os componentes FTP novos exigem instalação futura da revisão aprovada.
+
+State/pending/stage existem; `ftp-queue/confirmed.json` e `ftp-queue/current.json` não existem. Isso exige adoção assistida antes da primeira execução, sem descartar pending. Não repetir instalação do virtualenv indiscriminadamente: validar a revisão aprovada em Python 3.14 e preservar a instalação/rollback anterior.
+
+Preparados localmente:
+
+- `run-ftp-live-publisher.sh`: executa diretamente o runner novo, sem source/eval de credenciais e sem prepare/commit legado adicional.
+- `ftp-live-publisher.override.conf.example`: acrescenta EnvironmentFile protegido FTP e configuração operacional, limpa/substitui ExecStart da **mesma unidade**, conserva timer e identidade, usa UMask 0077. Instalar somente na janela autorizada, com ordem de drop-ins revisada frente a https.conf.
+- `ftp-publisher.env.example`: dois gates false, paths/URL/chave existente, porta 21. Aprovação de corte e isolamento é operacional, não uma forma de ignorar gates automáticos.
+- Pré-validação do runner antes de qualquer state/TSE: configuração obrigatória, porta 21, destino privado, arquivo regular sem symlink, ownership pelo UID efetivo e ausência de permissões de grupo/outros em POSIX.
+
+O transporte inspeciona MLST de caminhos de controle relativos e absolutos após login e **antes de MKD/STOR**. Caminho sensível visível ou comando inconclusivo bloqueia. Negação 550 é requisito necessário, não prova suficiente de confinamento; aprovação do provedor permanece indispensável.
+
+### Amazonas: semântica oficial obtida, causa ainda bloqueada
+
+O [leiaute EA20 de 10/07/2026](https://www.tse.jus.br/eleicoes/eleicoes-2026-content/arquivos/divulgacao-de-resultados/tse-ea20-arquivo-de-resultado-unificado) foi acessado nesta missão. Páginas 9–10: `tf=s` significa totalização final e `tf=n` significa ausência dela; finalização é o processo de encerramento da eleição com atribuição ou não de eleitos e não equivale somente a 100% das seções. Página 13: `e` indica eleito/segundo turno; página 14: `st` é preenchido quando existe totalização final. Página 12: `vag` representa vagas da agremiação, sujeitas a atualização durante totalizações.
+
+Isso confirma a interpretação do parser e a relevância das indicações removidas no delta AM. Não explica a razão de `s→n` nem fornece autorização oficial para reabertura dessas gerações. A pesquisa oficial nesta missão não trouxe justificativa específica suficiente. Registrar solicitação humana ao TSE/TRE-AM com eleição/UF/cargos/IDGs/horários/hashes já documentados; não enviar credenciais ou estado interno. O formulário oficial indicado na página técnica do TSE é `https://30308800.tse.jus.br/`; nenhum chamado/mensagem foi enviado pelo agente. Nova fixture cobre 100% de seções com perda de eleito e `tf=false`: a ativação é rejeitada e a release anterior preservada.
+
+### PHP/NFS: mitigação local e ensaio preparado
+
+`activation_host` agora é obrigatório no controlador/helper. Ausente ou diferente de `gethostname()`, falha antes de nonce, lock ou escrita. A restrição protege contra ativadores em hosts diferentes sobre NFS com locks locais; ainda exige provar que o hostname identifica um host único e que o endpoint pode ser roteado/servido nesse host. **Não resolve** por si só topologia, disponibilidade, caches, durabilidade ou coordenação com um legado ativo em outro nó. Manter o corte bloqueado e o legado suspenso durante o futuro ensaio/corte autorizado.
+
+`prepare-ftp-staging.py` gera **somente localmente**, em diretório novo `ftp-staging-*`, fixtures completas/delta de 137 targets, chave aleatória descartável e probe privado/público isolado. O probe não é incluído no pacote da aplicação. Na interface web exige HTTPS POST autenticado com chave de fixture; permite somente runtime, lock, troca A/B de marcador e leitura, sem paths/comandos arbitrários. Namespace/configuração de fixture obrigatórios; duração de lock limitada a dois segundos. Não usar chave ou dados de produção.
+
+Ensaio futuro autorizado: configurar namespace remoto exclusivo e root correto; confirmar FPM/host/OPcache via runtime; disparar locks concorrentes de workers/nós; executar trocas A/B sob leitores locais/web de todos os nós; medir hashes/cache/visibilidade; testar código de fixture anterior/novo e recuperação; depois protocolo completo/delta, FTP interrompido, resposta perdida e rollback usando fixtures e configuração privada separada. Registrar nó atendente e nunca deduzir multinó de muitas requisições ao mesmo nó. Não resetar OPcache global ou cache de produção. Instalação/provisionamento, todas as escritas e limpeza continuam dependentes de autorização específica.
+
+### CI/CD e divergência com main
+
+Na leitura inicial, PR #75 estava em rascunho com os três checks anteriores aprovados. Branch 7 commits atrás e 3 à frente de main; os sete commits exclusivos da main são financeiros de Goiás. Não foram incorporados nem alterados; não houve merge. Revalidar divergência e conflitos na revisão final.
+
+Workflows novos preservam secrets existentes e não alteram workflows financeiros. O reutilizável falha em ref/componente/ambiente inválidos; exige environment existente, reviewers em production, aprovação de isolamento e inbox terminada em `code/<ambiente>`. Concurrency conserva um grupo por destino de ambiente, sem cancelamento de entregas em curso. Staging/production têm namespaces distintos; portal/control são serializados no mesmo ambiente. Checkout fixa github.sha, valida toda a suíte, empacota allowlist e registra/archive o ID do artefato; antes de upload verifica novamente ID/READY/allowlist/bytes/symlinks/arquivos extras. Nenhuma ativação pública é feita pelo workflow.
+
+CI FTP executa a suíte em Python 3.13 e 3.14, incluindo PHP e harness; aprovação do CI não resolve infraestrutura. Os environments/vars e o acesso do GITHUB_TOKEN ao preflight de environment ainda exigem validação na configuração real; falha de leitura interrompe o workflow. Não foi disparado workflow de entrega para testar esse acesso.
+
+### Checklist exato de implantação — somente após liberação
+
+1. **Provedor:** restringir FTP e criar destinos privados staging/production aprovados; comprovar ausência de acesso a todo controle e código, inclusive traversal/links. Revalidar PWD/mapeamento; definir quota/retensão e reservas de espaço.
+2. **Staging autorizado:** instalar somente harness/fixtures no namespace exclusivo, com configuração adaptada; executar todos os ensaios FPM/hosts/lock/NFS/rename/cache/rollback acima. Guardar evidências e remover somente o namespace de teste conforme autorização.
+3. **Dados oficiais:** obter esclarecimento suficiente sobre AM e revisão humana. Não liberar a primeira entrega enquanto o gate rejeitar o pending. Nenhuma exceção automática está prevista.
+4. **Revisão:** CI verde da revisão exata, revisão do PR e integração supervisionada com main; environments/vars/reviewers/inboxes distintos e leitura do preflight confirmados. Nenhum merge automático.
+5. **Entrega de código:** workflow manual, main aprovada e componente/ambiente correto; arquivar artifact_id/checksum. Preparar plano privado com `prepare-ftp-code-activation.py`; revisar allowlist, hashes prévios e backups. Ativação é uma operação separada autorizada; arquivos offline de tools ficam privados.
+6. **Checkpoint de corte:** autorização explícita, suspender timer/escritor legado controladamente e aguardar serviço inativo; provar ausência de outros escritores. Guardar override/unidade/revisão instalada, configuração protegida, cinco arquivos state, pending/stage, marcador, 140 hashes, chave existente e releases em backup privado. Nunca imprimir ou empacotar esses segredos.
+7. **Adoção:** executar o procedimento assistido anterior com release selecionada/state congelados; instalar certificados/watermarks sob locks aprovados, verificar novamente hashes e criar confirmed.json autenticado. Preservar state/pending/stage. Não certificar pending como baseline.
+8. **Instalação app01:** instalar revisão/virtualenv aprovados de modo recuperável, configurar ftp-publisher.env com paths/host/URL/gates revisados, instalar drop-in de corte em ordem que substitua ExecStart legado. Não alterar intervalo do timer. `daemon-reload`/acionamento somente na janela autorizada. Timeout atual de 2min deve ser medido em staging; alteração futura exige revisão/autorizaçao e não contornar erro com uploads públicos.
+9. **Primeira entrega:** acionar runner supervisionado somente depois dos gates; verificar recibo, snapshot_id, marcador público e 140 hashes/137 targets, portal/favoritos na mesma release e estado confirmado exato. Estado local só muda após recibo válido; pending rejeitado continua preservado.
+10. **Observação:** confirmar vários ciclos sem concorrência, fila/latência/logs/retensão/backup e rollback verificáveis; então retomar agendamento autorizado. Falha em qualquer gate interrompe o corte e mantém/restaura a última release íntegra.
+
+### Rollback verificável
+
+1. Autorizar e suspender o novo runner/timer; aguardar inatividade. Congelar fila/current.json/recibo/confirmed/state e coletar marcador/hashes; não apagar fila nem watermarks.
+2. **Dados:** controle HMAC `rollback` com delivery_id corrente seleciona apenas a anterior registrada no journal, após inventário/hashes válidos. Verificar nova activation_revision, alvo, 137 resultados, metadados e leitores. Watermarks permanecem altos; alvo corrompido não é ativado. Repetição é idempotente.
+3. **Código:** usar backup privado/artefato anterior aprovado e plano recuperável; comparar hashes atuais contra os previstos, instalar recursos anteriores íntegros e trocar entrypoints por temporário+rename no mesmo filesystem. Verificar código/HTML/assets e caches em todos os nós. Não sobrescrever arquivo público durante FTP.
+4. **app01:** restaurar revisão/virtualenv e drop-in anterior verificados. Remover/restaurar somente o override FTP criado na janela, preservando https.conf original; daemon-reload e eventual retomada exigem autorização. Não iniciar o wrapper legado com state FTP divergente da release restaurada: reconciliar checkpoint/fila/baseline assistidamente primeiro.
+5. Revalidar marker/140 hashes/state e exclusividade. Se AM/isolamento ainda bloquearem, conservar a release íntegra sem tentar publicar o pending. O legado não é fallback automático autorizado para novos uploads; uma retomada operacional exige decisão explícita.
+
+Publicação/rollback e recuperação de baseline legada continuam cobertos pela suíte existente. Os novos testes exercitam veto antes de upload, gates antes de coleta, host divergente sem escrita, integridade/extra de artefato, cenário AM não final com 100% de seções e harness local de lock/rename/recuperação. Ensaios remotos não executados.
+
+### Situação final dos quatro impeditivos
+
+| Item | Estado atualizado | Liberação restante |
+| --- | --- | --- |
+| A — autenticação/identidade/mapeamento | **RESOLVIDO** para leitura; **PENDENTE** provisionamento dos destinos | Criar inboxes privadas autorizadas e revalidar mapa após confinamento. |
+| B — isolamento de controle | **IMPEDITIVO**, exposição confirmada | Provedor restringir conta existente/namespace; prova de separação da chave/estado/código. Gate local implementado não altera ACL. |
+| C — Amazonas | **IMPEDITIVO para primeira entrega** | Semântica EA20 confirmada; causa/legitimidade da mudança exige evidência oficial e validação humana. |
+| D — PHP/NFS/cache | **IMPEDITIVO para corte** | Pin de host e harness implementados/testados localmente; topologia e ensaios remotos de escrita não autorizados. |
+
+**BLOQUEADO para implantação de produção.** Preparação local pode ser revisada no PR; impedimentos restantes exigem autorização/configuração da hospedagem, ensaio real ou esclarecimento oficial. Nenhum deles pode ser eliminado com chmod mais permissivo, remoção de gates ou descarte de pending.
+
+Validação final local desta missão: **254 testes aprovados, 1 excluído** (sintaxe Bash legado indisponível no Windows); lint dos dez arquivos PHP aprovado e `git diff --check` aprovado. Harness local comprovou runtime CLI, exclusão de dois processos concorrentes, troca A/B e recuperação do marcador em fixtures. Essas evidências não representam PHP-FPM, multinó ou NFS reais. CI Linux valida a suíte completa e sintaxe do wrapper novo em Python 3.13/3.14; consultar os checks da revisão exata no PR #75 antes de aprovar. Nenhuma alteração de produção foi realizada.

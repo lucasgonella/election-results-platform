@@ -12,6 +12,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || ($_SERVER['HTTPS'] ?? '') !
 try {
     $base = dirname(__DIR__, 2) . '/.election-publisher';
     $cfg = fp_json($base . '/ftp-config.json');
+    fp_assert_runtime($cfg);
     if (realpath($cfg['public_root'] ?? '') !== realpath(dirname(__DIR__))) fp_fail('invalid_configuration');
     $keyHex = trim((string)file_get_contents($base . '/hmac.key'));
     if (!preg_match('/^[a-f0-9]{64}$/D', $keyHex)) fp_fail('server_not_ready');

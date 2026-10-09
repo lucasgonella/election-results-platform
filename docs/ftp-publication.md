@@ -2,6 +2,8 @@
 
 Estado: branch de revisão, **sem instalação, deploy ou corte**. Serviços, timers e publicadores legados foram preservados. Os comandos operacionais abaixo são referência para uma implantação futura autorizada, não instruções para executar agora.
 
+Preparação final: autenticação FTP e mapeamento estão confirmados, mas a conta atual expõe chave HMAC/PHP ao transporte. A montagem NFS usa locks locais. Os gates novos recusam uploads quando MLST alcança controle e recusam ativação fora do host PHP explicitamente aprovado. Eles não substituem isolamento do provedor ou ensaio real; veja o checklist final no runbook.
+
 Atualização da etapa 7: veja [o runbook de migração](ftp-migration-runbook.md) para diagnóstico real, adoção assistida e planos de ativação/recuperação de código. O bloqueio de baseline sem inventário foi resolvido no procedimento/testes locais com certificado privado; a adoção real não foi realizada. O controlador pode adquirir também o lock oficial legado. O idg real numérico é suportado e reabertura de totalização finalizada é bloqueada até revisão. As seções abaixo registram também os limites encontrados na etapa 6; prevalece o runbook para o estado operacional atual.
 
 ## Fluxo implementado
@@ -44,6 +46,9 @@ O marcador é o ponto de commit. Status reconhece a entrega selecionada mesmo se
 | --- | --- | --- |
 | GitHub Secrets existentes | `LOCAWEB_FTP_HOST`, `LOCAWEB_FTP_USER`, `LOCAWEB_FTP_PASSWORD` | Reutilizar sem novas credenciais. |
 | GitHub vars por environment | `LOCAWEB_FTP_CODE_INBOX_DIR` | Raiz FTP privada para artefatos de código; subpastas portal/control. |
+| GitHub vars por environment / app01 | `LOCAWEB_FTP_ISOLATION_APPROVED` | Deve permanecer false até confinamento do provedor comprovado; MLST de controle acessível bloqueia upload mesmo com true. |
+| app01 | `ELECTION_FTP_CUTOVER_APPROVED` | Gate false até autorização e checklist completo, antes de preparar/coletar qualquer delta. |
+| app01 | `ELECTION_FTP_CREDENTIAL_FILE` | `/etc/election-results-platform/secrets/ftp.env`, 0600 e proprietário igual ao UID do runner. Credenciais carregadas por EnvironmentFile, não por source/eval. |
 | app01, ambiente protegido | Mesmas credenciais FTP existentes | Provisionar acesso operacional autorizado, nunca registrar valores no Git. |
 | app01 | `LOCAWEB_FTP_ELECTION_INBOX_DIR` | Caminho FTP privado das entregas de resultados. |
 | app01 | `ELECTION_FTP_CONTROL_URL` | URL HTTPS do endpoint novo; não modificar a URL legada. |
@@ -54,10 +59,16 @@ O marcador é o ponto de commit. Status reconhece a entrega selecionada mesmo se
 Formato do arquivo externo, com caminhos **a confirmar**, sem segredos:
 
 ```json
-{"inbox":"/CAMINHO/PRIVADO/inbox","private":"/CAMINHO/PRIVADO/estado-ftp","public_root":"/CAMINHO/public_html","site":"/CAMINHO/public_html/data","environment":"AMBIENTE_TSE_APROVADO","round":1,"enabled":false}
+{"inbox":"/CAMINHO/PRIVADO/inbox","private":"/CAMINHO/PRIVADO/estado-ftp","public_root":"/CAMINHO/public_html","site":"/CAMINHO/public_html/data","environment":"AMBIENTE_TSE_APROVADO","round":1,"enabled":false,"activation_host":"HOST_PHP_A_CONFIRMAR"}
 ```
 
-PHP deve ter acesso a inbox, área privada e data; FTP não deve poder modificar área selada, chave, journals ou código em execução. Inbox e estado ficam fora de public_root e separados. Os arquivos internos de estado/configuração não são parte do pacote. Defaults não habilitam ativação. FTP PWD e permissões não foram confirmados.
+PHP deve ter acesso a inbox, área privada e data; FTP não deve poder modificar área selada, chave, journals ou código em execução. Inbox e estado ficam fora de public_root e separados. Os arquivos internos de estado/configuração não são parte do pacote. Defaults não habilitam ativação. FTP PWD `/` foi confirmado e corresponde à home SSH; isolamento é insuficiente na conta atual. `activation_host` é obrigatório: deve corresponder exatamente a `gethostname()` do host web autorizado, antes de qualquer nonce/lock/estado. Confirmar identidade única/afinidade com o provedor; hostname sozinho não prova topologia nem durabilidade.
+
+Os destinos de código devem terminar em `code/staging` ou `code/production`, respectivamente; ambientes diferentes não podem apontar para a mesma inbox. O artefato é revalidado antes da transferência (ID, READY, componente, allowlist, hashes e ausência de arquivos extras/symlinks). O transporte recusa caminhos públicos, traversal e MLST inconclusivo. MLST negado não é prova de impossibilidade de STOR: a aprovação exige política efetiva do provedor.
+
+Preparação app01: `deploy/scripts/run-ftp-live-publisher.sh`, `deploy/env/ftp-publisher.env.example` e `deploy/systemd/ftp-live-publisher.override.conf.example` são referências opt-in não instaladas. O override substitui ExecStart da unidade existente, carrega o arquivo FTP já provisionado e não altera timers. Não anexar o FTP runner ao wrapper prepare/commit legado: o runner novo é responsável pela fila e confirmação.
+
+Preparação de staging local: `python deploy/scripts/prepare-ftp-staging.py --output <novo-diretorio-ftp-staging-ID>`. Produz fixtures completas/delta, chave descartável de teste e probe fora dos artefatos da aplicação. A chave de fixture não é credencial de produção. Não subir o pacote nem instalar endpoint sem autorização. O probe só admite namespace `ftp-staging-*`, configuração fixture, ações fixas e controle HTTPS autenticado; CLI permite testes locais. A configuração contém caminho absoluto local, que precisa ser adaptado ao namespace remoto aprovado antes de um ensaio autorizado.
 
 ## Validação local
 

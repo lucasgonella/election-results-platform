@@ -14,6 +14,8 @@ import time
 import urllib.request
 import urllib.parse
 
+from .ftp_safety import assert_transport_isolated, validate_inbox
+
 
 def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
@@ -62,14 +64,14 @@ def freeze(stage: Path, spool: Path, key: bytes, baseline: str | None):
 def upload(delivery: Path, remote_root: str, host: str, user: str, password: str,
            ftp_factory=ftplib.FTP):
     """Write only a private inbox; READY last. Retrieve every file to verify bytes."""
-    if not remote_root or any(p in {"..", "."} for p in remote_root.split("/")):
-        raise ValueError("invalid_inbox")
+    validate_inbox(remote_root)
     if len(delivery.name) != 64 or any(c not in "0123456789abcdef" for c in delivery.name):
         raise ValueError("invalid_delivery_id")
     ftp = ftp_factory()
     try:
         ftp.connect(host, 21, timeout=30)
         ftp.login(user, password)
+        assert_transport_isolated(ftp)
         ftp.set_pasv(True)
         root = remote_root.rstrip("/") + "/" + delivery.name
         entries = [p for p in sorted(delivery.rglob("*")) if p.is_file() and p.name != "READY"]
@@ -145,6 +147,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("delivery", type=Path)
     args = parser.parse_args()
+    if os.environ.get('LOCAWEB_FTP_ISOLATION_APPROVED') != 'true' or os.environ.get('LOCAWEB_FTP_PORT','21') != '21':
+        raise ValueError('unapproved_ftp_configuration')
     key = key_from_file(os.environ["ELECTION_HMAC_KEY_FILE"])
     receipt = publish(args.delivery, Control(os.environ["ELECTION_FTP_CONTROL_URL"], key), lambda: upload(
         args.delivery, os.environ["LOCAWEB_FTP_ELECTION_INBOX_DIR"], os.environ["LOCAWEB_FTP_HOST"],

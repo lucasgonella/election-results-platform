@@ -22,15 +22,19 @@ concurrency:
   cancel-in-progress: false
 jobs:
   configuration:
-    if: github.ref == 'refs/heads/main' && (inputs.environment == 'staging' || inputs.environment == 'production') && (inputs.component == 'portal' || inputs.component == 'control')
     runs-on: ubuntu-latest
     steps:
       - name: Require pre-existing environment and production approval
         env:
           GH_TOKEN: ${{ github.token }}
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          DEPLOY_COMPONENT: ${{ inputs.component }}
+          DEPLOY_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
+          test "$DEPLOY_REF" = refs/heads/main
+          case "$DEPLOY_ENVIRONMENT" in staging|production) ;; *) exit 1 ;; esac
+          case "$DEPLOY_COMPONENT" in portal|control) ;; *) exit 1 ;; esac
           gh api "repos/$GITHUB_REPOSITORY/environments/$DEPLOY_ENVIRONMENT" > "$RUNNER_TEMP/environment.json"
           python - <<'PY'
           import json, os
@@ -47,9 +51,26 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - name: Require isolated environment-specific destination
+        env:
+          INBOX: ${{ vars.LOCAWEB_FTP_CODE_INBOX_DIR }}
+          ISOLATION_APPROVED: ${{ vars.LOCAWEB_FTP_ISOLATION_APPROVED }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          python - <<'PY'
+          import os
+          from collector.src.ftp_safety import validate_inbox
+          inbox = validate_inbox(os.environ['INBOX'])
+          if inbox.split('/')[-2:] != ['code', os.environ['DEPLOY_ENVIRONMENT']]:
+              raise SystemExit('Environment-specific code inbox required')
+          if os.environ['ISOLATION_APPROVED'] != 'true':
+              raise SystemExit('Provider isolation approval required')
+          PY
       - run: python -m pip install -r collector/requirements-dev.txt
       - name: Validate the revision to be packaged
         run: |
@@ -79,6 +100,8 @@ jobs:
         env:
           COMPONENT: ${{ inputs.component }}
           LOCAWEB_FTP_CODE_INBOX_DIR: ${{ vars.LOCAWEB_FTP_CODE_INBOX_DIR }}
+          LOCAWEB_FTP_ISOLATION_APPROVED: ${{ vars.LOCAWEB_FTP_ISOLATION_APPROVED }}
+          LOCAWEB_FTP_PORT: '21'
           LOCAWEB_FTP_HOST: ${{ secrets.LOCAWEB_FTP_HOST }}
           LOCAWEB_FTP_USER: ${{ secrets.LOCAWEB_FTP_USER }}
           LOCAWEB_FTP_PASSWORD: ${{ secrets.LOCAWEB_FTP_PASSWORD }}

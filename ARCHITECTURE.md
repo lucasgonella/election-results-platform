@@ -313,6 +313,8 @@ Rollback de código: restaurar artefato anterior verificado por FTP e ativação
 
 ## Informações de produção ainda não confirmadas
 
+Preparação final de 09/10/2026: FTP autenticado em `/` corresponde à home SSH, confirmado por UID e identificadores inode/MLST. A conta alcança `.election-publisher/hmac.key` e PHP em execução, portanto isolamento atual é insuficiente. Inboxes novas não foram criadas. app01 possui credenciais 0600, UID 999/GID 982, legíveis por electioncollector; virtualenv Python 3.14.4 com requests/dotenv/psycopg. Os módulos live/parser/discovery instalados conferem byte a byte com esta branch; os módulos FTP ainda não estão instalados. A implementação acrescenta veto de transporte por MLST, gates de configuração/corte, pin de host para ativação sobre locks NFS locais e templates de runner/override. Esses gates não resolvem configuração do provedor nem dispensam testes FPM/NFS/cache. CI valida Python 3.13 e 3.14 com fixtures. Consulte o runbook para checklist final e evidências oficiais AM; proteção de reabertura permanece.
+
 Atualização da etapa 7: [docs/ftp-migration-runbook.md](docs/ftp-migration-runbook.md) contém evidências reais de layout/UIDs/NFS/PHP CLI, validação dos 140 hashes e reconciliação de state/alerts. A certificação legada agora pode ficar fora da release em inventário privado assinado; adoção e planos de código foram testados localmente. FTP PWD/isolamento e runtime web continuam não confirmados. Deltas AM observados reabrem totalização, condição que agora bloqueia publicação até revisão. Nenhuma adoção, instalação ou ativação foi executada em produção.
 
 - Exclusividade global de `/data`, publicações concorrentes e estado atual após a observação datada.

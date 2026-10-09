@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 
 from .ftp_delivery import Control, freeze, key_from_file, publish, upload
+from .ftp_safety import validate_runner_environment
 
 
 def save(path, value):
@@ -35,6 +36,8 @@ def acknowledge(root: Path, job: dict):
 
 
 def run():
+    # Reject incomplete/unapproved configuration before touching live state or TSE.
+    validate_runner_environment(os.environ)
     import fcntl  # app01/Linux only; no Windows production runner.
     from . import live_publisher
     active, pending, stage = live_publisher.state_paths()

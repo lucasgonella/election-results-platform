@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import subprocess
 import urllib.request
+from dotenv import dotenv_values
 
 
 LOCAWEB = r'''
@@ -47,7 +48,7 @@ paths={}
 for name in ['public_html','public_html/data','.election-publisher','.election-publisher/hmac.key','.election-publisher/staging','.election-publisher/backups','includes']:
  p=home/name
  if p.exists():
-  s=p.stat(); paths[name]={'resolved':str(p.resolve()),'uid':s.st_uid,'gid':s.st_gid,'mode':oct(s.st_mode&0o777),'device':s.st_dev}
+  s=p.stat(); paths[name]={'resolved':str(p.resolve()),'uid':s.st_uid,'gid':s.st_gid,'mode':oct(s.st_mode&0o777),'device':s.st_dev,'inode':s.st_ino}
 print(json.dumps({'home':str(home),'paths':paths,'marker':marker,'marker_sha256':hashlib.sha256(marker_raw).hexdigest(),'release':str(release),'results':items,'metadata':meta,'mismatches':problems,'stable_marker':marker_raw==(site/'version.json').read_bytes(),'php_processes':processes,'inventories_present':[(release/p).exists() for p in ['inventory.json','inventory.sig']]}))
 '''
 
@@ -112,9 +113,12 @@ def ssh(host, source, sudo=False):
     return json.loads(result.stdout)
 
 
-def ftp_readonly():
+def ftp_readonly(credentials_file=None):
     names=['LOCAWEB_FTP_HOST','LOCAWEB_FTP_USER','LOCAWEB_FTP_PASSWORD']
-    if not all(os.environ.get(name) for name in names):
+    values=dotenv_values(credentials_file,interpolate=False) if credentials_file else os.environ
+    if str(values.get('LOCAWEB_FTP_PORT','21')) != '21':
+        return {'status':'invalid_port'}
+    if not all(values.get(name) for name in names):
         # This public host is the existing SSH alias's hostname. No login attempt
         # and no PWD inference are made without the existing credentials.
         probe=ftplib.FTP()
@@ -128,12 +132,16 @@ def ftp_readonly():
         finally: probe.close()
     client=ftplib.FTP()
     try:
-        client.connect(os.environ[names[0]],21,timeout=20)
-        client.login(os.environ[names[1]],os.environ[names[2]])
+        client.connect(values[names[0]],21,timeout=20)
+        client.login(values[names[1]],values[names[2]])
         out={'status':'authenticated','pwd':client.pwd(),'system':client.sendcmd('SYST')}
-        for path in ['.','public_html','.election-publisher','includes']:
+        # Selective metadata only; never list private directory contents or RETR.
+        for path in ['.','..','public_html','.election-publisher','.election-publisher/hmac.key',
+                     '.election-publisher/ftp-config.json','public_html/api/election-publish.php',
+                     'public_html/api/election-ftp-control.php','includes','ftp-inbox',
+                     'ftp-inbox/elections','ftp-inbox/code']:
             try:
-                out[path]=list(client.mlsd(path,facts=['type','size','perm','unix.mode','unix.uid','unix.gid']))
+                out[path]={'mlst':client.sendcmd('MLST '+path)}
             except ftplib.all_errors:
                 out[path]={'status':'listing_unavailable'}
         return out
@@ -161,6 +169,7 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--report',type=Path,required=True)
     parser.add_argument('--ftp',action='store_true')
+    parser.add_argument('--ftp-credentials-file',type=Path)
     parser.add_argument('--public-hashes',action='store_true')
     parser.add_argument('--validate-php',action='store_true')
     args=parser.parse_args()
@@ -198,7 +207,7 @@ def main():
             'same_idg':str(old.get('snapshot',{}).get('tse_idg'))==value['snapshot']['tse_idg'],
             'same_source_time':old.get('snapshot',{}).get('generated_at')==value['snapshot'].get('generated_at'),
             'snapshot_fields_changed':[k for k,v in value['snapshot'].items() if k!='tse_idg' and v!=old.get('snapshot',{}).get(k)]}
-    if args.ftp: report['ftp']=ftp_readonly()
+    if args.ftp: report['ftp']=ftp_readonly(args.ftp_credentials_file)
     if args.validate_php: report['php_readonly_validation']=validate_php_readonly()
     args.report.write_text(json.dumps(report,indent=2,ensure_ascii=False),encoding='utf-8')
     print(json.dumps({'report':str(args.report),'snapshot_id':selected,'results':len(results),

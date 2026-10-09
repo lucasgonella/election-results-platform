@@ -3,6 +3,12 @@ declare(strict_types=1);
 
 /** Fixed-path result activator. No code uploads, destination inputs or shell calls. */
 function fp_fail(string $code): never { throw new RuntimeException($code); }
+function fp_assert_runtime(array $cfg): void {
+    // NFS local locks cannot coordinate multiple hosts. Pin the control runtime
+    // before any nonce/lock/state write; provider topology still needs validation.
+    if (!isset($cfg['activation_host']) || !is_string($cfg['activation_host']) || $cfg['activation_host'] === '') fp_fail('unverified_lock_scope');
+    if (!hash_equals($cfg['activation_host'], (string)gethostname())) fp_fail('activation_host_mismatch');
+}
 function fp_json(string $path): array {
     $value = json_decode((string)file_get_contents($path), true, 64, JSON_THROW_ON_ERROR);
     if (!is_array($value)) fp_fail('invalid_json');
@@ -84,6 +90,7 @@ function fp_receipt(array $cfg, string $id): array {
     return ['status'=>'unknown', 'delivery_id'=>$id];
 }
 function fp_run(array $cfg, string $action, string $id): array {
+    fp_assert_runtime($cfg);
     if (!preg_match('/^[a-f0-9]{64}$/D', $id)) fp_fail('invalid_id');
     foreach (['private', 'inbox', 'site'] as $name) {
         if (!is_dir($cfg[$name]) || is_link($cfg[$name])) fp_fail('invalid_configuration');

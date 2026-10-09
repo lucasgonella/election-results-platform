@@ -8,6 +8,40 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from collector.src.ftp_delivery import canonical, upload
+from collector.src.ftp_safety import validate_inbox
+
+
+def validate_artifact(directory, component):
+    """Recheck the bytes to be uploaded, including allowlist and no extra files."""
+    if directory.is_symlink() or any(p.is_symlink() for p in directory.rglob('*')):
+        raise ValueError('unsafe_artifact')
+    raw=(directory/'artifact.json').read_bytes()
+    if hashlib.sha256(raw).hexdigest()!=directory.name or (directory/'READY').read_text().strip()!=directory.name:
+        raise ValueError('artifact_integrity_error')
+    manifest=json.loads(raw)
+    if manifest.get('component')!=component or not manifest.get('files'):
+        raise ValueError('invalid_component')
+    expected={'artifact.json','READY'}
+    for name,entry in manifest['files'].items():
+        from pathlib import PurePosixPath
+        parts=PurePosixPath(name).parts
+        if (not parts or PurePosixPath(name).is_absolute() or '\\' in name
+                or any(p.startswith('.') or p in {'goias','data','node_modules'} for p in parts)):
+            raise ValueError('unsafe_artifact')
+        if component=='control' and name not in {'election-ftp-control.php','tools/ftp-publication.php','tools/prepare-ftp-baseline.php'}:
+            raise ValueError('unsafe_artifact')
+        if component=='portal' and Path(name).suffix not in {'.html','.css','.js','.svg','.png','.ico'}:
+            raise ValueError('unsafe_artifact')
+        path=directory/'files'/name
+        if any(p.is_symlink() for p in [path,*path.parents] if p==directory or directory in p.parents):
+            raise ValueError('unsafe_artifact')
+        value=path.read_bytes()
+        if len(value)!=entry['size'] or hashlib.sha256(value).hexdigest()!=entry['sha256']:
+            raise ValueError('artifact_integrity_error')
+        expected.add('files/'+name)
+    if any(p.is_symlink() for p in directory.rglob('*')) or {p.relative_to(directory).as_posix() for p in directory.rglob('*') if p.is_file()}!=expected:
+        raise ValueError('unsafe_artifact')
+    return manifest
 
 
 def package(component, root, output):
@@ -64,6 +98,10 @@ def main():
     if args.action=='package':
         print(package(args.component,Path(__file__).resolve().parents[2],args.directory))
     else:
+        if os.environ.get('LOCAWEB_FTP_ISOLATION_APPROVED')!='true': raise ValueError('ftp_isolation_not_approved')
+        if os.environ.get('LOCAWEB_FTP_PORT','21')!='21': raise ValueError('ftp_port_must_be_21')
+        validate_inbox(os.environ['LOCAWEB_FTP_CODE_INBOX_DIR'])
+        validate_artifact(args.directory,args.component)
         upload(args.directory,os.environ['LOCAWEB_FTP_CODE_INBOX_DIR'].rstrip('/')+'/'+args.component,
                os.environ['LOCAWEB_FTP_HOST'],os.environ['LOCAWEB_FTP_USER'],os.environ['LOCAWEB_FTP_PASSWORD'])
         print(json.dumps({'status':'staged','artifact_id':args.directory.name}))
