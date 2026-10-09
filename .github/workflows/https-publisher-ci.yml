@@ -41,6 +41,7 @@ jobs:
         run: |
           php -l deploy/locaweb/election-publish.php
           php -l deploy/locaweb/activate-sandbox.php
+          php -l deploy/locaweb/activate-private-batch.php
       - name: Ensure production activation is not enabled
         run: |
           ! grep -Eq "'activate'|\"activate\"" deploy/locaweb/election-publish.php
