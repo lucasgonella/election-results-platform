@@ -75,12 +75,12 @@ jobs:
           [[ "$FTP_DIR" == */eleicoes/goias/raio-x || "$FTP_DIR" == eleicoes/goias/raio-x ]]
           NETRC="$(mktemp)"; trap 'rm -f "$NETRC"' EXIT
           chmod 600 "$NETRC"
-          printf 'machine %s login %s password %s\\n' "$FTP_HOST" "$FTP_USER" "$FTP_PASSWORD" > "$NETRC"
-          curl --fail --silent --show-error --retry 3 --proto '=ftp' --ftp-create-dirs \\
-            --netrc-file "$NETRC" --upload-file web/public/eleicoes/goias/raio-x/data/go-2026.json \\
+          printf 'machine %s login %s password %s\n' "$FTP_HOST" "$FTP_USER" "$FTP_PASSWORD" > "$NETRC"
+          curl --fail --silent --show-error --retry 3 --proto '=ftp' --ftp-create-dirs \
+            --netrc-file "$NETRC" --upload-file web/public/eleicoes/goias/raio-x/data/go-2026.json \
             "ftp://$FTP_HOST:21/$FTP_DIR/data/go-2026.json"
-          curl --fail --silent --show-error --retry 3 \\
-            https://afgnet.com.br/eleicoes/goias/raio-x/data/go-2026.json \\
+          curl --fail --silent --show-error --retry 3 \
+            https://afgnet.com.br/eleicoes/goias/raio-x/data/go-2026.json \
             -o /tmp/go-verified.json
           python3 - <<'PY'
           import json
