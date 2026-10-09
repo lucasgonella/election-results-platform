@@ -48,7 +48,7 @@ def request(url: str, key: bytes, payload: dict) -> dict:
         raise RuntimeError(f"HTTP {exc.code}: {exc.read(256)!r}") from exc
     except URLError as exc:
         raise RuntimeError(f"HTTPS unavailable: {exc.reason}") from exc
-    if result.get("status") not in {"ok", "prepared", "stored", "inspected", "activated", "already_activated"}:
+    if result.get("status") not in {"ok", "prepared", "stored", "inspected", "activated", "already_activated", "published"}:
         raise RuntimeError(f"Unexpected server result: {result!r}")
     return result
 
@@ -91,13 +91,20 @@ def main() -> int:
     parser.add_argument("--send", action="store_true", help="Without this flag only validates and reports")
     parser.add_argument("--batch-id", help="Resume an existing 32-character hex batch ID; otherwise create a new batch")
     parser.add_argument("--activate-test", action="store_true", help="Activate ONLY in private Locaweb sandbox after successful upload and inspection")
+    parser.add_argument("--publish-official", action="store_true", help="Publish FULL official batch through immutable HTTPS release protocol")
     args = parser.parse_args()
+    if args.publish_official and (not args.send or args.activate_test):
+        parser.error("--publish-official requires --send and forbids --activate-test")
     if args.activate_test and not args.send:
         parser.error("--activate-test requires --send")
     if not args.url.startswith("https://"):
         parser.error("HTTPS required")
     paths = stage_paths(args.stage)
-    print(f"Validated {len(paths)} JSON files; staging-only endpoint")
+    if args.publish_official:
+        version = json.loads((args.stage / "version.json").read_text())
+        if version.get("environment") != "oficial" or len(paths) != 140:
+            raise ValueError("Official publication requires environment=oficial and full 140-file batch")
+    print(f"Validated {len(paths)} JSON files; HTTPS endpoint")
     if not args.send:
         print("DRY RUN: no requests sent")
         return 0
@@ -139,6 +146,11 @@ def main() -> int:
     if not result.get("complete"):
         raise RuntimeError("Remote staging incomplete")
     print(f"Staging complete ({result['received']} files), batch {batch_id}; NOT PUBLISHED")
+    if args.publish_official:
+        published = request(args.url, key, {"action": "publish_official", "batch_id": batch_id})
+        if published.get("mode") != "official" or published.get("status") != "published":
+            raise RuntimeError("Official publication not confirmed")
+        print("OFFICIAL PUBLISHED:", published["snapshot_id"])
     if args.activate_test:
         activated = request(args.url, key, {"action": "activate_test", "batch_id": batch_id})
         if activated.get("mode") != "sandbox" or activated.get("status") not in {"activated", "already_activated"}:
