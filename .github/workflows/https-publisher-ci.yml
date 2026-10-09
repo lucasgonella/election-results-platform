@@ -7,6 +7,9 @@ on:
       - 'deploy/locaweb/**'
       - 'deploy/scripts/publish-live-results-https.py'
       - 'tests/test_https_*.py'
+      - 'tests/test_https_release.sh'
+      - 'deploy/scripts/release-https-staging.sh'
+      - 'deploy/scripts/rollback-https-staging.sh'
       - '.github/workflows/https-publisher-ci.yml'
   pull_request:
     paths:
@@ -32,6 +35,8 @@ jobs:
         run: python -m py_compile deploy/scripts/publish-live-results-https.py
       - name: Validate Python tests
         run: python -m unittest discover -s tests -p 'test_https_*.py' -v
+      - name: Validate isolated CD promotion and rollback
+        run: bash tests/test_https_release.sh
       - name: Validate PHP syntax
         run: |
           php -l deploy/locaweb/election-publish.php
