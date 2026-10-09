@@ -47,7 +47,7 @@ def request(url: str, key: bytes, payload: dict) -> dict:
         raise RuntimeError(f"HTTP {exc.code}: {exc.read(256)!r}") from exc
     except URLError as exc:
         raise RuntimeError(f"HTTPS unavailable: {exc.reason}") from exc
-    if result.get("status") not in {"ok", "prepared", "stored", "inspected"}:
+    if result.get("status") not in {"ok", "prepared", "stored", "inspected", "activated", "already_activated"}:
         raise RuntimeError(f"Unexpected server result: {result!r}")
     return result
 
@@ -88,7 +88,10 @@ def main() -> int:
     parser.add_argument("--key-file", default="/etc/election-results-platform/secrets/hmac.key")
     parser.add_argument("--stage", required=True, type=Path, help="Pre-existing stage; never runs prepare/commit")
     parser.add_argument("--send", action="store_true", help="Without this flag only validates and reports")
+    parser.add_argument("--activate-test", action="store_true", help="Activate ONLY in private Locaweb sandbox after successful upload and inspection")
     args = parser.parse_args()
+    if args.activate_test and not args.send:
+        parser.error("--activate-test requires --send")
     if not args.url.startswith("https://"):
         parser.error("HTTPS required")
     paths = stage_paths(args.stage)
@@ -117,6 +120,14 @@ def main() -> int:
     if not result.get("complete"):
         raise RuntimeError("Remote staging incomplete")
     print(f"Staging complete ({result['received']} files), batch {batch_id}; NOT PUBLISHED")
+    if args.activate_test:
+        activated = request(args.url, key, {"action": "activate_test", "batch_id": batch_id})
+        if activated.get("mode") != "sandbox" or activated.get("status") not in {"activated", "already_activated"}:
+            raise RuntimeError(f"Private activation confirmation invalid: {activated!r}")
+        version = json.loads((args.stage / "version.json").read_text())
+        if activated.get("status") == "activated" and (activated.get("files") != len(paths) or activated.get("generated_at") != version.get("generated_at")):
+            raise RuntimeError(f"Private activation metadata mismatch: {activated!r}")
+        print(f"Private activation verified: {activated['status']}; production UNCHANGED")
     return 0
 
 
