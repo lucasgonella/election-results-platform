@@ -171,3 +171,64 @@ def test_staging_runtime_identity_does_not_create_private_state(tmp_path):
     assert value['process_root'] is None or isinstance(value['process_root'],str)
     assert 'fixture_key' not in value
     assert sorted(p.name for p in (root/'private').iterdir())==before
+
+
+def test_route_plan_reuses_verified_fixtures_without_exposing_config(tmp_path, monkeypatch):
+    spec=importlib.util.spec_from_file_location('staging',ROOT/'deploy/scripts/prepare-ftp-staging.py')
+    staging=importlib.util.module_from_spec(spec);spec.loader.exec_module(staging)
+    source=tmp_path/'ftp-staging-source';staging.prepare(source)
+    source_key=json.loads((source/'private/staging-config.json').read_text())['fixture_key']
+    monkeypatch.setattr(staging, 'dataset', lambda *args: pytest.fail('must reuse fixtures'))
+    output=tmp_path/'ftp-staging-route';staging.prepare_route(source, output)
+    plan=json.loads((output/'install-plan.json').read_text())
+    config=json.loads((output/'private/staging-config.json').read_text())
+    assert plan['source_fixture_files_verified']==147
+    assert plan['remote_writes_authorized'] is False
+    assert config['fixture_key']!=source_key
+    assert config['allowed_actions']==['runtime','read'] and config['activation_host']==''
+    assert len(list((output/'public').iterdir()))==3
+    assert not (output/'public/private').exists() and not (output/'public/fixtures').exists()
+    for path in (output/'public').iterdir():
+        assert config['fixture_key'].encode() not in path.read_bytes()
+    assert config['fixture_key'] not in json.dumps(plan)
+    manifest=json.loads((output/'transfer-manifest.json').read_text())
+    assert 'private/staging-config.json' not in manifest['files']
+    assert (output/'public/.htaccess').read_bytes()==b'Options -Indexes\nDirectoryIndex probe.php\n'
+
+
+def test_route_plan_refuses_corrupt_source_before_preparing_output(tmp_path):
+    spec=importlib.util.spec_from_file_location('staging',ROOT/'deploy/scripts/prepare-ftp-staging.py')
+    staging=importlib.util.module_from_spec(spec);spec.loader.exec_module(staging)
+    source=tmp_path/'ftp-staging-source';staging.prepare(source)
+    (source/'fixtures/full/ac/president.json').write_bytes(b'corrupt')
+    output=tmp_path/'ftp-staging-route'
+    with pytest.raises(ValueError, match='fixture_checksum_mismatch'):
+        staging.prepare_route(source, output)
+    assert not output.exists()
+
+
+def test_split_route_reads_private_fixture_and_refuses_mutation(tmp_path):
+    import shutil
+    spec=importlib.util.spec_from_file_location('staging',ROOT/'deploy/scripts/prepare-ftp-staging.py')
+    staging=importlib.util.module_from_spec(spec);spec.loader.exec_module(staging)
+    root=tmp_path/'ftp-staging-pr75';staging.prepare(root)
+    public=tmp_path/'public_html/eleicoes/__staging_pr75';public.mkdir(parents=True)
+    for name in ['probe.php','probe-marker.json']:
+        shutil.copyfile(root/'public'/name,public/name)
+    config_path=root/'private/staging-config.json'
+    config=json.loads(config_path.read_text());config.update(public_root=str(public.resolve()),allowed_actions=['runtime','read'])
+    config_path.write_text(json.dumps(config))
+    before=sorted(p.name for p in (root/'private').iterdir())
+    marker=(public/'probe-marker.json').read_bytes()
+    def run(action):
+        return subprocess.run(['php',str(public/'probe.php'),action],capture_output=True,text=True)
+    runtime=run('runtime');assert runtime.returncode==0
+    assert json.loads(runtime.stdout)['fixture_public_root']==str(public.resolve())
+    assert json.loads(run('read').stdout)['marker']=={'fixture':'replace_a'}
+    for action in ['lock','replace_b']:
+        result=run(action);assert result.returncode==1
+        assert json.loads(result.stdout)['error']=='fixture_action_not_approved'
+    assert (public/'probe-marker.json').read_bytes()==marker
+    assert sorted(p.name for p in (root/'private').iterdir())==before
+    config.pop('public_root');config_path.write_text(json.dumps(config))
+    assert json.loads(run('runtime').stdout)['error']=='fixture_configuration_required'

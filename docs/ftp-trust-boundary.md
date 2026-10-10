@@ -59,3 +59,12 @@ mas não certificam isolamento nem autorizam dados reais. O cliente
 sem escrever; `probe-ftp-web.py` verifica FPM, exclusão de lock, visibilidade
 HTTP normal e sem cache e restauração da fixture. Ensaios no mesmo host não
 comprovam coerência multinó NFS. Consulte [o plano](ftp-staging-plan.md).
+
+Na etapa 14, a rota proposta em `/eleicoes/__staging_pr75/` expõe somente
+probe e marcador sintético. Configuração, chave fixture e helper ficam em
+`/ftp-staging-pr75/private`, fora de `public_html`; autenticação HMAC e ações
+runtime/read limitam o diagnóstico. Isso resolve o posicionamento HTTP do
+harness, **não** o acesso amplo do principal FTP: ele continua alcançando
+controle/código. Não habilitar LOCAWEB_FTP_ISOLATION_APPROVED. A transferência
+separadamente aprovada de uma chave descartável de teste ao diretório privado
+não envolve a chave HMAC real e não autoriza publicação eleitoral.

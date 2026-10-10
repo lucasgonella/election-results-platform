@@ -403,3 +403,99 @@ Nenhum upload, criação, rename, exclusão, chamada ao receptor eleitoral,
 instalação PHP, alteração de banco/timer/serviço ou merge foi executado nesta
 etapa. Fronteira de confiança, Amazonas e ensaios FPM/NFS/cache/rollback seguem
 pendentes; não solicitar outra conta nem habilitar isolamento por declaração.
+
+## Etapa 14 — rota sob o HTTPS atual
+
+O domínio correto é `afgnet.com.br`, com portal em `/eleicoes/`. Inspeção
+FTP + GET confirmou o mesmo SHA-256 e 11.107 bytes em
+`/public_html/eleicoes/index.html` e `/eleicoes/index.html`. O certificado
+apresenta `afgnet.com.br` e `www.afgnet.com.br`; não foi comprovado outro
+subdomínio. `/eleicoes/__staging_pr75/` e `probe.php` respondem 404; o
+diretório não aparece no inventário FTP e MLST responde 550. A criação
+exclusiva continua obrigatória. Não há `.htaccess` nos dois diretórios pais
+observados. Nenhum receptor eleitoral foi chamado nem arquivo remoto escrito.
+
+**Solução preparada:** `https://afgnet.com.br/eleicoes/__staging_pr75/probe.php`,
+com apenas o entrypoint e o marcador sintético na árvore pública. Helper,
+configuração, chave e fixtures ficam fora dela, sem links ou aliases novos:
+
+| Papel | Destino FTP | Caminho físico esperado pela configuração |
+| --- | --- | --- |
+| Público | `/public_html/eleicoes/__staging_pr75` | `/home/storage/4/b7/e0/afgnet1/public_html/eleicoes/__staging_pr75` |
+| Privado | `/ftp-staging-pr75/private` | `/home/storage/4/b7/e0/afgnet1/ftp-staging-pr75/private` |
+
+A home física corresponde ao mapeamento SSH/inodes anterior, com inode de
+public_html ainda coincidente. O novo harness deriva a home da localização
+real do script, valida os dois roots e recusa outra estrutura. FPM com chroot,
+open_basedir ou UID sem leitura pode impedir o diagnóstico: não ampliar
+permissões ou mudar PHP principal automaticamente. Um host FPM separado não
+é requisito deste diagnóstico de leitura; identificar host/PID/SAPI no FPM
+existente. Isso não certifica locks NFS, afinidade ou coerência multinó.
+
+O mesmo `prepare-ftp-staging.py --reuse-fixtures <pacote-original> --output
+<diretorio-local-novo>` valida os 147 hashes existentes e os três arquivos
+originais de 20.833 bytes. Reutiliza helper e marcador; atualiza somente o
+probe para o layout público/privado. Não regenera resultados nem envia as
+144 fixtures full/delta. `install-plan.json` fixa URL, destinos, tamanhos,
+hashes e `remote_writes_authorized=false`.
+
+Autenticação: chave fixture nova de 32 bytes, HMAC-SHA256 de timestamp +
+newline + corpo, janela de 30 segundos, HTTPS e POST obrigatórios. GET,
+assinatura inválida e timestamp vencido retornam erro genérico 401/no-store,
+sem identidade/configuração pública. O layout novo permite **somente runtime
+e read**, inclusive com assinatura válida; lock e replace são recusados antes
+de escrever. `activation_host` permanece vazio. Não há phpinfo, reset OPcache,
+nonce de produção ou leitura da chave real.
+
+Para eliminar a dependência de geração por SSH, o preparo gera uma **nova**
+configuração vinculada à rota, com chave descartável própria. Ela pode ser
+transferida por FTP somente ao caminho privado da tabela, sob aprovação
+específica, modo 0600; diretórios privados novos 0700. A configuração original
+do pacote e a chave real não são copiadas. O manifesto genérico continua
+excluindo configuração; a instalação confidencial consta separadamente no
+plano. Isso preserva a decisão de FTP 21 e não certifica isolamento da conta.
+
+Além dos três arquivos de código/marker, são necessários a configuração
+privada e **um .htaccess apenas no diretório novo**, 42 bytes:
+
+```apache
+Options -Indexes
+DirectoryIndex probe.php
+```
+
+Não copiar .htaccess ao portal, trocar handlers PHP ou confiar nele para
+proteger chaves: nenhum segredo está no diretório público. A documentação
+[oficial da Locaweb](https://www.locaweb.com.br/ajuda/wiki/como-alterar-a-versao-do-php-hospedagem-de-sites-ajuda-locaweb/)
+descreve PHP em subdiretórios e .htaccess, mas não comprova AllowOverride ou
+FPM nesta conta. Sua aplicação e a execução PHP serão critérios do ensaio,
+sem alterar versão ou configuração global.
+
+Sequência mínima **ainda dependente de aprovação específica**:
+
+1. Revalidar colisões e inventários; MKD exclusivo dos três diretórios do
+   plano, sem adotar diretórios existentes. Criar o público e instalar apenas
+   seu .htaccess primeiro. GET da pasta vazia deve ser 403/404, sem listagem;
+   GET de .htaccess deve ser 403/404. Falha encerra e limpa somente o novo
+   namespace: não instalar configuração/chave se essas verificações falharem.
+2. Enviar helper, configuração privada, marcador e probe por FTP, todos
+   novos, com STOR .part + RETR/checksum + RNFR/RNTO. Configuração privada
+   0600 e diretórios privados 0700; não afrouxar modos para FPM. Confirmar
+   inventário exato e hashes. Publicar probe por último.
+3. Confirmar GET anônimo 401 genérico/no-store e ausência de exposição dos
+   caminhos privados em HTTPS. Executar `probe-ftp-web.py observe` com a nova
+   configuração local protegida: runtime/read e GET do marcador sintético.
+   Exigir `sapi=fpm-fcgi` para declarar ensaio FPM; CGI/CLI não satisfazem isso.
+   Não executar exercise, locks, rename do marcador ou ativação de release.
+4. Recuperação/limpeza aprovada: retirar primeiro o probe público, verificar
+   inventário/hashes e remover somente os cinco arquivos novos e seus .part
+   verificados; remover diretórios vazios de dentro para fora. Arquivo extra,
+   link, hash divergente ou ambiguidade interrompe a limpeza. Sem rm recursivo,
+   nenhum arquivo público anterior exige restauração, inbox anterior preservada.
+
+Se a execução PHP falhar: no painel **afgnet.com.br → Administrar → Resumo de
+Uso → Versão PHP**, consultar a versão sem clicar em Aplicar. Pedir confirmação
+de que a pasta `public_html/eleicoes/__staging_pr75` herda esse handler e de
+que o FPM pode ler `ftp-staging-pr75/private` fora do document root. Por SSH
+autorizado, bastam `pwd`, `stat` dos dois roots e leitura das configurações
+de handler/open_basedir permitidas; sem criação de vhost/DNS ou mudança de
+serviço. Não presumir que fora de public_html seja servido por HTTPS.
