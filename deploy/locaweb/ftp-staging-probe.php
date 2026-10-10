@@ -31,7 +31,10 @@ try {
     }
     $value = ['host'=>gethostname(), 'sapi'=>PHP_SAPI, 'php'=>PHP_VERSION, 'probe_version'=>1];
     if ($action === 'runtime') {
-        $value += ['flock'=>function_exists('flock'),'fsync'=>function_exists('fsync'),'rename'=>function_exists('rename'),
+        $value += ['effective_uid'=>function_exists('posix_geteuid') ? posix_geteuid() : null,
+                   'effective_gid'=>function_exists('posix_getegid') ? posix_getegid() : null,
+                   'fixture_root'=>$root, 'process_root'=>@readlink('/proc/self/root') ?: null,
+                   'flock'=>function_exists('flock'),'fsync'=>function_exists('fsync'),'rename'=>function_exists('rename'),
                    'opcache'=>ini_get('opcache.enable'),'validate_timestamps'=>ini_get('opcache.validate_timestamps'),
                    'revalidate_freq'=>ini_get('opcache.revalidate_freq')];
     } elseif ($action === 'lock') {

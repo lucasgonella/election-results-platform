@@ -84,6 +84,7 @@ class Client:
         if self.expected_host and result.get('host') != self.expected_host:
             raise ValueError('fixture_host_mismatch')
         allowed = {'host', 'sapi', 'php', 'probe_version', 'flock', 'fsync', 'rename',
+                   'effective_uid', 'effective_gid', 'fixture_root', 'process_root',
                    'opcache', 'validate_timestamps', 'revalidate_freq', 'marker', 'status'}
         return {name: result[name] for name in allowed if name in result}, evidence
 

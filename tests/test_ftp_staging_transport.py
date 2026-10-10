@@ -201,3 +201,28 @@ def test_server_reusing_nonempty_directory_never_gets_stor():
         probe.transfer(ftp, probe.NAMESPACE)
     assert ftp.files[probe.FINAL] == b'preserve'
     assert not any(isinstance(op, str) and op.startswith('STOR ') for op in ftp.operations)
+
+
+@pytest.mark.parametrize('reply', ['230 accepted private-value', '530 rejected private-value'])
+def test_ftp_telemetry_redacts_authentication_arguments_and_server_messages(reply, monkeypatch):
+    monkeypatch.setattr(ftplib.FTP, 'putcmd', lambda self, line: None)
+    def response(self):
+        if reply.startswith('530'):
+            raise ftplib.error_perm(reply)
+        return reply
+    monkeypatch.setattr(ftplib.FTP, 'getresp', response)
+    ftp = probe.RecordedFTP()
+    ftp.putcmd('PASS private-value')
+    if reply.startswith('530'):
+        with pytest.raises(ftplib.error_perm):ftp.getresp()
+    else:ftp.getresp()
+    assert ftp.events[0]['verb'] == 'PASS'
+    assert ftp.events[0]['code'] == reply[:3]
+    assert ftp.events[0]['elapsed_ms'] >= 0
+    assert 'private-value' not in repr(ftp.__dict__)
+
+
+def test_ftp_telemetry_rejects_non_numeric_response_code():
+    ftp = probe.RecordedFTP()
+    ftp._record('key')
+    assert ftp.events[0]['code'] is None

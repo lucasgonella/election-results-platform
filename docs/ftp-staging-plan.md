@@ -208,3 +208,58 @@ completa e o CI precisam validar a nova revisão antes de qualquer conclusão.
 A [análise da fronteira de confiança](ftp-trust-boundary.md) descreve a menor
 restrição necessária na conta existente, incluindo possíveis acessos SSH.
 Nenhum gate de isolamento, corte ou Amazonas foi alterado.
+
+## Etapa 12 — primeiro ensaio delimitado
+
+Na etapa 12, o GitHub confirmou `a92e184` como HEAD do PR draft e sucesso de
+CI, FTP publication validation e Validate HTTPS publisher. Os jobs FTP em
+Python 3.13/3.14 concluíram pytest, PHP/Bash, Node e sintaxe/integridade.
+Esses checks não cobrem as alterações locais adicionais descritas abaixo.
+
+Inventário FTP atual somente leitura: PWD `/`, MLSD da raiz com 28 entradas,
+nenhuma `ftp-inbox`; MLST dos três pais staging e do namespace do ensaio
+retornou 550. Isso não transforma 550 em prova universal de inexistência:
+revalidar inventário e exigir criação exclusiva antes de escrever.
+O destino definido continua `/ftp-inbox/elections/staging/ftp-staging-pr75-etapa11`,
+fora de `/public_html`, `/data`, releases, PHP e controle privado.
+
+Preparado localmente o arquivo sintético fixo de 67 bytes, SHA-256
+`3fe5cb9e5b0a17af1bb7f7a7730b47f1c31c560b678345804bfe011a9777d585`.
+O plano para aprovação inclui apenas os pais ausentes `/ftp-inbox`,
+`/ftp-inbox/elections`, `/ftp-inbox/elections/staging`, a folha exclusiva,
+STOR `.part`, RETR/hash, rename no mesmo diretório e RETR/hash.
+Limpeza pode ser aprovada junto ao ensaio, explicitamente: conferir inventário
+e bytes, remover somente os dois nomes sintéticos presentes e a folha;
+conservar os pais. Arquivo extra, link, colisão ou hash divergente impede a
+limpeza. Interrupção exige reconciliação somente leitura, sem repetir upload.
+Essa descrição não constitui autorização nem registra execução de escrita.
+
+O cliente registra somente verbos, códigos FTP e tempos de resposta, inclusive
+login negado; argumentos USER/PASS e mensagens brutas não entram na evidência.
+Tempos de códigos preliminares/finais são medidos desde o comando emitido,
+não representam latência isolada de disco ou throughput. Diagnóstico somente
+leitura mediu 2,76 segundos totais, login 230, MLSD/RETR 125/226 e MLST 250/550.
+Hashes de cinco arquivos públicos (marker, HTML e três JS) foram preservados
+para comparação antes/depois do futuro ensaio; isso cobre esses arquivos,
+não constitui inventário integral de toda a hospedagem. O limite de escrita
+por comandos/caminhos é a proteção principal do ensaio.
+
+O probe PHP preparado passou a informar UID/GID efetivos quando POSIX está
+disponível, raiz da fixture e `/proc/self/root` quando legível, sem expor
+configuração ou chave. Não foi instalado. Uma regressão PHP verifica que
+`runtime` não cria estado privado; aguarda Linux. Os dois clientes somam
+46 testes locais aprovados; sintaxe Python e diff check aprovados. Nenhuma
+mudança de serviço, timer, banco, gates, pending ou watermarks.
+
+SSH local resolve para bloqueador do ambiente; app01/FPM não foram novamente
+inspecionados. UID 542178 e NFS v3 nolock/local_lock=all/nocto são evidências
+anteriores, não confirmação atual. GET dos arquivos estáticos via HTTPS e
+consulta de environments via gh falharam na rede local; cache HTTP atual,
+OPcache, raiz efetiva FPM, topologia e proteções GitHub seguem desconhecidos.
+O runner continua opt-in no código, valida gates antes de tocar state/TSE,
+preserva entrega pendente e reconcilia recibo antes de confirmar state. Isso
+não comprova o estado das units instaladas no app01 nesta etapa.
+
+Primeiro upload e limpeza aguardam autorização específica. Instalação e
+ensaios FPM/NFS/cache usam outra aprovação, com rota HTTPS e host reais
+confirmados. Transporte aprovado não certificará isolamento ou produção.

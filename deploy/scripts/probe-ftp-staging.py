@@ -11,6 +11,7 @@ import io
 import json
 from pathlib import Path
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -22,6 +23,36 @@ PART = NAMESPACE + '/probe.json.part'
 FINAL = NAMESPACE + '/probe.json'
 PAYLOAD = b'{"fixture_only":true,"probe":"pr75-etapa11","payload":"synthetic"}\n'
 DIGEST = hashlib.sha256(PAYLOAD).hexdigest()
+
+
+class RecordedFTP(ftplib.FTP):
+    """Record reply codes and timing, never arguments or server messages."""
+    def __init__(self, *args, **kwargs):
+        self.events = []
+        self._verb = 'CONNECT'
+        self._started = time.monotonic()
+        super().__init__(*args, **kwargs)
+
+    def putcmd(self, line):
+        # USER/PASS arguments must never be retained, even upon authentication failure.
+        self._verb = line.split(' ', 1)[0].upper()
+        self._started = time.monotonic()
+        return super().putcmd(line)
+
+    def getresp(self):
+        try:
+            response = super().getresp()
+        except (ftplib.error_reply, ftplib.error_temp, ftplib.error_perm, ftplib.error_proto) as error:
+            self._record(str(error)[:3])
+            raise
+        else:
+            self._record(response[:3])
+            return response
+
+    def _record(self, code):
+        self.events.append({'verb': self._verb,
+                            'code': code if len(code) == 3 and code.isascii() and code.isdigit() else None,
+                            'elapsed_ms': round((time.monotonic() - self._started) * 1000, 2)})
 
 
 def plan():
@@ -163,7 +194,7 @@ def main(argv=None):
     if not all(credentials.get(name) for name in
                ['LOCAWEB_FTP_HOST', 'LOCAWEB_FTP_USER', 'LOCAWEB_FTP_PASSWORD']):
         raise ValueError('missing_ftp_credentials')
-    ftp = ftplib.FTP()
+    ftp = RecordedFTP()
     try:
         ftp.connect(credentials['LOCAWEB_FTP_HOST'], 21, timeout=5)
         ftp.login(credentials['LOCAWEB_FTP_USER'], credentials['LOCAWEB_FTP_PASSWORD'])
@@ -172,7 +203,12 @@ def main(argv=None):
                   reconcile(ftp) if args.operation == 'reconcile' else (
             transfer(ftp, args.approved_namespace) if args.operation == 'transfer'
             else cleanup(ftp, args.approved_namespace)))
+        result['ftp_events'] = ftp.events
         print(json.dumps(result))
+    except Exception as error:
+        print(json.dumps({'status': 'failed', 'error_type': type(error).__name__,
+                          'ftp_events': ftp.events}))
+        raise SystemExit(1) from None
     finally:
         ftp.close()
 

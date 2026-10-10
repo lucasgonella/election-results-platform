@@ -170,3 +170,20 @@ def test_unexpected_response_fields_are_not_relayed_into_report():
             return Response(value)
     result = web.Client(URL, KEY, 'fixture-host', Extra()).observe()
     assert KEY.hex() not in json.dumps(result)
+
+
+def test_fixture_runtime_identity_is_preserved_without_private_config():
+    class Identity(Opener):
+        def open(self, request, timeout):
+            response = super().open(request, timeout)
+            value = json.loads(response.raw)
+            if request.data is not None and json.loads(request.data)['action'] == 'runtime':
+                value.update(effective_uid=123, effective_gid=456,
+                             fixture_root=web.NAMESPACE, process_root='/', fixture_key=KEY.hex())
+            return Response(value)
+    result = web.Client(URL, KEY, 'fixture-host', Identity()).observe()
+    assert result['runtime']['effective_uid'] == 123
+    assert result['runtime']['effective_gid'] == 456
+    assert result['runtime']['fixture_root'] == web.NAMESPACE
+    assert result['runtime']['process_root'] == '/'
+    assert KEY.hex() not in json.dumps(result)

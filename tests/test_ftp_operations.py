@@ -137,3 +137,18 @@ def test_staging_probe_host_gate_precedes_mutation(tmp_path, host, action):
     assert json.loads(result.stdout)['error']==('unverified_lock_scope' if host is None else 'activation_host_mismatch')
     assert (root/'public/probe-marker.json').read_bytes()==marker
     assert sorted(p.name for p in (root/'private').iterdir())==before
+
+
+def test_staging_runtime_identity_does_not_create_private_state(tmp_path):
+    spec=importlib.util.spec_from_file_location('staging',ROOT/'deploy/scripts/prepare-ftp-staging.py')
+    staging=importlib.util.module_from_spec(spec);spec.loader.exec_module(staging)
+    root=tmp_path/'ftp-staging-runtime-identity';staging.prepare(root)
+    before=sorted(p.name for p in (root/'private').iterdir())
+    result=subprocess.run(['php',str(root/'public/probe.php'),'runtime'],capture_output=True,text=True,check=True)
+    value=json.loads(result.stdout)
+    assert value['fixture_root']==str(root.resolve())
+    assert value['effective_uid'] is None or isinstance(value['effective_uid'],int)
+    assert value['effective_gid'] is None or isinstance(value['effective_gid'],int)
+    assert value['process_root'] is None or isinstance(value['process_root'],str)
+    assert 'fixture_key' not in value
+    assert sorted(p.name for p in (root/'private').iterdir())==before
