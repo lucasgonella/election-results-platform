@@ -1,4 +1,5 @@
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import pytest
@@ -184,6 +185,8 @@ def test_route_plan_reuses_verified_fixtures_without_exposing_config(tmp_path, m
     config=json.loads((output/'private/staging-config.json').read_text())
     assert plan['source_fixture_files_verified']==147
     assert plan['remote_writes_authorized'] is False
+    assert plan['server_generated_config_required'] is True
+    assert plan['files']['private/staging-config.json']['local_only'] is True
     assert config['fixture_key']!=source_key
     assert config['allowed_actions']==['runtime','read'] and config['activation_host']==''
     assert len(list((output/'public').iterdir()))==3
@@ -194,6 +197,19 @@ def test_route_plan_reuses_verified_fixtures_without_exposing_config(tmp_path, m
     manifest=json.loads((output/'transfer-manifest.json').read_text())
     assert 'private/staging-config.json' not in manifest['files']
     assert (output/'public/.htaccess').read_bytes()==b'Options -Indexes\nDirectoryIndex probe.php\n'
+
+
+def test_route_upgrade_uses_current_helper_after_validating_legacy_package(tmp_path):
+    spec=importlib.util.spec_from_file_location('staging',ROOT/'deploy/scripts/prepare-ftp-staging.py')
+    staging=importlib.util.module_from_spec(spec);spec.loader.exec_module(staging)
+    source=tmp_path/'ftp-staging-legacy';staging.prepare(source)
+    legacy=b'legacy helper fixture'
+    (source/'private/ftp-publication.php').write_bytes(legacy)
+    manifest_path=source/'transfer-manifest.json';manifest=json.loads(manifest_path.read_text())
+    manifest['files']['private/ftp-publication.php']=hashlib.sha256(legacy).hexdigest()
+    manifest_path.write_text(json.dumps(manifest))
+    output=tmp_path/'ftp-staging-route';staging.prepare_route(source,output)
+    assert (output/'private/ftp-publication.php').read_bytes()==(ROOT/'deploy/locaweb/ftp-publication.php').read_bytes()
 
 
 def test_route_plan_refuses_corrupt_source_before_preparing_output(tmp_path):

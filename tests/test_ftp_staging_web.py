@@ -21,6 +21,7 @@ class Response:
     headers = {'Cache-Control': 'no-store'}
     def __init__(self, value):
         self.raw = json.dumps(value).encode()
+        self.status = 409 if value.get('error') == 'publication_busy' else 200
     def __enter__(self): return self
     def __exit__(self, *args): pass
     def read(self, limit): return self.raw[:limit]
@@ -168,8 +169,8 @@ def test_unexpected_response_fields_are_not_relayed_into_report():
             if request.data is not None:
                 value['fixture_key'] = KEY.hex()
             return Response(value)
-    result = web.Client(URL, KEY, 'fixture-host', Extra()).observe()
-    assert KEY.hex() not in json.dumps(result)
+    with pytest.raises(ValueError, match='fixture_unexpected_response_fields'):
+        web.Client(URL, KEY, 'fixture-host', Extra()).observe()
 
 
 def test_fixture_runtime_identity_is_preserved_without_private_config():
@@ -179,7 +180,7 @@ def test_fixture_runtime_identity_is_preserved_without_private_config():
             value = json.loads(response.raw)
             if request.data is not None and json.loads(request.data)['action'] == 'runtime':
                 value.update(pid=1234, effective_uid=123, effective_gid=456,
-                             fixture_root=web.NAMESPACE, process_root='/', fixture_key=KEY.hex())
+                             fixture_root=web.NAMESPACE, process_root='/')
             return Response(value)
     result = web.Client(URL, KEY, 'fixture-host', Identity()).observe()
     assert result['runtime']['pid'] == 1234
@@ -188,3 +189,26 @@ def test_fixture_runtime_identity_is_preserved_without_private_config():
     assert result['runtime']['fixture_root'] == web.NAMESPACE
     assert result['runtime']['process_root'] == '/'
     assert KEY.hex() not in json.dumps(result)
+
+
+def test_http_error_status_cannot_be_treated_as_success():
+    class Bad(Opener):
+        def open(self, request, timeout):
+            response=super().open(request,timeout);response.status=302
+            return response
+    with pytest.raises(ValueError,match='fixture_unexpected_http_status'):
+        web.Client(URL,KEY,'fixture-host',Bad()).post('runtime')
+
+
+def test_split_route_cannot_use_semantic_only_recovery():
+    class Split(Opener):
+        def open(self, request, timeout):
+            response=super().open(request,timeout)
+            value=json.loads(response.raw)
+            if request.data is not None and json.loads(request.data)['action']=='runtime':
+                value['fixture_public_root']='/home/fixture/public_html/eleicoes/__staging_pr75'
+            return Response(value)
+    opener=Split()
+    with pytest.raises(ValueError,match='server_side_fixture_client_required'):
+        web.Client(URL,KEY,'fixture-host',opener).exercise(web.NAMESPACE)
+    assert opener.lock_count==0 and opener.marker=='replace_a'

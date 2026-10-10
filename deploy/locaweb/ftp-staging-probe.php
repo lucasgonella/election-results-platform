@@ -24,10 +24,17 @@ try {
         $split = true;
     }
     if (!$root || !str_starts_with(basename($root), 'ftp-staging-')) throw new RuntimeException('fixture_namespace_required');
+    if (is_link($root . '/private') || $normalize(realpath($root . '/private')) !== $normalize($root) . '/private') throw new RuntimeException('fixture_namespace_required');
+    foreach (['staging-config.json', 'ftp-publication.php', 'probe.lock'] as $leaf) {
+        if (is_link($root . '/private/' . $leaf)) throw new RuntimeException('fixture_namespace_required');
+    }
+    if (is_link($public . '/probe-marker.json') || !is_file($public . '/probe-marker.json')) throw new RuntimeException('fixture_namespace_required');
     $cfg = json_decode((string)file_get_contents($root . '/private/staging-config.json'), true, 32, JSON_THROW_ON_ERROR);
     if (($cfg['fixture_only'] ?? false) !== true || ($cfg['environment'] ?? '') !== 'fixture' || realpath($cfg['root'] ?? '') !== $root) throw new RuntimeException('fixture_configuration_required');
     if (!preg_match('/^[a-f0-9]{64}$/D', $cfg['fixture_key'] ?? '')) throw new RuntimeException('fixture_configuration_required');
-    if ($split && (($cfg['public_root'] ?? '') !== $public || ($cfg['allowed_actions'] ?? null) !== ['runtime', 'read'])) throw new RuntimeException('fixture_configuration_required');
+    $readActions = ['runtime', 'read'];
+    $testActions = ['runtime', 'read', 'lock', 'replace_a', 'replace_b'];
+    if ($split && (($cfg['public_root'] ?? '') !== $public || !in_array($cfg['allowed_actions'] ?? null, [$readActions, $testActions], true))) throw new RuntimeException('fixture_configuration_required');
     if (!$split && $normalize($public) !== $normalize($root) . '/public') throw new RuntimeException('fixture_namespace_required');
     if (PHP_SAPI === 'cli') {
         $action = $argv[1] ?? 'runtime';
@@ -50,7 +57,7 @@ try {
         if (!is_string($cfg['activation_host'] ?? null) || $cfg['activation_host'] === '') throw new RuntimeException('unverified_lock_scope');
         if ($cfg['activation_host'] !== gethostname()) throw new RuntimeException('activation_host_mismatch');
     }
-    $value = ['host'=>gethostname(), 'pid'=>getmypid(), 'sapi'=>PHP_SAPI, 'php'=>PHP_VERSION, 'probe_version'=>1];
+    $value = ['host'=>gethostname(), 'pid'=>getmypid(), 'sapi'=>PHP_SAPI, 'php'=>PHP_VERSION, 'probe_version'=>2];
     if ($action === 'runtime') {
         $value += ['effective_uid'=>function_exists('posix_geteuid') ? posix_geteuid() : null,
                    'effective_gid'=>function_exists('posix_getegid') ? posix_getegid() : null,
@@ -58,17 +65,30 @@ try {
                    'flock'=>function_exists('flock'),'fsync'=>function_exists('fsync'),'rename'=>function_exists('rename'),
                    'opcache'=>ini_get('opcache.enable'),'validate_timestamps'=>ini_get('opcache.validate_timestamps'),
                    'revalidate_freq'=>ini_get('opcache.revalidate_freq')];
-    } elseif ($action === 'lock') {
-        $handle = fopen($root . '/private/probe.lock', 'c');
-        if (!$handle || !flock($handle, LOCK_EX | LOCK_NB)) throw new RuntimeException('publication_busy');
-        usleep(2000000); // A bounded overlap window for two independent clients.
-        flock($handle, LOCK_UN); fclose($handle);
-        $value['status'] = 'lock_acquired';
-    } elseif ($action === 'replace_a' || $action === 'replace_b') {
-        fp_write($public . '/probe-marker.json', ['fixture'=>$action]);
-        $value['status'] = 'replaced';
+        $value['helper_revision'] = defined('FTP_PUBLICATION_HELPER_VERSION') ? FTP_PUBLICATION_HELPER_VERSION : 1;
+    } elseif (in_array($action, ['lock', 'replace_a', 'replace_b'], true)) {
+        $lock = $root . '/private/probe.lock';
+        if (file_exists($lock) && (!is_file($lock) || (fileperms($lock) & 0777) !== 0600)) throw new RuntimeException('fixture_lock_invalid');
+        $mask = umask(0077);
+        try { $handle = fopen($lock, 'c'); } finally { umask($mask); }
+        if (!$handle) throw new RuntimeException('fixture_lock_invalid');
+        try {
+            if (!flock($handle, LOCK_EX | LOCK_NB)) throw new RuntimeException('publication_busy');
+            if ($action === 'lock') {
+                usleep(2000000); // Exactly two clients, bounded overlap window.
+                $value['status'] = 'lock_acquired';
+            } else {
+                if (!function_exists('fsync')) throw new RuntimeException('fixture_fsync_required');
+                fp_write($public . '/probe-marker.json', ['fixture'=>$action]);
+                $value['status'] = 'replaced';
+            }
+        } finally { flock($handle, LOCK_UN); fclose($handle); }
     } elseif ($action === 'read') {
-        $value['marker'] = fp_json($public . '/probe-marker.json');
+        $marker = fp_read($public, 'probe-marker.json');
+        $value['marker'] = json_decode($marker, true, 8, JSON_THROW_ON_ERROR);
+        if (!in_array($value['marker'], [['fixture'=>'replace_a'], ['fixture'=>'replace_b']], true)) throw new RuntimeException('invalid_fixture_marker');
+        $value['marker_sha256'] = hash('sha256', $marker);
+        $value['marker_bytes'] = strlen($marker);
     } else throw new RuntimeException('invalid_action');
     echo json_encode($value, JSON_THROW_ON_ERROR);
 } catch (Throwable $error) {

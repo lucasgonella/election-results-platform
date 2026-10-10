@@ -53,16 +53,20 @@ class Client:
                 raise ValueError('fixture_http_failed') from None
             response = error
         with response:
+            status = response.status
             raw = response.read(LIMIT + 1)
             headers = {name.lower(): value for name, value in response.headers.items()}
         if len(raw) > LIMIT:
             raise ValueError('fixture_response_too_large')
+        if status not in ({200, 409} if no_store else {200}):
+            raise ValueError('fixture_unexpected_http_status')
         if no_store and 'no-store' not in [s.strip().lower() for s in headers.get('cache-control', '').split(',')]:
             raise ValueError('fixture_control_cacheable')
         value = json.loads(raw)
         if not isinstance(value, dict):
             raise ValueError('invalid_fixture_response')
         return value, {'sha256': hashlib.sha256(raw).hexdigest(),
+                       'status': status,
                        'elapsed_ms': round((time.monotonic() - started) * 1000, 2),
                        'cache': {name: headers[name] for name in
                                  ['cache-control', 'age', 'etag', 'last-modified'] if name in headers}}
@@ -78,14 +82,19 @@ class Client:
             'X-Timestamp': stamp, 'X-Signature': signature})
         result, evidence = self.request(request, no_store=True)
         if 'error' in result:
-            if action == 'lock' and result['error'] == 'publication_busy':
+            if action == 'lock' and result['error'] == 'publication_busy' and evidence['status'] == 409:
                 return {'error': 'publication_busy'}, evidence
             raise ValueError('fixture_action_failed')
+        if evidence['status'] != 200:
+            raise ValueError('fixture_unexpected_http_status')
         if self.expected_host and result.get('host') != self.expected_host:
             raise ValueError('fixture_host_mismatch')
         allowed = {'host', 'pid', 'sapi', 'php', 'probe_version', 'flock', 'fsync', 'rename',
                    'effective_uid', 'effective_gid', 'fixture_root', 'fixture_public_root', 'process_root',
-                   'opcache', 'validate_timestamps', 'revalidate_freq', 'marker', 'status'}
+                   'opcache', 'validate_timestamps', 'revalidate_freq', 'marker', 'status',
+                   'marker_sha256', 'marker_bytes', 'helper_revision'}
+        if set(result) - allowed:
+            raise ValueError('fixture_unexpected_response_fields')
         return {name: result[name] for name in allowed if name in result}, evidence
 
     def public_marker(self, expected):
@@ -116,6 +125,10 @@ class Client:
         initial = self.observe()
         if initial['runtime'].get('sapi') != 'fpm-fcgi':
             raise ValueError('php_fpm_required')
+        if '/public_html/eleicoes/__staging_pr75' in initial['runtime'].get('fixture_public_root', ''):
+            # This route's key must remain on the server and recovery must restore
+            # exact bytes, including any formatting. Use the PHP CLI client.
+            raise ValueError('server_side_fixture_client_required')
         original = initial['marker']['fixture']
         with ThreadPoolExecutor(max_workers=2) as executor:
             locks = list(executor.map(lambda _: self.post('lock')[0], range(2)))

@@ -28,8 +28,8 @@ def prepare_route(source, output):
     """Reuse a verified fixture package; prepare a read-only split route locally.
 
     The fresh route credential is separate from both source/production keys.
-    It is NOT part of a generic artifact; its private installation must be
-    explicitly approved along with the exact installation plan.
+    It is local-only, never eligible for Locaweb upload. The remote fixture key
+    must be generated and remain on the server, per the final authorization.
     """
     source, output = Path(source), Path(output)
     if not output.name.startswith('ftp-staging-') or output.exists() or output.is_symlink():
@@ -54,7 +54,9 @@ def prepare_route(source, output):
     output.mkdir(parents=True, mode=0o700)
     (output/'private').mkdir(mode=0o700)
     (output/'public').mkdir(mode=0o755)
-    shutil.copyfile(source/'private/ftp-publication.php', output/'private/ftp-publication.php')
+    # Verify all original fixtures first; upgrade both PHP files together so
+    # the probe cannot be paired with a stale cached/legacy helper revision.
+    shutil.copyfile(ROOT/'deploy/locaweb/ftp-publication.php', output/'private/ftp-publication.php')
     shutil.copyfile(ROOT/'deploy/locaweb/ftp-staging-probe.php', output/'public/probe.php')
     shutil.copyfile(source/'public/probe-marker.json', output/'public/probe-marker.json')
     (output/'public/.htaccess').write_bytes(ROUTE_HTACCESS)
@@ -73,10 +75,12 @@ def prepare_route(source, output):
     }
     inventory = {name: {'ftp_destination': destination, 'bytes': (output/name).stat().st_size,
                         'sha256': hashlib.sha256((output/name).read_bytes()).hexdigest(),
-                        'confidential': name == 'private/staging-config.json'}
+                        'confidential': name == 'private/staging-config.json',
+                        'local_only': name == 'private/staging-config.json'}
                  for name, destination in destinations.items()}
     plan = {'fixture_only': True, 'remote_writes_authorized': False, 'url': ROUTE_URL,
             'private_root': REMOTE_PRIVATE, 'public_root': REMOTE_PUBLIC,
+            'server_generated_config_required': True,
             'source_fixture_files_verified': len(files), 'original_initial_bytes': original_bytes,
             'files': inventory, 'allowed_actions': ['runtime', 'read'],
             'new_directories': ['/ftp-staging-pr75', '/ftp-staging-pr75/private',

@@ -442,18 +442,19 @@ hashes e `remote_writes_authorized=false`.
 Autenticação: chave fixture nova de 32 bytes, HMAC-SHA256 de timestamp +
 newline + corpo, janela de 30 segundos, HTTPS e POST obrigatórios. GET,
 assinatura inválida e timestamp vencido retornam erro genérico 401/no-store,
-sem identidade/configuração pública. O layout novo permite **somente runtime
-e read**, inclusive com assinatura válida; lock e replace são recusados antes
-de escrever. `activation_host` permanece vazio. Não há phpinfo, reset OPcache,
+sem identidade/configuração pública. O layout novo permanece **runtime/read
+por padrão**; lock e replace são recusados antes de escrever. A etapa 15
+prepara um opt-in separado para as cinco ações fixas, exigindo host explícito
+antes de qualquer mutação. `activation_host` instalado permanece vazio.
+Não há phpinfo, reset OPcache,
 nonce de produção ou leitura da chave real.
 
-Para eliminar a dependência de geração por SSH, o preparo gera uma **nova**
-configuração vinculada à rota, com chave descartável própria. Ela pode ser
-transferida por FTP somente ao caminho privado da tabela, sob aprovação
-específica, modo 0600; diretórios privados novos 0700. A configuração original
-do pacote e a chave real não são copiadas. O manifesto genérico continua
-excluindo configuração; a instalação confidencial consta separadamente no
-plano. Isso preserva a decisão de FTP 21 e não certifica isolamento da conta.
+O preparo local gera uma configuração para testes locais, mas ela **não deve
+ser enviada à Locaweb**: a autorização final exige chave fixture gerada no
+servidor e nunca exportada. O config remoto foi criado pelo responsável, com
+338 bytes e modo 0600; privados 0700. O cliente CLI PHP lê a chave somente no
+servidor. Nenhuma chave real é carregada. O transporte continua FTP 21 e o
+isolamento da conta continua não aprovado.
 
 Além dos três arquivos de código/marker, são necessários a configuração
 privada e **um .htaccess apenas no diretório novo**, 42 bytes:
@@ -470,27 +471,31 @@ descreve PHP em subdiretórios e .htaccess, mas não comprova AllowOverride ou
 FPM nesta conta. Sua aplicação e a execução PHP serão critérios do ensaio,
 sem alterar versão ou configuração global.
 
-Sequência mínima **ainda dependente de aprovação específica**:
+Sequência mínima de instalação, executada na etapa 14 com a configuração
+gerada no servidor e escopo final autorizado de quatro arquivos:
 
 1. Revalidar colisões e inventários; MKD exclusivo dos três diretórios do
    plano, sem adotar diretórios existentes. Criar o público e instalar apenas
    seu .htaccess primeiro. GET da pasta vazia deve ser 403/404, sem listagem;
    GET de .htaccess deve ser 403/404. Falha encerra e limpa somente o novo
    namespace: não instalar configuração/chave se essas verificações falharem.
-2. Enviar helper, configuração privada, marcador e probe por FTP, todos
-   novos, com STOR .part + RETR/checksum + RNFR/RNTO. Configuração privada
+2. Enviar helper, marcador e probe por FTP, todos
+   novos, com STOR .part + RETR/checksum + RNFR/RNTO. Preservar o config
+   criado pelo responsável no servidor. Configuração privada
    0600 e diretórios privados 0700; não afrouxar modos para FPM. Confirmar
    inventário exato e hashes. Publicar probe por último.
 3. Confirmar GET anônimo 401 genérico/no-store e ausência de exposição dos
-   caminhos privados em HTTPS. Executar `probe-ftp-web.py observe` com a nova
-   configuração local protegida: runtime/read e GET do marcador sintético.
+   caminhos privados em HTTPS. Executar o cliente PHP de diagnóstico no
+   próprio servidor: runtime/read assinados e GET do marcador sintético.
    Exigir `sapi=fpm-fcgi` para declarar ensaio FPM; CGI/CLI não satisfazem isso.
    Não executar exercise, locks, rename do marcador ou ativação de release.
 4. Recuperação/limpeza aprovada: retirar primeiro o probe público, verificar
-   inventário/hashes e remover somente os cinco arquivos novos e seus .part
+   inventário/hashes e remover somente arquivos criados pelo ensaio e seus .part
    verificados; remover diretórios vazios de dentro para fora. Arquivo extra,
    link, hash divergente ou ambiguidade interrompe a limpeza. Sem rm recursivo,
    nenhum arquivo público anterior exige restauração, inbox anterior preservada.
+   A instalação concluída foi mantida por solicitação de continuidade; não
+   remover automaticamente o config criado pelo responsável.
 
 Se a execução PHP falhar: no painel **afgnet.com.br → Administrar → Resumo de
 Uso → Versão PHP**, consultar a versão sem clicar em Aplicar. Pedir confirmação
@@ -499,3 +504,10 @@ que o FPM pode ler `ftp-staging-pr75/private` fora do document root. Por SSH
 autorizado, bastam `pwd`, `stat` dos dois roots e leitura das configurações
 de handler/open_basedir permitidas; sem criação de vhost/DNS ou mudança de
 serviço. Não presumir que fora de public_html seja servido por HTTPS.
+
+A instalação da etapa 14 foi concluída: PHP-FPM 8.5.7 no host dinesh8169,
+UID/GID 542178/542178 confirmados por procfs, runtime/read HTTP 200, marcador
+sintético íntegro e privados sem exposição nos caminhos HTTP testados.
+Os quatro arquivos foram mantidos para continuidade. Consulte o
+[plano de concorrência e recuperação da etapa 15](ftp-staging-concurrency.md)
+para as correções preparadas, diagnóstico CLI e escopo que ainda exige aprovação.

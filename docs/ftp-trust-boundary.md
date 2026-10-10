@@ -66,5 +66,7 @@ probe e marcador sintético. Configuração, chave fixture e helper ficam em
 runtime/read limitam o diagnóstico. Isso resolve o posicionamento HTTP do
 harness, **não** o acesso amplo do principal FTP: ele continua alcançando
 controle/código. Não habilitar LOCAWEB_FTP_ISOLATION_APPROVED. A transferência
-separadamente aprovada de uma chave descartável de teste ao diretório privado
-não envolve a chave HMAC real e não autoriza publicação eleitoral.
+de chave não foi utilizada: a autorização final exigiu geração exclusivamente
+no servidor, e o config local não foi enviado. Isso não autoriza publicação
+eleitoral. A etapa 15 preserva esse requisito; a recuperação guarda um template
+sem o valor da chave, reconstruindo o config original somente no servidor.

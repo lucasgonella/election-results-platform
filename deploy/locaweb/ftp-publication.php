@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+const FTP_PUBLICATION_HELPER_VERSION = 2;
 
 /** Fixed-path result activator. No code uploads, destination inputs or shell calls. */
 function fp_fail(string $code): never { throw new RuntimeException($code); }
@@ -20,10 +21,15 @@ function fp_write(string $path, array $value): void {
     $stream = fopen($tmp, 'x');
     if ($stream === false) fp_fail('storage_error');
     try {
-        if (fwrite($stream, $raw) !== strlen($raw) || !fflush($stream)) fp_fail('storage_error');
-        if (function_exists('fsync') && !fsync($stream)) fp_fail('storage_error');
-    } finally { fclose($stream); }
-    if (!rename($tmp, $path)) fp_fail('storage_error');
+        try {
+            if (fwrite($stream, $raw) !== strlen($raw) || !fflush($stream)) fp_fail('storage_error');
+            if (function_exists('fsync') && !fsync($stream)) fp_fail('storage_error');
+        } finally { fclose($stream); }
+        if (!rename($tmp, $path)) fp_fail('storage_error');
+    } finally {
+        // Only the exclusively created temporary file; never unlink the target.
+        if (is_file($tmp)) unlink($tmp);
+    }
 }
 function fp_paths(): array {
     $ufs = explode(' ', 'ac al ap am ba ce df es go ma mt ms mg pa pb pr pe pi rj rn rs ro rr sc sp se to');
