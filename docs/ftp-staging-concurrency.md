@@ -48,10 +48,12 @@ Somente após aprovação, instalar por FTP 21 sem TLS dois arquivos atualizados
 
 | Origem na branch | Destino FTP | Bytes | SHA-256 |
 | --- | --- | ---: | --- |
-| deploy/locaweb/ftp-staging-probe.php | /public_html/eleicoes/__staging_pr75/probe.php | 7574 | `54ab592ff32e41ef60687359de03b609f6657ebd11ae167bcb4209e02af203cc` |
-| deploy/locaweb/ftp-publication.php | /ftp-staging-pr75/private/ftp-publication.php | 16951 | `ebf21001b50783c281cfa3cb15c5ca54fce562daef5e76a4fe0516b1f9f5c460` |
+| deploy/locaweb/ftp-staging-probe.php | /public_html/eleicoes/__staging_pr75/probe.php | 7475 | `0a3ab2b4611eaf3bdfea117837ddfcd0ab1438fe72a45920af2b3cd7b47a5c39` |
+| deploy/locaweb/ftp-publication.php | /ftp-staging-pr75/private/ftp-publication.php | 16711 | `662a1e487b00901784cd0d54274e057ea08484a43be9392da7e19cf4e22d6189` |
 
-Total dos dois novos arquivos: 24.525 bytes. Destinos físicos: home acima
+Total dos dois novos arquivos: 24.186 bytes. O pacote preparado em
+`.stage15-validation/artifacts` usa bytes dos blobs Git validados no CI,
+evitando conversão de finais de linha do checkout Windows. Destinos físicos: home acima
 mais destino FTP. Helper 0600; probe 0644. .htaccess e marcador não recebem
 upload nesta etapa. Não transferir config, chave, resultados ou a árvore inteira.
 
