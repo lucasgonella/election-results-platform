@@ -446,3 +446,13 @@ e código executável permanece impeditiva; não habilitar gates por declaraçã
 O [plano de staging](ftp-staging-plan.md#componentes-preparados-na-retomada)
 inclui reconciliação FTP somente leitura e cliente FPM/locks/cache/recuperação.
 Seu preparo local não autoriza instalação ou escrita remota.
+
+### Etapa 12 — transporte real comprovado
+
+O [resultado do ensaio autorizado](ftp-staging-plan.md#resultado-do-ensaio-autorizado)
+registra upload sintético de 67 bytes, hashes, rename, reconciliação e limpeza
+na Locaweb, sem tocar em PHP/serviços/dados reais. A inbox staging foi criada
+e ficou vazia após o teste; pais preservados. Transporte comprovado não libera
+isolamento, FPM/NFS/cache, Amazonas ou corte. O envio da instrumentação local
+e a atualização do PR foram recusados pela política de aprovação do conector;
+CI verde permanece referente a a92e184, não às revisões locais adicionais.

@@ -263,3 +263,38 @@ não comprova o estado das units instaladas no app01 nesta etapa.
 Primeiro upload e limpeza aguardam autorização específica. Instalação e
 ensaios FPM/NFS/cache usam outra aprovação, com rota HTTPS e host reais
 confirmados. Transporte aprovado não certificará isolamento ou produção.
+
+### Resultado do ensaio autorizado
+
+Após confirmação explícita do escopo de upload e limpeza, o primeiro ensaio
+real concluiu em **7,74 segundos**, usando FTP 21/passivo sem TLS e as
+credenciais existentes. Criados somente os três pais staging ausentes e a
+folha exclusiva acima. Os pais permanecem; nenhuma inbox production/code foi
+criada. Não houve mudança de modos de chave, configurações ou arquivos existentes.
+
+STOR `probe.json.part` recebeu 125/226. RETR conferiu os 67 bytes e o SHA-256
+antes e depois do rename; RNFR recebeu 350 e RNTO 250. Reconciliação somente
+leitura confirmou apenas `probe.json` íntegro. Após conferir inventário e bytes,
+DELE e RMD receberam 250. A inbox `/ftp-inbox/elections/staging` ficou vazia;
+nova leitura confirmou ausência da folha (MLST 550 + inventário vazio).
+
+Hashes de `data/version.json`, `eleicoes/index.html`, `app.js`, `favorites.js`
+e `composition.js` permaneceram iguais antes/depois e após a limpeza. Isso
+cobre os cinco arquivos observados; não afirma auditoria integral de arquivos
+da hospedagem nem ausência de escritores externos. O executor restringiu
+STOR/rename/delete/mkdir/rmdir exclusivamente aos caminhos do plano.
+Relatórios datados com códigos, tempos e hashes ficam localmente, fora do Git.
+
+**TESTADO NA LOCAWEB:** login, criação da inbox staging, upload de fixture,
+integridade, rename, reconciliação e limpeza delimitada. **VALIDADO EM STAGING
+(aplicação): não.** Não houve instalação PHP,
+ativação de release, escrita de resultado real ou mudança de serviço.
+FPM/NFS/multinó/cache, recuperação da aplicação, fronteira de confiança,
+environments e Amazonas continuam pendentes. Os gates permanecem fechados.
+
+O envio autorizado de `11dae67` e a atualização do PR encontraram o bloqueio
+do conector GitHub nesta sessão: `MCP tool call requires approval, but approval
+policy is never`. O PR remoto continua em `a92e184`; seus três workflows estão
+aprovados, mas não validam a instrumentação local adicional. A confirmação
+humana não muda a política de ferramentas da sessão. Conservar bundle para
+envio por sessão com permissão, sem force push ou merge.
