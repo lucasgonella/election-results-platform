@@ -95,12 +95,32 @@ def transfer(ftp, namespace=None):
         raise ValueError('probe_namespace_already_visible')
     # MKD is the exclusive claim. Never adopt/overwrite an existing namespace.
     ftp.mkd(NAMESPACE)
+    if list(ftp.mlsd(NAMESPACE)):
+        raise ValueError('new_probe_namespace_not_empty')
     ftp.storbinary('STOR ' + PART, io.BytesIO(PAYLOAD))
     retrieve(ftp, PART)
     ftp.rename(PART, FINAL)
     retrieve(ftp, FINAL)
     return {'status': 'synthetic_transport_verified', 'namespace': NAMESPACE,
             'sha256': DIGEST, 'cleanup_pending': True,
+            'production_isolation': 'not_guaranteed'}
+
+
+def reconcile(ftp):
+    """Read-only recovery after lost responses. Never retries STOR/rename/delete."""
+    entries = list(ftp.mlsd(NAMESPACE))
+    if not entries:
+        return {'status': 'empty_namespace', 'cleanup_pending': True}
+    names = set()
+    for name, facts in entries:
+        if name in names or name not in {'probe.json.part', 'probe.json'} or facts.get('type') != 'file':
+            raise ValueError('unexpected_probe_inventory')
+        names.add(name)
+    for name in sorted(names):
+        retrieve(ftp, NAMESPACE + '/' + name)
+    status = ('rename_confirmed' if names == {'probe.json'} else
+              'part_verified' if names == {'probe.json.part'} else 'ambiguous_inventory')
+    return {'status': status, 'sha256': DIGEST, 'cleanup_pending': True,
             'production_isolation': 'not_guaranteed'}
 
 
@@ -124,7 +144,7 @@ def cleanup(ftp, namespace=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('operation', nargs='?', default='plan',
-                        choices=['plan', 'inspect', 'transfer', 'cleanup'])
+                        choices=['plan', 'inspect', 'reconcile', 'transfer', 'cleanup'])
     parser.add_argument('--credentials-file', type=Path,
                         default=ROOT / '.secrets/ftp.env')
     parser.add_argument('--approved-namespace')
@@ -148,9 +168,10 @@ def main(argv=None):
         ftp.connect(credentials['LOCAWEB_FTP_HOST'], 21, timeout=5)
         ftp.login(credentials['LOCAWEB_FTP_USER'], credentials['LOCAWEB_FTP_PASSWORD'])
         ftp.set_pasv(True)
-        result = inspect(ftp) if args.operation == 'inspect' else (
+        result = (inspect(ftp) if args.operation == 'inspect' else
+                  reconcile(ftp) if args.operation == 'reconcile' else (
             transfer(ftp, args.approved_namespace) if args.operation == 'transfer'
-            else cleanup(ftp, args.approved_namespace))
+            else cleanup(ftp, args.approved_namespace)))
         print(json.dumps(result))
     finally:
         ftp.close()

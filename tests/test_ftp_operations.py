@@ -117,3 +117,23 @@ def test_staging_probe_local_runtime_rename_read_and_lock(tmp_path):
     assert sum(r.get('status')=='lock_acquired' for r in results)==1
     assert sum(r.get('error')=='publication_busy' for r in results)==1
     with pytest.raises(ValueError):staging.prepare(root)
+
+
+@pytest.mark.parametrize('host', [None, 'different-host.invalid'])
+@pytest.mark.parametrize('action', ['lock', 'replace_b'])
+def test_staging_probe_host_gate_precedes_mutation(tmp_path, host, action):
+    spec=importlib.util.spec_from_file_location('staging',ROOT/'deploy/scripts/prepare-ftp-staging.py')
+    staging=importlib.util.module_from_spec(spec);spec.loader.exec_module(staging)
+    root=tmp_path/'ftp-staging-host-gate';staging.prepare(root)
+    config_path=root/'private/staging-config.json'
+    config=json.loads(config_path.read_text())
+    config.pop('activation_host')
+    if host is not None:config['activation_host']=host
+    config_path.write_text(json.dumps(config),encoding='utf-8')
+    marker=(root/'public/probe-marker.json').read_bytes()
+    before=sorted(p.name for p in (root/'private').iterdir())
+    result=subprocess.run(['php',str(root/'public/probe.php'),action],capture_output=True,text=True)
+    assert result.returncode==1
+    assert json.loads(result.stdout)['error']==('unverified_lock_scope' if host is None else 'activation_host_mismatch')
+    assert (root/'public/probe-marker.json').read_bytes()==marker
+    assert sorted(p.name for p in (root/'private').iterdir())==before

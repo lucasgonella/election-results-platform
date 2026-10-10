@@ -23,6 +23,12 @@ try {
         if (array_keys($request) !== ['action']) throw new RuntimeException('invalid_request');
         $action = $request['action'];
     }
+    // Reads can observe nodes; mutations must stay on the explicitly pinned host.
+    // This does not certify NFS/multi-host locking or provider confinement.
+    if (in_array($action, ['lock', 'replace_a', 'replace_b'], true)) {
+        if (!is_string($cfg['activation_host'] ?? null) || $cfg['activation_host'] === '') throw new RuntimeException('unverified_lock_scope');
+        if ($cfg['activation_host'] !== gethostname()) throw new RuntimeException('activation_host_mismatch');
+    }
     $value = ['host'=>gethostname(), 'sapi'=>PHP_SAPI, 'php'=>PHP_VERSION, 'probe_version'=>1];
     if ($action === 'runtime') {
         $value += ['flock'=>function_exists('flock'),'fsync'=>function_exists('fsync'),'rename'=>function_exists('rename'),

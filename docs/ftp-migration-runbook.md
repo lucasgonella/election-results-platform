@@ -438,3 +438,11 @@ O primeiro ensaio proposto escreve apenas em
 limitada documentados no plano. **Aprovação específica ainda necessária:**
 nenhum STOR/MKD/rename/DELE/RMD remoto foi executado. Ensaios PHP/FPM/NFS/cache e
 ativação fixture têm escopo separado e ainda dependem de rota/caminhos reais.
+# Retomada: staging e fronteira de confiança
+
+Consulte [ftp-trust-boundary.md](ftp-trust-boundary.md) para as evidências da
+conta existente e a política mínima independente do PHP. Exposição de chave
+e código executável permanece impeditiva; não habilitar gates por declaração.
+O [plano de staging](ftp-staging-plan.md#componentes-preparados-na-retomada)
+inclui reconciliação FTP somente leitura e cliente FPM/locks/cache/recuperação.
+Seu preparo local não autoriza instalação ou escrita remota.

@@ -171,3 +171,33 @@ def test_cli_approval_precedes_credential_access_and_network(operation, monkeypa
     monkeypatch.setattr(ftplib, 'FTP', lambda: pytest.fail('no network'))
     with pytest.raises(ValueError, match='exact_namespace_approval_required'):
         probe.main([operation])
+
+
+@pytest.mark.parametrize('files,status', [
+    ({}, 'empty_namespace'),
+    ({probe.PART: probe.PAYLOAD}, 'part_verified'),
+    ({probe.FINAL: probe.PAYLOAD}, 'rename_confirmed'),
+    ({probe.PART: probe.PAYLOAD, probe.FINAL: probe.PAYLOAD}, 'ambiguous_inventory'),
+])
+def test_reconciliation_only_reads_and_never_retries_or_cleans(files, status):
+    ftp = FTP()
+    ftp.files = files
+    assert probe.reconcile(ftp)['status'] == status
+    assert all(isinstance(op, str) and op.startswith('RETR ') for op in ftp.operations)
+
+
+def test_reconciliation_refuses_corrupted_content_without_deleting_it():
+    ftp = FTP()
+    ftp.files[probe.FINAL] = b'truncated'
+    with pytest.raises(ValueError, match='probe_checksum_mismatch'):
+        probe.reconcile(ftp)
+    assert ftp.files[probe.FINAL] == b'truncated'
+
+
+def test_server_reusing_nonempty_directory_never_gets_stor():
+    ftp = FTP()
+    ftp.files[probe.FINAL] = b'preserve'
+    with pytest.raises(ValueError, match='new_probe_namespace_not_empty'):
+        probe.transfer(ftp, probe.NAMESPACE)
+    assert ftp.files[probe.FINAL] == b'preserve'
+    assert not any(isinstance(op, str) and op.startswith('STOR ') for op in ftp.operations)

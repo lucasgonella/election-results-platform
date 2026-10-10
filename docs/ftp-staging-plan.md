@@ -178,3 +178,33 @@ watermarks e gate; a dúvida não impede staging com fixtures.
 
 **BLOQUEADO para corte.** O plano local não demonstra capacidade não verificada
 do contrato nem representa autorização de provisionamento.
+
+## Componentes preparados na retomada
+
+`probe-ftp-staging.py reconcile` faz apenas MLSD/RETR do namespace fixo,
+confere tamanho e SHA-256 e distingue part pendente, rename confirmado,
+diretório vazio e inventário ambíguo. Não repete upload nem remove evidências.
+O upload recusa namespace não vazio mesmo se o servidor aceitar MKD.
+
+`probe-ftp-web.py plan` não usa rede ou credenciais. `observe` consulta
+runtime/read e o marcador sintético; `exercise` requer aprovação explícita
+do namespace `/home/storage/4/b7/e0/afgnet1/ftp-staging-pr75` e host esperado.
+Usa chave exclusiva da fixture em arquivo protegido, nunca a chave real.
+Exige PHP-FPM, respostas de controle no-store, recusa redirects e verifica
+GET normal e GET com cache busting. Disputa dois locks, alterna A/B e restaura
+o marcador inicial inclusive após falha. A aprovação deve incluir esses
+locks/escritas de fixture e sua recuperação; o cliente não autoriza execução.
+
+O gerador fixa `activation_host` inicialmente ao host de preparação: ajustar
+ao hostname real de FPM antes da instalação autorizada. O probe PHP recusa
+mutação sem esse host ou em outro host. Leituras permitem observar diferenças
+entre processos; isso não comprova locks NFS multinó.
+
+Testes locais dos dois clientes: 42 aprovados, sem rede. Quatro regressões PHP
+adicionais verificam recusa antes de modificar marker/estado; dependem do CI
+Linux. PHP, Node e Bash não foram validados localmente nesta retomada. A suíte
+completa e o CI precisam validar a nova revisão antes de qualquer conclusão.
+
+A [análise da fronteira de confiança](ftp-trust-boundary.md) descreve a menor
+restrição necessária na conta existente, incluindo possíveis acessos SSH.
+Nenhum gate de isolamento, corte ou Amazonas foi alterado.

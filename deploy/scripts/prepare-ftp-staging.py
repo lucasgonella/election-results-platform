@@ -8,6 +8,7 @@ import hashlib
 import json
 from pathlib import Path
 import secrets
+import socket
 import shutil
 import sys
 
@@ -28,7 +29,8 @@ def prepare(output):
     shutil.copyfile(ROOT/'deploy/locaweb/ftp-publication.php',output/'private/ftp-publication.php')
     shutil.copyfile(ROOT/'deploy/locaweb/ftp-staging-probe.php',output/'public/probe.php')
     # This is a disposable fixture key, never a copy of the production key.
-    config={'fixture_only':True,'environment':'fixture','root':str(output.resolve()),'fixture_key':secrets.token_hex(32)}
+    config={'fixture_only':True,'environment':'fixture','root':str(output.resolve()),
+            'activation_host':socket.gethostname(),'fixture_key':secrets.token_hex(32)}
     path=output/'private/staging-config.json';path.write_text(json.dumps(config),encoding='utf-8');path.chmod(0o600)
     (output/'public/probe-marker.json').write_text('{"fixture":"replace_a"}',encoding='utf-8')
     # Transfer allowlist: deliberately excludes the local fixture key/config.
