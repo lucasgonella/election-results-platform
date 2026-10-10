@@ -29,7 +29,7 @@ try {
         if (!is_string($cfg['activation_host'] ?? null) || $cfg['activation_host'] === '') throw new RuntimeException('unverified_lock_scope');
         if ($cfg['activation_host'] !== gethostname()) throw new RuntimeException('activation_host_mismatch');
     }
-    $value = ['host'=>gethostname(), 'sapi'=>PHP_SAPI, 'php'=>PHP_VERSION, 'probe_version'=>1];
+    $value = ['host'=>gethostname(), 'pid'=>getmypid(), 'sapi'=>PHP_SAPI, 'php'=>PHP_VERSION, 'probe_version'=>1];
     if ($action === 'runtime') {
         $value += ['effective_uid'=>function_exists('posix_geteuid') ? posix_geteuid() : null,
                    'effective_gid'=>function_exists('posix_getegid') ? posix_getegid() : null,

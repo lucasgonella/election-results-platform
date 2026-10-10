@@ -178,10 +178,11 @@ def test_fixture_runtime_identity_is_preserved_without_private_config():
             response = super().open(request, timeout)
             value = json.loads(response.raw)
             if request.data is not None and json.loads(request.data)['action'] == 'runtime':
-                value.update(effective_uid=123, effective_gid=456,
+                value.update(pid=1234, effective_uid=123, effective_gid=456,
                              fixture_root=web.NAMESPACE, process_root='/', fixture_key=KEY.hex())
             return Response(value)
     result = web.Client(URL, KEY, 'fixture-host', Identity()).observe()
+    assert result['runtime']['pid'] == 1234
     assert result['runtime']['effective_uid'] == 123
     assert result['runtime']['effective_gid'] == 456
     assert result['runtime']['fixture_root'] == web.NAMESPACE

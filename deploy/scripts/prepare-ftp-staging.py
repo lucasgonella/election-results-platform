@@ -13,6 +13,7 @@ import shutil
 import sys
 
 ROOT=Path(__file__).resolve().parents[2]
+sys.path.insert(0,str(ROOT))
 sys.path.insert(0,str(ROOT/'tests'))
 from test_ftp_publication import dataset
 

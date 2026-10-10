@@ -101,6 +101,24 @@ def test_staging_transfer_inventory_excludes_fixture_secret(tmp_path):
         assert hashlib.sha256((root/name).read_bytes()).hexdigest()==digest
 
 
+def test_staging_prepare_cli_works_outside_repository(tmp_path):
+    import os
+    import sys
+    environment = dict(os.environ)
+    environment.pop('PYTHONPATH', None)
+    output = tmp_path/'ftp-staging-cli'
+    result = subprocess.run(
+        [sys.executable, str(ROOT/'deploy/scripts/prepare-ftp-staging.py'),
+         '--output', str(output)],
+        cwd=tmp_path, env=environment, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {'status': 'fixture_prepared', 'targets': 137}
+    manifest = json.loads((output/'transfer-manifest.json').read_text())
+    assert 'private/staging-config.json' not in manifest['files']
+    assert manifest['remote_installation_authorized'] is False
+
+
 def test_staging_probe_local_runtime_rename_read_and_lock(tmp_path):
     spec=importlib.util.spec_from_file_location('staging',ROOT/'deploy/scripts/prepare-ftp-staging.py')
     staging=importlib.util.module_from_spec(spec);spec.loader.exec_module(staging)
@@ -146,6 +164,7 @@ def test_staging_runtime_identity_does_not_create_private_state(tmp_path):
     before=sorted(p.name for p in (root/'private').iterdir())
     result=subprocess.run(['php',str(root/'public/probe.php'),'runtime'],capture_output=True,text=True,check=True)
     value=json.loads(result.stdout)
+    assert isinstance(value['pid'], int) and value['pid'] > 0
     assert value['fixture_root']==str(root.resolve())
     assert value['effective_uid'] is None or isinstance(value['effective_uid'],int)
     assert value['effective_gid'] is None or isinstance(value['effective_gid'],int)

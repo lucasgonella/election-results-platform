@@ -298,3 +298,108 @@ policy is never`. O PR remoto continua em `a92e184`; seus três workflows estão
 aprovados, mas não validam a instrumentação local adicional. A confirmação
 humana não muda a política de ferramentas da sessão. Conservar bundle para
 envio por sessão com permissão, sem force push ou merge.
+
+## Etapa 13 — sincronização confirmada e preparação PHP
+
+Nova consulta ao GitHub confirmou `77d3fe866daecc80d4dfdb645db505e37252013f`
+como HEAD do PR #75, aberto/em rascunho. A comparação com `a92e184` confirmou
+dois commits descendentes, `11dae67` e `77d3fe8`, sem divergência. Não foi
+necessário repetir o envio. CI, FTP publication validation e Validate HTTPS
+publisher dessa revisão passaram. O [CI FTP Linux](https://github.com/lucasgonella/election-results-platform/actions/runs/38013434610)
+executou **309 testes em cada versão Python 3.13/3.14**, PHP 8.3.6 CLI,
+lint PHP/Bash, sintaxe Python e Node. Essa versão PHP pertence ao runner,
+não é evidência da versão instalada na Locaweb.
+
+O checkout original permanece em `3e8bb1f`, com suas alterações preexistentes
+preservadas. Uma cópia isolada em `.stage13-validation/review`, branch local
+`etapa13-validation`, importou o bundle verificado para trabalhar sobre o HEAD
+confirmado. O comando documentado do gerador falhou fora do pytest com
+`ModuleNotFoundError: collector`: a correção acrescenta a raiz do repositório
+ao caminho de importação. A regressão executa o CLI de outro diretório, sem
+PYTHONPATH. O harness agora informa PID além de host/SAPI/UID/GID; o cliente
+preserva esse campo sem revelar a configuração privada.
+
+Testes locais: 46 testes dos clientes aprovados; regressão do CLI aprovada
+em execução autorizada fora do sandbox após falha de acesso ao temporário.
+O gerador corrigido preparou somente fixtures locais em
+`.stage13-validation/ftp-staging-pr75-etapa13-final`. Não foram alteradas ACLs ou
+controles de segurança. A revisão nova exige seus próprios checks Linux;
+consultar o SHA efetivo do PR, sem reutilizar a aprovação de `77d3fe8`.
+
+### Diagnóstico atual somente leitura
+
+- FTP 21/passivo sem TLS, credenciais existentes: PWD `/`, servidor UNIX;
+  raiz com 29 entradas e `/ftp-inbox/elections/staging` existente e vazio.
+  A folha `ftp-staging-pr75-etapa11` permanece ausente no inventário/MLST.
+- `/ftp-staging-pr75` não aparece na raiz e MLST responde 550; a criação
+  exclusiva continua obrigatória. A home física
+  `/home/storage/4/b7/e0/afgnet1` é evidência SSH anterior. Esse caminho absoluto
+  responde 550 via FTP: usar o namespace FTP `/`, sem inferir que o caminho
+  físico possa ser enviado ao servidor FTP.
+- MLST da chave e de `public_html/api/election-publish.php` responde 250,
+  com capacidades anunciadas de leitura/escrita/rename/delete. Nenhum conteúdo
+  protegido foi lido; isolamento permanece insuficiente e gates fechados.
+- GET HTTPS em `afgnet.com.br/eleicoes/`, `/data/version.json` e
+  `/eleicoes/goias/raio-x/` responde 200. Nginx 1.24.0, ETag e Last-Modified
+  observados; sem Cache-Control/Age nessas respostas. Isso não comprova
+  coerência de cache, PHP-FPM, OPcache ou disponibilidade de rota de staging.
+- SSH local resolve para um bloqueador; a tentativa autorizada não produziu
+  diagnóstico remoto. PHP CLI/FPM, host real, mount/opções NFS, quota/inodes,
+  permissões efetivas FPM e domínios/subdomínios adicionais não foram revalidados.
+  `nolock,local_lock=all,nocto` permanece evidência anterior, não medição atual.
+- API GitHub lista somente `https-staging`, com política de branches. Não há
+  environments `staging` e `production` usados pelo fluxo FTP nessa consulta.
+  Nenhuma configuração GitHub foi criada ou alterada.
+
+### Primeiro ensaio PHP: pacote preparado, execução ainda não autorizada
+
+Origem local: `C:/Users/gonella/election-results-platform/.stage13-validation/ftp-staging-pr75-etapa13-final`.
+Destino FTP proposto: `/ftp-staging-pr75`, irmão de `/public_html`, com home
+física a reconfirmar como `/home/storage/4/b7/e0/afgnet1/ftp-staging-pr75`.
+
+Primeiro inventário mínimo:
+
+| Origem relativa | Destino FTP exato | Papel |
+| --- | --- | --- |
+| `private/ftp-publication.php` | `/ftp-staging-pr75/private/ftp-publication.php` | Primitivas existentes, carregadas pelo probe |
+| `public/probe.php` | `/ftp-staging-pr75/public/probe.php` | Harness autenticado, separado do publicador |
+| `public/probe-marker.json` | `/ftp-staging-pr75/public/probe-marker.json` | Marcador A sintético descartável |
+
+O inventário completo local inclui fixtures full/delta para os ensaios
+posteriores: 147 arquivos, 102.809 bytes. O primeiro probe usa apenas os
+três arquivos da tabela, 20.833 bytes; não enviar full/delta nesse diagnóstico.
+`private/staging-config.json` e sua chave local continuam excluídos da
+transferência. A configuração remota requer chave fixture nova gerada no
+servidor, root remoto exato e host confirmado antes de qualquer mutação.
+Ainda falta um meio autorizado para criar essa configuração no servidor.
+
+Dependências antes de apresentar a aprovação final executável: rota HTTPS
+existente servindo **somente** `ftp-staging-pr75/public`, sem aliases dos
+privados; método autorizado de provisionamento da configuração fixture;
+permissões de travessia/leitura PHP e namespace novo confirmado. Não alterar
+DNS, certificados, virtual hosts ou PHP/serviços principais por inferência.
+Uma rota sob o document root atual não autoriza instalar ali este pacote.
+
+Operações futuras a aprovar: MKD exclusivo da raiz e `private`/`public`, STOR
+somente dos três arquivos allowlisted com temporário + RETR/hash + RNFR/RNTO
+no mesmo diretório novo; geração da configuração fixture no servidor; POST
+autenticado `runtime`/`read`, sem conteúdo de arquivo, e GET do marcador.
+Esse primeiro escopo não inclui locks ou replace A/B: depois de identificar
+host/SAPI, apresentar separadamente essas mutações e recuperação.
+
+Rollback/limpeza propostos: como não há substituição de arquivo público
+existente, interromper em qualquer colisão/hash divergente; reconciliar
+inventário, remover somente os arquivos novos explicitamente autorizados e
+íntegros, conferir diretórios vazios e removê-los de dentro para fora.
+Arquivo extra, link, caminho divergente ou estado ambíguo interrompe a
+limpeza. Inboxes anteriores e árvore pública existente permanecem preservadas.
+Não fazer remoção recursiva nem limpeza automática de releases.
+
+**IMPLEMENTADO:** gerador/harness/clientes e regressões. **TESTADO LOCALMENTE:**
+preparação e clientes; PHP novo depende do CI Linux. **TESTADO NA LOCAWEB:**
+transporte da etapa 12 e diagnóstico FTP/HTTP atual. **VALIDADO EM STAGING:**
+aplicação ainda não. **ATIVO EM PRODUÇÃO:** protocolo novo não ativado.
+Nenhum upload, criação, rename, exclusão, chamada ao receptor eleitoral,
+instalação PHP, alteração de banco/timer/serviço ou merge foi executado nesta
+etapa. Fronteira de confiança, Amazonas e ensaios FPM/NFS/cache/rollback seguem
+pendentes; não solicitar outra conta nem habilitar isolamento por declaração.
