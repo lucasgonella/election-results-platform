@@ -1,0 +1,114 @@
+name: Reusable validated FTP code delivery
+on:
+  workflow_call:
+    inputs:
+      component:
+        type: string
+        required: true
+      environment:
+        type: string
+        required: true
+    secrets:
+      LOCAWEB_FTP_HOST:
+        required: true
+      LOCAWEB_FTP_USER:
+        required: true
+      LOCAWEB_FTP_PASSWORD:
+        required: true
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: locaweb-ftp-code-${{ inputs.environment }}
+  cancel-in-progress: false
+jobs:
+  configuration:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require pre-existing environment and production approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          DEPLOY_COMPONENT: ${{ inputs.component }}
+          DEPLOY_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          test "$DEPLOY_REF" = refs/heads/main
+          case "$DEPLOY_ENVIRONMENT" in staging|production) ;; *) exit 1 ;; esac
+          case "$DEPLOY_COMPONENT" in portal|control) ;; *) exit 1 ;; esac
+          gh api "repos/$GITHUB_REPOSITORY/environments/$DEPLOY_ENVIRONMENT" > "$RUNNER_TEMP/environment.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          config = json.loads((Path(os.environ['RUNNER_TEMP']) / 'environment.json').read_text())
+          if os.environ['DEPLOY_ENVIRONMENT'] == 'production':
+              assert any(rule.get('type') == 'required_reviewers' and rule.get('reviewers') for rule in config.get('protection_rules', [])), 'Production approval is required'
+          PY
+  deliver:
+    needs: configuration
+    if: github.ref == 'refs/heads/main' && (inputs.environment == 'staging' || inputs.environment == 'production') && (inputs.component == 'portal' || inputs.component == 'control')
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Require isolated environment-specific destination
+        env:
+          INBOX: ${{ vars.LOCAWEB_FTP_CODE_INBOX_DIR }}
+          ISOLATION_APPROVED: ${{ vars.LOCAWEB_FTP_ISOLATION_APPROVED }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          python - <<'PY'
+          import os
+          from collector.src.ftp_safety import validate_inbox
+          inbox = validate_inbox(os.environ['INBOX'])
+          if inbox.split('/')[-2:] != ['code', os.environ['DEPLOY_ENVIRONMENT']]:
+              raise SystemExit('Environment-specific code inbox required')
+          if os.environ['ISOLATION_APPROVED'] != 'true':
+              raise SystemExit('Provider isolation approval required')
+          PY
+      - run: python -m pip install -r collector/requirements-dev.txt
+      - name: Validate the revision to be packaged
+        run: |
+          php -l deploy/locaweb/ftp-publication.php
+          php -l deploy/locaweb/election-ftp-control.php
+          php -l deploy/locaweb/prepare-ftp-baseline.php
+          node --check web/public/eleicoes/app.js
+          node --check web/public/eleicoes/favorites.js
+          python -m pytest -q
+      - name: Build immutable allowlisted artifact and record approved checksum
+        env:
+          COMPONENT: ${{ inputs.component }}
+        run: |
+          set -euo pipefail
+          python deploy/scripts/ftp-code-artifact.py package --component "$COMPONENT" --directory "$RUNNER_TEMP/package"
+          for artifact in "$RUNNER_TEMP"/package/*; do
+            printf 'Approved %s artifact: `%s`\n' "$COMPONENT" "$(basename "$artifact")" >> "$GITHUB_STEP_SUMMARY"
+          done
+          find "$RUNNER_TEMP/package" -type f -name '*.php' -exec php -l {} \;
+      - name: Archive exactly the validated artifact for recovery
+        uses: actions/upload-artifact@v4
+        with:
+          name: locaweb-${{ inputs.component }}-${{ github.sha }}
+          path: ${{ runner.temp }}/package/
+          retention-days: 30
+      - name: FTP 21 to private code inbox (no live activation)
+        env:
+          COMPONENT: ${{ inputs.component }}
+          LOCAWEB_FTP_CODE_INBOX_DIR: ${{ vars.LOCAWEB_FTP_CODE_INBOX_DIR }}
+          LOCAWEB_FTP_ISOLATION_APPROVED: ${{ vars.LOCAWEB_FTP_ISOLATION_APPROVED }}
+          LOCAWEB_FTP_PORT: '21'
+          LOCAWEB_FTP_HOST: ${{ secrets.LOCAWEB_FTP_HOST }}
+          LOCAWEB_FTP_USER: ${{ secrets.LOCAWEB_FTP_USER }}
+          LOCAWEB_FTP_PASSWORD: ${{ secrets.LOCAWEB_FTP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$LOCAWEB_FTP_CODE_INBOX_DIR"
+          for artifact in "$RUNNER_TEMP"/package/*; do
+            python deploy/scripts/ftp-code-artifact.py upload --component "$COMPONENT" --directory "$artifact"
+          done

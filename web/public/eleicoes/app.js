@@ -1780,7 +1780,9 @@ function publicationToken(
 ) {
     return [
         version.environment,
-        version.generated_at
+        version.generated_at,
+        version.snapshot_id || "",
+        version.activation_revision || ""
     ].join(":");
 }
 
@@ -1847,8 +1849,6 @@ async function refreshIfChanged() {
             return;
         }
 
-        const oldItem =
-            currentManifestItem();
         const candidateBase = dataBaseForVersion(version);
 
         await Promise.all([
@@ -1862,31 +1862,14 @@ async function refreshIfChanged() {
         const newItem =
             currentManifestItem();
 
-        publishedVersion =
-            nextVersion;
-
-        window.Favorites.setManifest(
-            manifest,
-            publishedVersion
-        );
-
-        if (
-            newItem
-            &&
-            oldItem
-            &&
-            (
-                newItem.tse_idg
-                    !== oldItem.tse_idg
-                ||
-                newItem.captured_at
-                    !== oldItem.captured_at
-            )
-        ) {
+        if (newItem) {
             renderOfficeTabs();
-
             await loadSelectedResult();
         }
+
+        // A failed result read must leave the publication token retryable.
+        publishedVersion = nextVersion;
+        window.Favorites.setManifest(manifest, publishedVersion, activeDataBase);
 
     } catch (error) {
         console.error(
@@ -1913,7 +1896,8 @@ async function initialize() {
 
     window.Favorites.setManifest(
         manifest,
-        publishedVersion
+        publishedVersion,
+        activeDataBase
     );
 
     selectInitialRoute();

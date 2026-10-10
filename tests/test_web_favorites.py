@@ -65,7 +65,7 @@ def test_favorites_panel_is_loaded():
     )
 
     assert (
-        '<script src="favorites.js?v=7"></script>'
+        '<script src="favorites.js?v=8"></script>'
         in html
     )
 
@@ -110,7 +110,7 @@ def test_favorites_markup_uses_safe_icons_and_cache_busting():
     assert "&#9734; Favoritos" in html
     assert "&times;" in html
     assert 'href="styles.css?v=12"' in html
-    assert '<script src="app.js?v=14"></script>' in html
+    assert '<script src="app.js?v=15"></script>' in html
     assert "? Favoritos" not in html
 
 
