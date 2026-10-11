@@ -6,6 +6,13 @@ Plataforma para coleta, persistência e publicação de resultados eleitorais a 
 
 **Demo:** https://afgnet.com.br/eleicoes/
 
+O front-end do portal e do Raio-X Goiás é publicado automaticamente pela `main`
+após CI aprovado, usando FTP porta 21, assets versionados, backups e verificação
+HTTPS por SHA-256. PRs apenas validam. Deploy manual, status, rollback e recuperação
+estão no GitHub Actions; operação e destinos em
+[CI/CD visual da Locaweb](docs/frontend-ftp-deployment.md).
+Essa automação não publica resultados eleitorais nem dados financeiros.
+
 > Projeto independente. Não é um serviço oficial do TSE. A interface apenas apresenta os dados publicados pela Justiça Eleitoral e não realiza projeções, estimativas ou declarações próprias de resultado.
 
 ## Visão geral

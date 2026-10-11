@@ -1,0 +1,41 @@
+name: Validate frontend FTP deploy
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: Frontend FTP validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r deploy/frontend-requirements.txt
+      - run: python -m pip install pytest
+      - name: Test transport activation rollback and failure recovery (no network)
+        run: python -m unittest tests.test_frontend_deploy -v
+      - name: Validate portal readers and favorites using Node fixtures
+        run: python -m pytest -q tests/test_frontend_readers.py tests/test_web_favorites.py
+      - name: Validate HTML CSS external and inline JavaScript; build both allowlists
+        env:
+          REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python -m deploy.frontend build --component portal --commit "$REVISION" --directory "$RUNNER_TEMP/frontend/portal"
+          python -m deploy.frontend build --component raio-x --commit "$REVISION" --directory "$RUNNER_TEMP/frontend/raio-x"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-verified-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/frontend/
+          if-no-files-found: error
+          retention-days: 30

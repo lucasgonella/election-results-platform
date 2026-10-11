@@ -1,0 +1,98 @@
+name: Reusable frontend FTP publication
+on:
+  workflow_call:
+    inputs:
+      component:
+        type: string
+        required: true
+      operation:
+        type: string
+        default: deploy
+      version:
+        type: string
+        default: previous
+    secrets:
+      LOCAWEB_FTP_HOST:
+        required: true
+      LOCAWEB_FTP_USER:
+        required: true
+      LOCAWEB_FTP_PASSWORD:
+        required: true
+permissions:
+  contents: read
+  checks: read
+  actions: read
+concurrency:
+  group: locaweb-frontend-${{ inputs.component }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require successful CI on this exact main commit
+        if: inputs.operation != 'status'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMPONENT: ${{ inputs.component }}
+        run: python deploy/scripts/wait-frontend-ci.py --commit "$GITHUB_SHA" --component "$COMPONENT"
+      - run: python -m pip install -r deploy/frontend-requirements.txt
+      - name: Build only requested frontend component (no data PHP or secrets)
+        if: inputs.operation == 'deploy'
+        env:
+          COMPONENT: ${{ inputs.component }}
+        run: python -m deploy.frontend build --component "$COMPONENT" --commit "$GITHUB_SHA" --directory "$RUNNER_TEMP/frontend"
+      - uses: actions/upload-artifact@v4
+        if: inputs.operation == 'deploy'
+        with:
+          name: frontend-${{ inputs.component }}-${{ github.sha }}
+          path: ${{ runner.temp }}/frontend
+          retention-days: 90
+          if-no-files-found: error
+      - name: FTP transfer and controlled activation rollback or recovery
+        env:
+          COMPONENT: ${{ inputs.component }}
+          OPERATION: ${{ inputs.operation }}
+          VERSION: ${{ inputs.version }}
+          LOCAWEB_FTP_PORT: '21'
+          LOCAWEB_FTP_HOST: ${{ secrets.LOCAWEB_FTP_HOST }}
+          LOCAWEB_FTP_USER: ${{ secrets.LOCAWEB_FTP_USER }}
+          LOCAWEB_FTP_PASSWORD: ${{ secrets.LOCAWEB_FTP_PASSWORD }}
+          LOCAWEB_FTP_GOIAS_DIR: ${{ vars.LOCAWEB_FTP_GOIAS_DIR }}
+        run: |
+          case "$OPERATION" in deploy|rollback|recover|status) ;; *) exit 1 ;; esac
+          python -m deploy.frontend "$OPERATION" --component "$COMPONENT" --directory "$RUNNER_TEMP/frontend" --version "$VERSION" --transaction "actions-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --report "$RUNNER_TEMP/report.json"
+      - name: Report effective publication and verified URLs
+        if: always()
+        env:
+          RESULT: ${{ job.status }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ['RUNNER_TEMP'])/'report.json'
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              out.write('Frontend FTP operation: '+os.environ['RESULT']+'\n\n')
+              if p.exists():
+                  d=json.loads(p.read_text())
+                  out.write('```json\n'+json.dumps(d, ensure_ascii=False, indent=2)+'\n```\n')
+              else:
+                  out.write('No successful publication receipt. Inspect failed step; do not assume inbox upload activated the site.\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-report-${{ inputs.component }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/report.json
+          if-no-files-found: ignore
+          retention-days: 90

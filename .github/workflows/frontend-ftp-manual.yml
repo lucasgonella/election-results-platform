@@ -1,0 +1,29 @@
+name: Manual frontend deploy status rollback recovery
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        type: choice
+        options: [portal, raio-x]
+        required: true
+      operation:
+        type: choice
+        options: [deploy, status, rollback, recover]
+        default: deploy
+        required: true
+      version:
+        description: 'Rollback commit SHA (40 hex), or previous; ignored for other operations'
+        type: string
+        default: previous
+permissions:
+  contents: read
+  actions: read
+  checks: read
+jobs:
+  operation:
+    uses: ./.github/workflows/deploy-frontend-ftp.yml
+    with:
+      component: ${{ inputs.component }}
+      operation: ${{ inputs.operation }}
+      version: ${{ inputs.version }}
+    secrets: inherit
