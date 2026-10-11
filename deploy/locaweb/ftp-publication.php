@@ -130,10 +130,14 @@ function fp_watermarks(string $path, ?string $baseline): array {
     $paths = array_keys(fp_paths());
     if (count($water) !== count($paths) || array_diff($paths, array_keys($water))) fp_fail('watermarks_inconsistent_requires_review');
     foreach ($water as $path=>$entry) {
-        if (!is_array($entry) || !is_array($entry['identity'] ?? null) || count($entry['identity']) !== 3
-            || !is_int($entry['time'] ?? null) || !is_string($entry['idg'] ?? null)
+        if (!is_array($entry) || !is_array($entry['identity'] ?? null) || !array_is_list($entry['identity'])
+            || count($entry['identity']) !== 3 || !is_string($entry['identity'][0] ?? null)
+            || !is_int($entry['identity'][1] ?? null) || !is_int($entry['identity'][2] ?? null)
+            || !is_int($entry['time'] ?? null) || $entry['time'] < 1 || !is_string($entry['idg'] ?? null)
             || !preg_match('/^[0-9]{1,20}$/D', $entry['idg']) || !is_string($entry['fingerprint'] ?? null)
-            || !preg_match('/^[a-f0-9]{64}$/D', $entry['fingerprint'])) fp_fail('watermarks_inconsistent_requires_review');
+            || !preg_match('/^[a-f0-9]{64}$/D', $entry['fingerprint'])
+            || !array_key_exists('totalization_final', $entry)
+            || ($entry['totalization_final'] !== null && !is_bool($entry['totalization_final']))) fp_fail('watermarks_inconsistent_requires_review');
         if ($baseline !== null) {
             $payload = fp_json($baseline . '/' . $path);
             $snapshot = $payload['snapshot'];

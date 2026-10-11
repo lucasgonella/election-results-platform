@@ -62,7 +62,9 @@ interceptação de syscalls em namespace PHP, exclusivamente em árvores tempor�
 upload interrompido, RETR incompleto, rename recusado, retry do mesmo ID,
 perda de resposta/status, falha de confirmação local, leitura de baseline,
 gravação/fsync recusados, ausência de fsync, diretório recusado, interrupção
-após marcador e antes do recibo, rollback, recibo inconsistente, outro host
+após marcador e antes do recibo, saída abrupta do processo fixture antes/depois
+do rename do marcador (sem finally), retomada em processo novo, tipos de
+watermarks inválidos, rollback, recibo inconsistente, outro host
 antes de qualquer escrita e ordem das barreiras antes do commit.
 O teste confirma 140 syncs de dados selados e 142 da release/inventário,
 além da barreira após rename da release, antes de trocar o marcador.

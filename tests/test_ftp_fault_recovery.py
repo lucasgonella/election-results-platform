@@ -149,9 +149,12 @@ function file_get_contents(string $path,...$args):string|false {
 }
 function rename(string $from,string $to):bool {
     $GLOBALS['events'][]=['op'=>'rename','path'=>$to];
+    if($GLOBALS['fault']==='exit_before_marker'&&str_ends_with($to,'/data/version.json'))exit(98);
     if($GLOBALS['fault']==='marker_rename'&&str_ends_with($to,'/data/version.json'))return false;
     if($GLOBALS['fault']==='after_activation'&&str_contains($to,'/receipts/'))throw new \RuntimeException('fixture_interrupted_after_activation');
-    return \rename($from,$to);
+    $renamed=\rename($from,$to);
+    if($renamed&&$GLOBALS['fault']==='exit_after_marker'&&str_ends_with($to,'/data/version.json'))exit(99);
+    return $renamed;
 }
 $source=\file_get_contents($argv[1]);$source=substr($source,strlen("<?php\n"));
 $source=preg_replace('/declare\(strict_types=1\);/','',$source,1);
@@ -260,3 +263,42 @@ def test_other_nfs_host_is_rejected_before_any_state_creation(env):
     delivery=deliver(env)
     assert storage_call(cfg,'activate',delivery.name,'other_host')['result']['error']=='activation_host_mismatch'
     assert list((root/'private').iterdir())==[] and not (root/'public/data/version.json').exists()
+
+
+@pytest.mark.parametrize('point,code', [('exit_before_marker',98),('exit_after_marker',99)])
+def test_abrupt_fixture_process_exit_resumes_in_fresh_process_without_finally(env,point,code):
+    root,cfg=env
+    first=deliver(env); assert call(cfg,'activate',first.name)['status']=='published'
+    second=deliver(env,2,first.name,True); old=marker_bytes(root)
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        storage_call(cfg,'activate',second.name,point)
+    assert error.value.returncode==code
+    assert not (root/'private/receipts'/f'{second.name}.json').exists()
+    assert (root/'private/journals'/f'{second.name}.json').exists()
+    if point=='exit_before_marker':
+        assert marker_bytes(root)==old
+        assert list((root/'public/data').glob('version.json.*.tmp'))
+        assert call(cfg,'status',second.name)['status']=='unknown'
+        assert call(cfg,'activate',second.name)['status']=='published'
+    else:
+        assert json.loads(marker_bytes(root))['delivery_id']==second.name
+        assert call(cfg,'status',second.name)['status']=='published'
+    assert call(cfg,'activate',second.name)['status']=='published'
+    assert call(cfg,'rollback',second.name)['snapshot_id']==first.name
+
+
+@pytest.mark.parametrize('kind',['final_flag','identity','time','fingerprint','idg'])
+def test_malformed_watermark_fields_cannot_disable_history_checks(env,kind):
+    root,cfg=env
+    first=deliver(env); assert call(cfg,'activate',first.name)['status']=='published'
+    original=marker_bytes(root); path=root/'private/watermarks.json';water=json.loads(path.read_text())
+    entry=water['ac/president.json']
+    if kind=='final_flag':entry['totalization_final']='true'
+    elif kind=='identity':entry['identity']={'a':'fixture','b':1,'c':1}
+    elif kind=='time':entry['time']=-1
+    elif kind=='fingerprint':entry['fingerprint']='not-a-digest'
+    else:entry['idg']=1
+    path.write_text(json.dumps(water))
+    second=deliver(env,2,first.name,True)
+    assert call(cfg,'activate',second.name)['error']=='watermarks_inconsistent_requires_review'
+    assert marker_bytes(root)==original
