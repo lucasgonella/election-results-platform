@@ -271,6 +271,17 @@ class FrontendTest(unittest.TestCase):
         f.verify_public(manifest, http=self.http, live=True)
         f.recover(self.transport, 'portal', http=self.http)
 
+    def test_goias_workflow_preserves_main_contract_and_disables_old_writer(self):
+        text = (f.ROOT/'.github/workflows/deploy-goias-ftp.yml').read_text(encoding='utf-8-sig')
+        self.assertIn('Verify real financial data in repository', text)
+        self.assertIn('Verify live financial data', text)
+        historical = text.split('  frontend:', 1)[0]
+        self.assertIn('if: ${{ false }}', historical)
+        active = text.split('  frontend:', 1)[1]
+        self.assertIn('uses: ./.github/workflows/deploy-frontend-ftp.yml', active)
+        self.assertNotIn('curl', active)
+        self.assertIn("'!web/public/eleicoes/goias/raio-x/data/**'", text)
+
 
 if __name__ == '__main__':
     unittest.main()

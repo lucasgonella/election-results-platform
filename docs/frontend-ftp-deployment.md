@@ -26,6 +26,10 @@ Porta diferente de 21 é rejeitada; `ftplib.FTP` usa passivo e não negocia TLS.
   infraestrutura do seu deploy. Exclui Goiás, dados e documentação do frontend.
 - `deploy-goias-ftp.yml`: preserva nome e destino existentes; passa a chamar o
   mesmo mecanismo restrito para o front-end de Goiás. Exclui dados financeiros.
+  O job histórico é conservado com `if: ${{ false }}` para compatibilizar as
+  adições financeiras da main sem merge/rebase nem perda desses contratos; só o
+  novo job `frontend` pode publicar. Após integração, essa referência histórica
+  pode ser removida em revisão separada.
 - `deploy-frontend-ftp.yml`: transporte/ativação reutilizáveis; aceita somente
   portal/raio-x, ref main, aguarda CI geral, FTP nas duas versões Python e CI
   frontend aprovados no SHA exato. Concurrency por componente e MKD exclusivo
