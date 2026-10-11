@@ -20,8 +20,9 @@ respeitar o escopo autorizado na sessão. PRs não publicam.
   visuais de `web/public/eleicoes/goias/raio-x`, excluindo seus dados financeiros.
 - Destinos reais: `/public_html/eleicoes` e
   `/public_html/eleicoes/goias/raio-x`; FTP `/` é a home da hospedagem.
-- Todo escritor visual deve usar `deploy-frontend-ftp.yml`, concurrency por
-  componente, MKD remoto, backups e verificações. Não acrescentar upload direto.
+- Todo escritor visual deve usar `deploy-frontend-ftp.yml`, concurrency global
+  `locaweb-frontend-production`, MKD remoto por componente, backups e verificações.
+  Não acrescentar upload direto.
 - `deploy-goias-ftp.yml` é o único deploy visual de Goiás. Preservar o ETL
   `goias-finance-data.yml`, audit, importador e JSON financeiro.
 - Ações manuais na main: deploy, status, rollback de versão publicada e recover.
