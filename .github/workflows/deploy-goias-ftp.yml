@@ -24,6 +24,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  frontend:
+    uses: ./.github/workflows/deploy-frontend-ftp.yml
+    with:
+      component: raio-x
+    secrets: inherit
+
   deploy:
     # Historical implementation retained to reconcile financial main additions.
     # It cannot run; the active job below deploys ONLY allowlisted frontend.
@@ -110,8 +116,3 @@ jobs:
           print('Live candidates:',len(d['candidates']),'transfers:',len(d['transfers']))
           PY
 
-  frontend:
-    uses: ./.github/workflows/deploy-frontend-ftp.yml
-    with:
-      component: raio-x
-    secrets: inherit

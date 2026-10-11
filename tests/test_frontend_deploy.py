@@ -275,9 +275,9 @@ class FrontendTest(unittest.TestCase):
         text = (f.ROOT/'.github/workflows/deploy-goias-ftp.yml').read_text(encoding='utf-8-sig')
         self.assertIn('Verify real financial data in repository', text)
         self.assertIn('Verify live financial data', text)
-        historical = text.split('  frontend:', 1)[0]
+        historical = text.split('  deploy:', 1)[1]
         self.assertIn('if: ${{ false }}', historical)
-        active = text.split('  frontend:', 1)[1]
+        active = text.split('  frontend:', 1)[1].split('  deploy:', 1)[0]
         self.assertIn('uses: ./.github/workflows/deploy-frontend-ftp.yml', active)
         self.assertNotIn('curl', active)
         self.assertIn("'!web/public/eleicoes/goias/raio-x/data/**'", text)
