@@ -115,4 +115,3 @@ jobs:
           assert d['scope']=='GO' and d['year']==2026 and len(d['candidates'])>100
           print('Live candidates:',len(d['candidates']),'transfers:',len(d['transfers']))
           PY
-
