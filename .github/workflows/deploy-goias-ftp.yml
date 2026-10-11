@@ -5,18 +5,35 @@ on:
     branches: [main]
     paths:
       - 'web/public/eleicoes/goias/raio-x/**'
+      - '!web/public/eleicoes/goias/raio-x/data/**'
+      - '!web/public/eleicoes/goias/raio-x/**/*.md'
+      - 'collector/src/frontend_deploy.py'
+      - 'deploy/frontend-*'
+      - 'deploy/scripts/wait-frontend-ci.py'
+      - '.github/workflows/deploy-frontend-ftp.yml'
       - '.github/workflows/deploy-goias-ftp.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
+  checks: read
 
 concurrency:
   group: goias-ftp-production
   cancel-in-progress: false
 
 jobs:
+  frontend:
+    uses: ./.github/workflows/deploy-frontend-ftp.yml
+    with:
+      component: raio-x
+    secrets: inherit
+
   deploy:
+    # Historical implementation retained to reconcile financial main additions.
+    # It cannot run; the active job below deploys ONLY allowlisted frontend.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:

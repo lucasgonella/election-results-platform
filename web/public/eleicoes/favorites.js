@@ -23,6 +23,7 @@
 
     let manifest = null;
     let publishedVersion = null;
+    let activeDataBase = "/data";
     let refreshTimer = null;
     let rendering = false;
 
@@ -183,7 +184,8 @@
 
     function setManifest(
         value,
-        version = null
+        version = null,
+        base = "/data"
     ) {
         const changed = (
             version !== null
@@ -192,6 +194,7 @@
         );
 
         manifest = value;
+        activeDataBase = base;
 
         if (version !== null) {
             publishedVersion =
@@ -322,7 +325,9 @@
     ) {
         return [
             version.environment,
-            version.generated_at
+            version.generated_at,
+            version.snapshot_id || "",
+            version.activation_revision || ""
         ].join(":");
     }
 
@@ -348,10 +353,13 @@
     }
 
 
-    async function refreshManifest() {
+    async function refreshManifest(version = null) {
+        version = version || await loadVersion();
+        const base = /^[a-f0-9]{32,64}$/.test(version.snapshot_id || "")
+            ? `/data/releases/${version.snapshot_id}` : "/data";
         const response =
             await fetch(
-                MANIFEST_URL,
+                `${base}/manifest.json`,
                 {
                     cache: "no-store"
                 }
@@ -365,6 +373,7 @@
 
         manifest =
             await response.json();
+        activeDataBase = base;
 
         return manifest;
     }
@@ -406,7 +415,7 @@
                 "checking"
             );
 
-            await refreshManifest();
+            await refreshManifest(version);
 
             publishedVersion =
                 nextVersion;
@@ -529,6 +538,7 @@
     async function loadFavoriteData(
         favorite
     ) {
+        const base = activeDataBase;
         const item =
             manifestItem(
                 favorite
@@ -546,13 +556,13 @@
 
         let resultPromise =
             resultCache.get(
-                item.path
+                `${base}/${item.path}`
             );
 
         if (!resultPromise) {
             resultPromise = (
                 fetch(
-                    `/data/${item.path}`,
+                    `${base}/${item.path}`,
                     {
                         cache: "no-store"
                     }
@@ -573,7 +583,7 @@
             );
 
             resultCache.set(
-                item.path,
+                `${base}/${item.path}`,
                 resultPromise
             );
         }
@@ -586,7 +596,7 @@
 
         } catch (error) {
             resultCache.delete(
-                item.path
+                `${base}/${item.path}`
             );
 
             throw error;

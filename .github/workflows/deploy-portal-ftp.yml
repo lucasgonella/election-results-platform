@@ -1,0 +1,24 @@
+name: Deploy portal frontend via FTP
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/public/eleicoes/**'
+      - '!web/public/eleicoes/goias/**'
+      - '!web/public/eleicoes/data/**'
+      - '!web/public/eleicoes/**/*.md'
+      - 'collector/src/frontend_deploy.py'
+      - 'deploy/frontend-*'
+      - '.github/workflows/deploy-frontend-ftp.yml'
+      - '.github/workflows/deploy-portal-ftp.yml'
+      - 'deploy/scripts/wait-frontend-ci.py'
+permissions:
+  contents: read
+  actions: read
+  checks: read
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy-frontend-ftp.yml
+    with:
+      component: portal
+    secrets: inherit

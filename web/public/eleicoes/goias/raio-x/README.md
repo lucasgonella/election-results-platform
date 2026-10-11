@@ -65,7 +65,13 @@ Para entrar em produção é necessário um mecanismo de deploy para arquivos es
 
 ## CI/CD FTP porta 21
 
-Workflow: `.github/workflows/deploy-goias-ftp.yml`. Publica apenas HTML/CSS/JS/JSON do módulo para a Locaweb via FTP sem TLS, conforme autorização explícita do proprietário. Não altera `/data/` eleitoral nem o coletor.
+Workflow: `.github/workflows/deploy-goias-ftp.yml`. O novo fluxo publica somente
+front-end/assets por FTP 21, com release versionada, backup e verificação SHA-256
+por FTP e HTTPS. O JSON `data/go-2026.json` permanece exclusivamente com o
+importador financeiro da main. Deploy visual não o substitui.
+
+Operação e rollback: [CI/CD visual FTP](../../../../../docs/frontend-ftp-deployment.md).
+Nenhum componente visual escreve `/data/` eleitoral nem habilita o coletor.
 
 Configure em GitHub Actions Secrets: `LOCAWEB_FTP_HOST`, `LOCAWEB_FTP_USER`, `LOCAWEB_FTP_PASSWORD`; e Actions Variable: `LOCAWEB_FTP_GOIAS_DIR`, caminho relativo à raiz FTP (por exemplo `public_html/eleicoes/goias/raio-x` **somente se** a raiz FTP for a home da hospedagem; ou `eleicoes/goias/raio-x` se a raiz FTP já for `public_html`).
 

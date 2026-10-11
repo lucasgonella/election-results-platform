@@ -1,0 +1,8 @@
+# Install as a drop-in ONLY during the authorized cutover, never automatically.
+# Replaces ExecStart; does not alter the existing timer or collector service.
+[Service]
+EnvironmentFile=/etc/election-results-platform/secrets/ftp.env
+EnvironmentFile=/etc/election-results-platform/ftp-publisher.env
+ExecStart=
+ExecStart=/bin/bash /opt/election-results-platform/deploy/scripts/run-ftp-live-publisher.sh
+UMask=0077

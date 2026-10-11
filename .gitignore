@@ -9,3 +9,4 @@ __pycache__/
 
 *-sample.json
 web/public/data/
+.secrets/
