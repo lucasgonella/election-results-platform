@@ -302,3 +302,19 @@ def test_malformed_watermark_fields_cannot_disable_history_checks(env,kind):
     second=deliver(env,2,first.name,True)
     assert call(cfg,'activate',second.name)['error']=='watermarks_inconsistent_requires_review'
     assert marker_bytes(root)==original
+
+
+@pytest.mark.parametrize('action',['status','activate'])
+def test_lost_marker_with_receipt_history_is_not_treated_as_fresh_storage(env,action):
+    root,cfg=env
+    first=deliver(env,3);assert call(cfg,'activate',first.name)['status']=='published'
+    original_receipt=(root/'private/receipts'/f'{first.name}.json').read_bytes()
+    (root/'public/data/version.json').unlink()
+    (root/'private/watermarks.json').unlink()  # Simulate storage metadata loss only inside this fixture.
+    regressed=deliver(env,1,None)
+    result=call(cfg,action,first.name if action=='status' else regressed.name)
+    assert result['error']=='marker_missing_requires_review'
+    assert not (root/'public/data/version.json').exists()
+    assert not (root/'public/data/releases'/regressed.name).exists()
+    assert (root/'private/receipts'/f'{first.name}.json').read_bytes()==original_receipt
+    assert (root/'public/data/releases'/first.name/'inventory.sig').is_file()

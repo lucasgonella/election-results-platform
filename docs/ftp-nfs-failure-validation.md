@@ -48,6 +48,14 @@ prova de recuperação após perda de energia ou indisponibilidade do servidor N
   enquanto o erro persistir, não confirma. Não repete automaticamente a ativação.
 - Recibo histórico com identidade/snapshot inconsistente era aceito pelo servidor.
   Agora exige schema/ID/snapshot coerentes e inventário válido antes de confirmar.
+- Marcador perdido com histórico de recibos poderia parecer instalação vazia ou
+  permitir confirmação histórica apesar da perda da seleção pública. Agora exige
+  revisão, sem criar marcador ou reiniciar automaticamente a história da fonte.
+
+Essas verificações detectam perdas/inconsistências observáveis. Uma restauração
+antiga, internamente coerente, de todo o armazenamento pode ser indistinguível
+localmente do passado; deve ser confrontada com checkpoint independente do app01
+e backups verificados. Nenhuma recuperação silenciosa ou reset foi adicionado.
 
 Helper preparado é revisão 3; cliente CLI preparado exige helper_revision=3
 para futuras mutações. A hospedagem continua com helper revisão 2 da Etapa 15,

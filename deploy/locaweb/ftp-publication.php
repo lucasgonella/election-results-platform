@@ -101,6 +101,13 @@ function fp_source_fingerprint(array $payload): string {
 }
 function fp_receipt(array $cfg, string $id): array {
     $marker = fp_marker($cfg);
+    if ($marker === null) {
+        $history = scandir($cfg['private'] . '/receipts');
+        if ($history === false) fp_fail('storage_error');
+        // Loss of the selection marker must not look like a fresh installation
+        // or turn an historical receipt into confirmation of healthy publication.
+        if (array_diff($history, ['.', '..'])) fp_fail('marker_missing_requires_review');
+    }
     // Reconcile the visible commit point; require a successful directory barrier
     // before acknowledging a marker whose original fsync/response may have failed.
     if (($marker['delivery_id'] ?? '') === $id) {
