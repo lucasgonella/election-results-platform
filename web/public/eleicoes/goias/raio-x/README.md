@@ -59,16 +59,21 @@ A página mostra uma mensagem de indisponibilidade honesta quando ainda não exi
 
 ## Publicação
 
-A pipeline `https-staging-cd.yml` é isolada na app01 e **não publica automaticamente o conteúdo web da Locaweb**. O publicador autenticado atual trata apenas JSONs de apuração eleitoral sob `/data/`. Não usá-lo para enviar arquivos arbitrários da interface.
+O visual segue PR → CI → merge na `main` → deploy FTP automático → verificação
+HTTPS por SHA-256. `.github/workflows/deploy-goias-ftp.yml` chama o mecanismo
+reutilizável, com assets versionados, backup e rollback. Ele envia somente arquivos
+visuais permitidos e nunca `data/go-2026.json`. O workflow financeiro
+`goias-finance-data.yml` continua proprietário desse JSON, sem alterações de ETL
+ou horários. Mudanças apenas em dados não disparam o deploy visual.
 
-Para entrar em produção é necessário um mecanismo de deploy para arquivos estáticos da Locaweb ou uma única instalação manual supervisionada. Proteger com revisão e testes antes de ativar publicamente.
+O destino FTP já confirmado é `/public_html/eleicoes/goias/raio-x`; a variável
+`LOCAWEB_FTP_GOIAS_DIR` deve continuar `public_html/eleicoes/goias/raio-x`. São
+reutilizados os três secrets FTP existentes, porta 21, passivo, sem TLS. A conta
+tem acesso amplo e o transporte não oferece criptografia.
 
-## CI/CD FTP porta 21
+Deploy manual, consulta de status, rollback de versão verificada e recuperação
+estão no Actions, workflow **Manual frontend deploy status rollback recovery**,
+branch `main`, componente `raio-x`. Não usar o receptor eleitoral ou um segundo
+workflow para copiar HTMLs/JSONs deste módulo.
 
-Workflow: `.github/workflows/deploy-goias-ftp.yml`. Publica apenas HTML/CSS/JS/JSON do módulo para a Locaweb via FTP sem TLS, conforme autorização explícita do proprietário. Não altera `/data/` eleitoral nem o coletor.
-
-Configure em GitHub Actions Secrets: `LOCAWEB_FTP_HOST`, `LOCAWEB_FTP_USER`, `LOCAWEB_FTP_PASSWORD`; e Actions Variable: `LOCAWEB_FTP_GOIAS_DIR`, caminho relativo à raiz FTP (por exemplo `public_html/eleicoes/goias/raio-x` **somente se** a raiz FTP for a home da hospedagem; ou `eleicoes/goias/raio-x` se a raiz FTP já for `public_html`).
-
-FTP tradicional transmite senha e arquivos sem criptografia. O workflow testa a URL pública depois de publicar e falha se o conteúdo não for encontrado. O workflow não configura secrets automaticamente: essa configuração depende do proprietário da conta.
-
-Deploy FTP autorizado e configurado para primeira execução em outubro de 2026.
+Procedimento central: [CI/CD visual da Locaweb](../../../../../docs/frontend-ftp-deployment.md).

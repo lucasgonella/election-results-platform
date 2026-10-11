@@ -1,0 +1,14 @@
+{
+  "portal": {
+    "source": "web/public/eleicoes",
+    "ftp_root": "/public_html/eleicoes",
+    "url": "https://afgnet.com.br/eleicoes/",
+    "entrypoints": ["composicao.html", "index.html"]
+  },
+  "raio-x": {
+    "source": "web/public/eleicoes/goias/raio-x",
+    "ftp_root": "/public_html/eleicoes/goias/raio-x",
+    "url": "https://afgnet.com.br/eleicoes/goias/raio-x/",
+    "entrypoints": ["index.html"]
+  }
+}
