@@ -75,7 +75,7 @@ def prepare(artifact: Path, expected_id: str, public_root: Path, output: Path):
     if component=='portal':
         # HTML entrypoints switch last; every referenced asset is pinned to the
         # immutable artifact ID. Existing root assets and Goiás remain intact.
-        for name in ['index.html','composition.html']:
+        for name in ['index.html','composicao.html','composition.html']:
             if name not in contents: continue
             target=public_root/'eleicoes'/name
             operations.append({'role':'entrypoint','source':'files/'+name,'target':str(target),

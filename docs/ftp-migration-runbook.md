@@ -1,5 +1,9 @@
 # Preparação da migração FTP — etapas 7 e 8 / PR #75
 
+Para o incidente atual do publicador, usar o
+[procedimento único de recuperação](ftp-production-recovery.md). As observações
+datadas abaixo não substituem suas evidências atuais nem autorizam o corte.
+
 Este documento registra diagnóstico somente leitura de **09/10/2026, aproximadamente 18h15–18h35, America/Sao_Paulo**. Nenhum serviço, timer, endpoint, configuração, banco ou arquivo remoto foi modificado. Os procedimentos de escrita abaixo dependem de autorização posterior; não são comandos para executar nesta etapa.
 
 ## Evidências reais e limites

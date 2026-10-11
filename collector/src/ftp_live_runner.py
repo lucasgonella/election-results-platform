@@ -50,6 +50,8 @@ def run():
         if job_path.exists():
             job = json.loads(job_path.read_text())
         else:
+            from .ftp_recovery import assert_recovery_resolved
+            assert_recovery_resolved(queue)
             if not (queue / 'confirmed.json').exists() and active.exists():
                 raise RuntimeError('migration_baseline_requires_review')
             live_publisher.prepare()
@@ -71,6 +73,11 @@ def run():
                 os.environ['LOCAWEB_FTP_USER'], os.environ['LOCAWEB_FTP_PASSWORD']))
             job['receipt'] = receipt
             save(job_path, job)
+        if 'recovery_plan_sha256' in job:
+            # Selective recovery must not acknowledge the full legacy pending.
+            # Verify every public frozen byte before swapping its own checkpoint.
+            from .ftp_recovery import verify_public
+            verify_public(queue / 'deliveries' / job['id'], os.environ['ELECTION_FTP_CONTROL_URL'], job['receipt'])
         acknowledge(root, job)
         return {'status': 'committed', 'delivery_id': job['id']}
 

@@ -13,9 +13,17 @@ PUBLISH_SCRIPT="${LIVE_PUBLISH_SCRIPT:-${APP_DIR}/deploy/scripts/publish-live-re
 
 cd "${APP_DIR}"
 
-echo "=== PREPARE LIVE UPDATE ==="
-
-"${PYTHON_BIN}"     -m collector.src.live_publisher     prepare
+if [[ -d "${STATE_DIR}/pending" ]]; then
+    # prepare removes pending/stage. Never discard an unconfirmed publication.
+    if [[ ! -s "${STATE_DIR}/pending/version.json" || ! -s "${STAGE_DIR}/version.json" ]]; then
+        echo "Live publish: incomplete pending/stage requires supervised recovery." >&2
+        exit 1
+    fi
+    echo "=== RESUME EXISTING LIVE UPDATE ==="
+else
+    echo "=== PREPARE LIVE UPDATE ==="
+    "${PYTHON_BIN}" -m collector.src.live_publisher prepare
+fi
 
 if [[ -s "${STAGE_DIR}/version.json" ]]; then
     echo

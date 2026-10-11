@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/ftp-publication.php';
 /**
  * HMAC-authenticated public activation helper.
  * Call ONLY through election-publish.php after a complete private snapshot build.
@@ -47,8 +48,8 @@ function publishOfficialSnapshot(string $base, string $batchId): array {
         $paths = [];
         foreach ($manifest['results'] as $entry) {
             $p = $entry['path'] ?? null;
-            if (!is_string($p) || !preg_match('#^[a-z]{2}/[a-z0-9-]+\\.json$#D', $p) ||
-                isset($paths[$p]) || !is_file($src.'/'.$p) || is_link($src.'/'.$p)) {
+            if (!is_string($p) || !isset(fp_paths()[$p]) ||
+                isset($paths[$p])) {
                 throw new RuntimeException('invalid_release');
             }
             $paths[$p] = true;
@@ -63,6 +64,14 @@ function publishOfficialSnapshot(string $base, string $batchId): array {
             }
         }
         if ($prior === null && count($updated) !== 140) throw new RuntimeException('full_batch_required');
+        $validation = ['environment'=>'oficial', 'round'=>$manifest['results'][0]['round'] ?? null];
+        $water = $prior === null ? [] : fp_validate_release($prior, $validation);
+        // The manifest describes the complete release; the batch contains only
+        // its declared delta. Validate every selected source before any build.
+        foreach (array_keys($paths) as $p) {
+            $source = isset($updated[$p]) ? $src . '/' . $p : ($prior === null ? '' : $prior . '/' . $p);
+            if (!is_file($source) || is_link($source)) throw new RuntimeException('invalid_release');
+        }
         $releases = $site . '/releases';
         if (!is_dir($releases) && !@mkdir($releases, 0755, true)) throw new RuntimeException('storage_failed');
         $dest = $releases . '/' . $sid;
@@ -74,11 +83,13 @@ function publishOfficialSnapshot(string $base, string $batchId): array {
                 if (!is_dir($parent) && !@mkdir($parent, 0755, true)) throw new RuntimeException('storage_failed');
                 $source = isset($updated[$p]) ? $src . '/' . $p : ($prior === null ? '' : $prior . '/' . $p);
                 if (!is_file($source) || is_link($source)) throw new RuntimeException('missing_baseline');
-                if (!@copy($source, $tmp.'/'.$p)) throw new RuntimeException('copy_failed');
+                fp_write_bytes($tmp.'/'.$p, fp_read(dirname($source), basename($source)));
                 @chmod($tmp.'/'.$p, 0644);
             }
+            fp_validate_release($tmp, $validation, $water);
             if (!@rename($tmp, $dest)) throw new RuntimeException('release_move_failed');
         }
+        fp_sync_directory($releases);
         foreach (array_merge(array_keys($paths), ['manifest.json','alerts.json','version.json']) as $p) {
             $source = isset($updated[$p]) ? $src . '/' . $p : ($prior === null ? '' : $prior . '/' . $p);
             if (!is_file($dest.'/'.$p) || is_link($dest.'/'.$p) || !is_file($source) ||
@@ -86,14 +97,13 @@ function publishOfficialSnapshot(string $base, string $batchId): array {
                 throw new RuntimeException('release_checksum_error');
             }
         }
+        fp_validate_release($dest, $validation, $water);
         $next = $v;
         $next['snapshot_id'] = $sid;
         $bytes = json_encode($next, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
-        $temp = @tempnam($site, '.version-');
-        if ($temp === false || file_put_contents($temp, $bytes) !== strlen($bytes)) throw new RuntimeException('marker_write_failed');
-        @chmod($temp, 0644);
         // This is the sole public cutover; immutable release must already be available.
-        if (!@rename($temp, $site . '/version.json')) throw new RuntimeException('marker_swap_failed');
+        fp_write_bytes($site . '/version.json', $bytes);
+        @chmod($site . '/version.json', 0644);
         return ['status'=>'published','snapshot_id'=>$sid,'generated_at'=>$v['generated_at'],'mode'=>'official'];
     } finally {
         flock($lock, LOCK_UN);

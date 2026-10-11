@@ -26,14 +26,15 @@ def test_control_bundle_is_a_single_syntax_valid_public_entrypoint(tmp_path):
     assert not (public/'api').exists()
 
 
-def test_portal_plan_is_pinned_and_recoverable_without_touching_data(tmp_path):
+@pytest.mark.parametrize('composition_name',['composicao.html','composition.html'])
+def test_portal_plan_is_pinned_and_recoverable_without_touching_data(tmp_path,composition_name):
     repo=tmp_path/'repo'; source=repo/'web/public/eleicoes'; source.mkdir(parents=True)
-    (source/'index.html').write_text('<script src="app.js?v=1"></script><a href="composition.html">c</a><a href="goias/raio-x/">g</a>')
+    (source/'index.html').write_text(f'<script src="app.js?v=1"></script><a href="{composition_name}">c</a><a href="goias/raio-x/">g</a>')
     (source/'app.js').write_text('fixture_new')
-    (source/'composition.html').write_text('<script src="app.js"></script>')
+    (source/composition_name).write_text('<script src="app.js"></script>')
     public=tmp_path/'public'; portal=public/'eleicoes'; portal.mkdir(parents=True)
     (portal/'index.html').write_text('previous_index')
-    (portal/'composition.html').write_text('previous_composition')
+    (portal/composition_name).write_text('previous_composition')
     (portal/'app.js').write_text('previous_asset')
     (public/'data').mkdir(); (public/'data/version.json').write_text('preserve_data')
     (portal/'goias').mkdir(); (portal/'goias/preserved').write_text('preserve_goias')
@@ -42,6 +43,7 @@ def test_portal_plan_is_pinned_and_recoverable_without_touching_data(tmp_path):
     assert (portal/'index.html').read_text()=='previous_index'
     assert '/eleicoes/releases/'+artifact.name+'/app.js?v=1' in (output/'files/index.html').read_text()
     assert '/eleicoes/goias/raio-x/' in (output/'files/index.html').read_text()
+    assert any(op['role']=='entrypoint' and Path(op['target']).name==composition_name for op in plan['operations'])
     backups={}
     # Simulate only this temp fixture's supervised deployment: assets first,
     # entrypoints last, then restore entrypoint bytes by same-directory rename.
@@ -50,10 +52,12 @@ def test_portal_plan_is_pinned_and_recoverable_without_touching_data(tmp_path):
         if op['role']=='entrypoint' and target.exists(): backups[target]=target.read_bytes()
         staged=target.with_suffix('.tmp'); shutil.copyfile(output/op['source'],staged); os.replace(staged,target)
     assert '/eleicoes/releases/'+artifact.name in (portal/'index.html').read_text()
+    assert '/eleicoes/releases/'+artifact.name in (portal/composition_name).read_text()
     assert (portal/'app.js').read_text()=='previous_asset'
     for target,raw in backups.items():
         staged=target.with_suffix('.tmp'); staged.write_bytes(raw); os.replace(staged,target)
     assert (portal/'index.html').read_text()=='previous_index'
+    assert (portal/composition_name).read_text()=='previous_composition'
     assert (public/'data/version.json').read_text()=='preserve_data'
     assert (portal/'goias/preserved').read_text()=='preserve_goias'
 

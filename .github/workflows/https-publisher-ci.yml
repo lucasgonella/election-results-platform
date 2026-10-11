@@ -45,6 +45,7 @@ jobs:
           php -l deploy/locaweb/build-private-snapshot.php
           php -l deploy/locaweb/promote-private-snapshot.php
           php -l deploy/locaweb/publish-official-snapshot.php
+          php -l deploy/locaweb/ftp-publication.php
       - name: Check protected official publishing prerequisites
         run: |
           grep -q 'ENABLE_OFFICIAL_PUBLICATION' deploy/locaweb/publish-official-snapshot.php
@@ -60,6 +61,7 @@ jobs:
             deploy/locaweb/build-private-snapshot.php \
             deploy/locaweb/promote-private-snapshot.php \
             deploy/locaweb/publish-official-snapshot.php \
+            deploy/locaweb/ftp-publication.php \
             deploy/scripts/publish-live-results-https.py
           sha256sum dist/election-https-staging.tar.gz > dist/SHA256SUMS
       - uses: actions/upload-artifact@v4
