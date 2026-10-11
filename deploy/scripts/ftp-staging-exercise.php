@@ -80,7 +80,7 @@ function fx_response(int $status, string $raw, array $headers, ?string $action, 
             if (array_diff(array_keys($value),$allowed) || ($value['host']??null)!==$host
                 || ($value['sapi']??null)!=='fpm-fcgi' || ($value['probe_version']??null)!==2) fx_fail('fixture_web_runtime_invalid');
             if ($action==='runtime' && (($value['fixture_root']??null)!==FX_ROOT || ($value['fixture_public_root']??null)!==FX_PUBLIC
-                || ($value['fsync']??false)!==true || ($value['helper_revision']??null)!==2)) fx_fail('fixture_web_namespace_invalid');
+                || ($value['fsync']??false)!==true || ($value['helper_revision']??null)!==3)) fx_fail('fixture_web_namespace_invalid');
         }
     }
     return ['status'=>$status,'result'=>$value,'sha256'=>hash('sha256',$raw),'bytes'=>strlen($raw),'headers'=>$headers];

@@ -125,6 +125,7 @@ function fixture_fault(string $path,string $point):bool {
     return $GLOBALS['fault']===$point && ($point!=='sealed_write'||str_contains($path,'/sealed/'));
 }
 function gethostname():string {return $GLOBALS['fault']==='other_host'?'other-fixture-host':\gethostname();}
+function function_exists(string $name):bool {return $name==='fsync'&&$GLOBALS['fault']==='missing_fsync'?false:\function_exists($name);}
 function fsync($stream):bool {
     $path=stream_get_meta_data($stream)['uri'];$dir=is_dir($path);
     $GLOBALS['events'][]=['op'=>'fsync','path'=>$path,'directory'=>$dir];
@@ -154,7 +155,7 @@ function rename(string $from,string $to):bool {
 }
 $source=\file_get_contents($argv[1]);$source=substr($source,strlen("<?php\n"));
 $source=preg_replace('/declare\(strict_types=1\);/','',$source,1);
-eval('namespace FixtureStorage;'.$source);
+eval('namespace FixtureStorage;use \RuntimeException;use \Throwable;'.$source);
 $cfg=json_decode($argv[2],true);$cfg['key']=hex2bin($cfg['key']);
 try{$result=fp_run($cfg,$argv[3],$argv[4]);}catch(\Throwable $e){$result=['error'=>$e->getMessage()];}
 echo json_encode(['result'=>$result,'events'=>$GLOBALS['events']]);
@@ -185,7 +186,7 @@ def test_missing_or_stale_watermarks_fail_closed_without_regression(env, kind):
     assert marker_bytes(root) == previous
 
 
-@pytest.mark.parametrize('fault', ['sealed_write', 'file_sync', 'directory_sync', 'baseline_read', 'marker_rename'])
+@pytest.mark.parametrize('fault', ['sealed_write', 'file_sync', 'directory_sync', 'missing_fsync', 'baseline_read', 'marker_rename'])
 def test_storage_failures_before_commit_preserve_marker_and_allow_same_id_recovery(env, fault):
     root, cfg = env
     first = deliver(env); assert call(cfg, 'activate', first.name)['status'] == 'published'

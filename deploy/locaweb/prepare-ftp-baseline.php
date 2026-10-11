@@ -55,10 +55,10 @@ function fp_emit_baseline_plan(array $plan, string $key, string $output): void {
     if (file_exists($output) || !mkdir($output, 0700, true)) fp_fail('output_exists');
     fp_write($output . '/plan.json', $plan);
     $raw = fp_read($output, 'plan.json');
-    if (file_put_contents($output . '/plan.sig', hash_hmac('sha256', $raw, $key)) !== 64) fp_fail('storage_error');
+    fp_write_bytes($output . '/plan.sig', hash_hmac('sha256', $raw, $key));
     fp_write($output . '/inventory.json', $plan['inventory']);
     $raw = fp_read($output, 'inventory.json');
-    if (file_put_contents($output . '/inventory.sig', hash_hmac('sha256', $raw, $key)) !== 64) fp_fail('storage_error');
+    fp_write_bytes($output . '/inventory.sig', hash_hmac('sha256', $raw, $key));
     fp_write($output . '/watermarks.json', $plan['watermarks']);
 }
 

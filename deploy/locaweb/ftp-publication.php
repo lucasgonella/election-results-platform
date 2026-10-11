@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-const FTP_PUBLICATION_HELPER_VERSION = 2;
+const FTP_PUBLICATION_HELPER_VERSION = 3;
 
 /** Fixed-path result activator. No code uploads, destination inputs or shell calls. */
 function fp_fail(string $code): never { throw new RuntimeException($code); }
@@ -15,21 +15,36 @@ function fp_json(string $path): array {
     if (!is_array($value)) fp_fail('invalid_json');
     return $value;
 }
-function fp_write(string $path, array $value): void {
-    $raw = json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+function fp_sync_directory(string $path): void {
+    // A file fsync does not persist its name. Unsupported barriers fail closed;
+    // success still depends on the provider honoring NFS stable-storage semantics.
+    if (!function_exists('fsync') || is_link($path) || !is_dir($path)) fp_fail('storage_error');
+    $stream = @fopen($path, 'r');
+    if ($stream === false) fp_fail('storage_error');
+    try {
+        try { $synced = @fsync($stream); } catch (Throwable) { $synced = false; }
+        if (!$synced) fp_fail('storage_error');
+    } finally { fclose($stream); }
+}
+function fp_write_bytes(string $path, string $raw): void {
+    if (!function_exists('fsync') || is_link($path)) fp_fail('storage_error');
     $tmp = $path . '.' . bin2hex(random_bytes(8)) . '.tmp';
     $stream = fopen($tmp, 'x');
     if ($stream === false) fp_fail('storage_error');
     try {
         try {
             if (fwrite($stream, $raw) !== strlen($raw) || !fflush($stream)) fp_fail('storage_error');
-            if (function_exists('fsync') && !fsync($stream)) fp_fail('storage_error');
+            if (!fsync($stream)) fp_fail('storage_error');
         } finally { fclose($stream); }
         if (!rename($tmp, $path)) fp_fail('storage_error');
+        fp_sync_directory(dirname($path));
     } finally {
         // Only the exclusively created temporary file; never unlink the target.
         if (is_file($tmp)) unlink($tmp);
     }
+}
+function fp_write(string $path, array $value): void {
+    fp_write_bytes($path, json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
 }
 function fp_paths(): array {
     $ufs = explode(' ', 'ac al ap am ba ce df es go ma mt ms mg pa pb pr pe pi rj rn rs ro rr sc sp se to');
@@ -86,14 +101,51 @@ function fp_source_fingerprint(array $payload): string {
 }
 function fp_receipt(array $cfg, string $id): array {
     $marker = fp_marker($cfg);
-    // The marker is the durable commit point, even if the response/journal acknowledgement was lost.
+    // Reconcile the visible commit point; require a successful directory barrier
+    // before acknowledging a marker whose original fsync/response may have failed.
     if (($marker['delivery_id'] ?? '') === $id) {
+        if (($marker['snapshot_id'] ?? '') !== $id) fp_fail('invalid_receipt');
         fp_inventory($cfg['site'] . '/releases/' . $marker['snapshot_id'], $cfg['key'], $cfg['private'] . '/adopted-baselines');
+        fp_sync_directory($cfg['site']);
         return ['status'=>'published', 'delivery_id'=>$id, 'snapshot_id'=>$marker['snapshot_id']];
     }
     $path = $cfg['private'] . '/receipts/' . $id . '.json';
-    if (is_file($path)) return fp_json($path);
+    if (is_file($path)) {
+        $receipt = fp_json($path);
+        if (count($receipt) !== 3 || ($receipt['status'] ?? '') !== 'published'
+            || ($receipt['delivery_id'] ?? '') !== $id || ($receipt['snapshot_id'] ?? '') !== $id) fp_fail('invalid_receipt');
+        fp_inventory($cfg['site'] . '/releases/' . $id, $cfg['key'], $cfg['private'] . '/adopted-baselines');
+        fp_sync_directory(dirname($path));
+        return $receipt;
+    }
     return ['status'=>'unknown', 'delivery_id'=>$id];
+}
+function fp_watermarks(string $path, ?string $baseline): array {
+    if (is_link($path)) fp_fail('watermarks_inconsistent_requires_review');
+    if (!is_file($path)) {
+        if ($baseline !== null) fp_fail('watermarks_missing_requires_review');
+        return [];
+    }
+    $water = fp_json($path);
+    $paths = array_keys(fp_paths());
+    if (count($water) !== count($paths) || array_diff($paths, array_keys($water))) fp_fail('watermarks_inconsistent_requires_review');
+    foreach ($water as $path=>$entry) {
+        if (!is_array($entry) || !is_array($entry['identity'] ?? null) || count($entry['identity']) !== 3
+            || !is_int($entry['time'] ?? null) || !is_string($entry['idg'] ?? null)
+            || !preg_match('/^[0-9]{1,20}$/D', $entry['idg']) || !is_string($entry['fingerprint'] ?? null)
+            || !preg_match('/^[a-f0-9]{64}$/D', $entry['fingerprint'])) fp_fail('watermarks_inconsistent_requires_review');
+        if ($baseline !== null) {
+            $payload = fp_json($baseline . '/' . $path);
+            $snapshot = $payload['snapshot'];
+            $time = strtotime($snapshot['generated_at']);
+            $identity = [$payload['environment'], $payload['election']['code'], $payload['election']['round']];
+            if ($entry['identity'] !== $identity || $entry['time'] < $time
+                || ($entry['time'] === $time && ($entry['idg'] !== (string)$snapshot['tse_idg']
+                    || $entry['fingerprint'] !== fp_source_fingerprint($payload)))
+                || (($snapshot['totalization_final'] ?? null) === true && ($entry['totalization_final'] ?? null) !== true)) fp_fail('watermarks_inconsistent_requires_review');
+        }
+    }
+    return $water;
 }
 function fp_run(array $cfg, string $action, string $id): array {
     fp_assert_runtime($cfg);
@@ -115,6 +167,7 @@ function fp_run(array $cfg, string $action, string $id): array {
             if (!$legacyLock || !flock($legacyLock, LOCK_EX | LOCK_NB)) fp_fail('publication_busy');
         }
         foreach (['receipts', 'journals', 'sealed'] as $dir) if (!is_dir($private . '/' . $dir) && !mkdir($private . '/' . $dir, 0700)) fp_fail('storage_error');
+        fp_sync_directory($private);
         if ($action === 'status') return fp_receipt($cfg, $id);
         if ($action === 'rollback') {
             $journalPath = $private . '/journals/' . $id . '.json';
@@ -123,6 +176,7 @@ function fp_run(array $cfg, string $action, string $id): array {
             $current = fp_marker($cfg);
             if (($current['rollback_of'] ?? '') === $id) return ['status'=>'rolled_back', 'snapshot_id'=>$current['snapshot_id']];
             if (($current['delivery_id'] ?? '') !== $id || !is_array($journal['previous'])) fp_fail('rollback_conflict');
+            fp_watermarks($private . '/watermarks.json', $site . '/releases/' . $current['snapshot_id']);
             $previous = $journal['previous'];
             fp_inventory($site . '/releases/' . $previous['snapshot_id'], $cfg['key'], $private . '/adopted-baselines');
             $previous['activation_revision'] = bin2hex(random_bytes(16));
@@ -155,7 +209,7 @@ function fp_run(array $cfg, string $action, string $id): array {
             if (strlen($bytes) !== $entry['size'] || !hash_equals($entry['sha256'], hash('sha256', $bytes))) fp_fail('hash_mismatch');
             $parent = dirname($sealed . '/' . $path);
             if (!is_dir($parent) && !mkdir($parent, 0700, true)) fp_fail('storage_error');
-            if (file_put_contents($sealed . '/' . $path, $bytes) !== strlen($bytes)) fp_fail('storage_error');
+            fp_write_bytes($sealed . '/' . $path, $bytes);
         }
         $current = fp_marker($cfg);
         if (($delivery['base_snapshot_id'] ?? null) !== ($current['snapshot_id'] ?? null)) fp_fail('baseline_conflict');
@@ -165,6 +219,8 @@ function fp_run(array $cfg, string $action, string $id): array {
             $baseline = $site . '/releases/' . $current['snapshot_id'];
             fp_inventory($baseline, $cfg['key'], $private . '/adopted-baselines');
         } elseif (array_diff($allowed, array_keys($files))) fp_fail('baseline_absent');
+        $waterPath = $private . '/watermarks.json';
+        $water = fp_watermarks($waterPath, $baseline);
         $release = $site . '/releases/' . $id;
         if (!is_dir($site . '/releases') && !mkdir($site . '/releases', 0755)) fp_fail('storage_error');
         // Build in a sibling temporary directory; abandoned builds are never publicly selected.
@@ -175,20 +231,19 @@ function fp_run(array $cfg, string $action, string $id): array {
             $bytes = fp_read(isset($files[$path]) ? $sealed : (string)$baseline, $path);
             $parent = dirname($build . '/' . $path);
             if (!is_dir($parent) && !mkdir($parent, 0755, true)) fp_fail('storage_error');
-            if (file_put_contents($build . '/' . $path, $bytes) !== strlen($bytes)) fp_fail('storage_error');
+            fp_write_bytes($build . '/' . $path, $bytes);
             $inventory[$path] = hash('sha256', $bytes);
         }
-        $waterPath = $private . '/watermarks.json';
-        $water = is_file($waterPath) ? fp_json($waterPath) : [];
         $water = fp_validate_release($build, $cfg, $water);
         $version = fp_json($build . '/version.json');
         fp_write($build . '/inventory.json', $inventory);
         $inventoryRaw = (string)file_get_contents($build . '/inventory.json');
-        if (file_put_contents($build . '/inventory.sig', hash_hmac('sha256', $inventoryRaw, $cfg['key'])) !== 64) fp_fail('storage_error');
+        fp_write_bytes($build . '/inventory.sig', hash_hmac('sha256', $inventoryRaw, $cfg['key']));
         fp_inventory($build, $cfg['key']);
         if (is_dir($release)) {
             if (fp_inventory($release, $cfg['key']) !== $inventory) fp_fail('release_conflict');
         } elseif (!rename($build, $release)) fp_fail('storage_error');
+        fp_sync_directory($site . '/releases');
         fp_write($private . '/journals/' . $id . '.json', ['previous'=>$current, 'delivery_id'=>$id]);
         // Keep the watermark even on rollback. Conservative failure before activation is resumable.
         fp_write($waterPath, $water);

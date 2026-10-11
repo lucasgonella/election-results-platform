@@ -108,6 +108,10 @@ Retenção conservadora: todas as releases, journals, recibos, estados e entrega
 
 ## Riscos pendentes
 
+A [Etapa 16](ftp-nfs-failure-validation.md) reproduz falhas sintéticas e corrige
+barreiras de arquivos/diretórios, perda de watermarks e recibos inconsistentes.
+Não substitui comprovação de confinamento, topologia, cache ou storage da Locaweb.
+
 - Bloqueadores: adoção da baseline real, ativação segura do código na hospedagem e exclusividade com legado. Não considerar o sistema pronto para corte automático.
 - PHP web/FTP privado, rename sobrescrevendo temporários, locks e cache não comprovados na Locaweb. Fsync de arquivos não prova durabilidade dos renames de diretórios após perda de energia.
 - Armazenamento cresce sem limpeza automática; tamanho por arquivo limitado a 16 MiB e 140 arquivos por entrega, mas faltam quotas globais.

@@ -1,4 +1,11 @@
-# Etapa 15 — ensaio limitado, ainda não autorizado
+# Etapa 15 — plano e resultado do ensaio limitado
+
+O plano abaixo foi aprovado e executado em 10/10/2026: um lock HTTP 200 e outro
+409 publication_busy, trocas sintéticas B/A, restauração exata de config/marcador
+e seis hashes públicos preservados. Backups e inode de lock foram conservados;
+config voltou a runtime/read com host vazio. Não houve teste de falha ou multinó.
+A redação de preparação abaixo registra o escopo original. Próximas lacunas e
+correções não instaladas estão na [Etapa 16](ftp-nfs-failure-validation.md).
 
 As escritas abaixo exigem aprovação específica. A configuração instalada
 continua runtime/read e activation_host vazio. O código preparado não foi
