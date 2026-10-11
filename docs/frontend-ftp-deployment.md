@@ -52,14 +52,18 @@ de saída mudarem. Os manifests antigos sem fingerprint continuam compatíveis.
 dados e testes permanecem intactos. Somente o ETL publica `data/go-2026.json`.
 Nenhum outro workflow visual envia esse JSON ou HTML diretamente. Não adicionar
 outro escritor de entrypoints: todos devem usar o reutilizável e o mesmo grupo
-`locaweb-frontend-<componente>`. Há também MKD exclusivo no namespace privado por
+`locaweb-frontend-production`. A conta e o servidor são compartilhados: todos os
+deploys/status/rollbacks visuais são serializados no Actions. Há também MKD exclusivo no namespace privado por
 componente; portal e Goiás têm entrypoints, releases e metadados distintos.
+`queue: max` conserva até 100 execuções pendentes, sem substituir a publicação de
+outro componente: [semântica oficial da fila](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
 
 ## Publicação e instalação inicial
 
 As credenciais existentes são `LOCAWEB_FTP_HOST`, `LOCAWEB_FTP_USER` e
 `LOCAWEB_FTP_PASSWORD`. Todo upload usa FTP convencional, porta 21, passivo,
-sem TLS. HTTPS é exclusivamente GET de verificação; não transfere arquivos.
+sem TLS. EPSV é preferido, com PASV somente quando não suportado em IPv4; nunca
+modo ativo. Timeout FTP limitado a 90 segundos. HTTPS é exclusivamente GET de verificação; não transfere arquivos.
 O cliente independente é `python -m deploy.frontend`, sem imports do coletor.
 Não se instala endpoint PHP, executor remoto, DNS ou serviço.
 
@@ -120,6 +124,14 @@ Interrupção abrupta mantém journal/pending e exige `recover`; não roubar loc
 timeout. Backup faltante, hash divergente ou pending desconhecido falham fechado.
 Interrupção antes do journal exige inspeção delimitada: não houve troca pública,
 mas o cliente não apaga um lock sem plano verificável.
+
+Erros de transferência podem invalidar a conexão de controle. O relatório conserva
+tipos/códigos numéricos da falha original e da recuperação, sem mensagens do servidor
+ou credenciais. Se a compensação falhar, `recover` abre uma nova conexão e usa o
+journal verificado; não repetir upload sobre temporário preexistente. A primeira
+execução automática foi interrompida antes da ativação dos HTMLs e recuperada,
+preservando a versão anterior. Temporários de tentativas falhas não são versões
+aprovadas e não podem ser escolhidos para rollback.
 
 Verifique CI do SHA, var de Goiás, secrets presentes, conexão FTP21/passiva,
 metadados, colisões `.upload`, pending e URLs do relatório. Não imprimir secrets

@@ -4,8 +4,10 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import socket
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 
 from deploy import frontend as f
 
@@ -371,6 +373,62 @@ class FrontendTest(unittest.TestCase):
                   {'id': 3, 'name': 'Frontend FTP validation', 'status': 'completed', 'conclusion': 'failure'}]
         with self.assertRaises(RuntimeError):
             module.ready(checks)
+
+    def test_epsv_is_preferred_without_an_active_connection(self):
+        client = f.PassiveFTP()
+        client.af = socket.AF_INET
+        client.sock = Mock()
+        client.sock.getpeername.return_value = ('127.0.0.1', 21)
+        client.sendcmd = Mock(return_value='229 Entering Extended Passive Mode (|||12345|)')
+        self.assertEqual(client.makepasv(), ('127.0.0.1', 12345))
+        client.sendcmd.assert_called_once_with('EPSV')
+
+    def test_pasv_fallback_only_when_epsv_is_unsupported(self):
+        client = f.PassiveFTP()
+        client.af = socket.AF_INET
+        client.sock = Mock()
+        client.sock.getpeername.return_value = ('127.0.0.1', 21)
+        client.sendcmd = Mock(side_effect=[ftplib.error_perm('502 Not implemented'),
+                                          '227 Entering Passive Mode (10,0,0,1,48,57)'])
+        self.assertEqual(client.makepasv(), ('127.0.0.1', 12345))
+        self.assertEqual([call.args[0] for call in client.sendcmd.call_args_list], ['EPSV', 'PASV'])
+        client.sendcmd = Mock(side_effect=ftplib.error_perm('530 Not authenticated'))
+        with self.assertRaises(ftplib.error_perm):
+            client.makepasv()
+        client.sendcmd.assert_called_once_with('EPSV')
+
+    def test_transfer_failure_is_preserved_when_cleanup_connection_is_broken(self):
+        class InterruptedFTP(FakeFTP):
+            broken = False
+            def sendcmd(self, command):
+                if self.broken:
+                    raise OSError('cannot read from timed out object; fixture-secret')
+                return super().sendcmd(command)
+            def storbinary(self, command, stream):
+                self.broken = True
+                raise TimeoutError('fixture-secret')
+        transport = f.Transport(InterruptedFTP())
+        with self.assertRaises(ExceptionGroup) as error:
+            transport.put('/frontend-deploy/portal/current.json', b'test')
+        report = f.error_report(error.exception)
+        self.assertEqual(report['causes'][0]['error_type'], 'TimeoutError')
+        self.assertEqual(report['causes'][1]['error_type'], 'OSError')
+        self.assertNotIn('fixture-secret', json.dumps(report))
+
+    def test_cli_failure_writes_a_sanitized_failure_receipt(self):
+        report = self.root/'failure.json'
+        failure = ExceptionGroup('fixture-secret', [ConnectionResetError(104, 'fixture-secret'),
+                                                    ftplib.error_perm('550 fixture-secret')])
+        with patch('sys.argv', ['frontend', 'status', '--component', 'portal', '--report', str(report)]), \
+             patch.object(f, 'execute', side_effect=failure), patch('sys.stdout', new=io.StringIO()), \
+             self.assertRaises(SystemExit) as error:
+            f.main()
+        self.assertEqual(error.exception.code, 1)
+        receipt = json.loads(report.read_text())
+        self.assertEqual(receipt['status'], 'failed')
+        self.assertEqual(receipt['causes'][0]['errno'], 104)
+        self.assertEqual(receipt['causes'][1]['ftp_code'], '550')
+        self.assertNotIn('fixture-secret', json.dumps(receipt))
 
 
 if __name__ == '__main__':

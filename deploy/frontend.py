@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import socket
 import subprocess
 import tempfile
 import time
@@ -27,6 +28,31 @@ SUFFIXES = {'.html', '.css', '.js', '.svg', '.png', '.ico', '.jpg', '.jpeg', '.w
 MAX_BYTES = 16 * 1024 * 1024
 PRIVATE = '/frontend-deploy'
 PACK_FORMAT = 1
+
+
+class PassiveFTP(ftplib.FTP):
+    """Prefer EPSV, as curl does; PASV only for IPv4 servers lacking EPSV."""
+    def makepasv(self):
+        try:
+            return ftplib.parse229(self.sendcmd('EPSV'), self.sock.getpeername())
+        except ftplib.error_perm as error:
+            if self.af != socket.AF_INET or not str(error).startswith(('500', '502', '522')):
+                raise
+            return super().makepasv()
+
+
+def error_report(error):
+    """Only controlled codes, numeric errno and types; no server messages/credentials."""
+    result = {'error_type': type(error).__name__}
+    if type(error) in {ValueError, RuntimeError} and re.fullmatch('[a-z][a-z0-9_]{0,100}', str(error)):
+        result['error_code'] = str(error)
+    if isinstance(error, OSError) and isinstance(error.errno, int):
+        result['errno'] = error.errno
+    if isinstance(error, ftplib.Error) and re.match(r'^\d{3}', str(error)):
+        result['ftp_code'] = str(error)[:3]
+    if isinstance(error, ExceptionGroup):
+        result['causes'] = [error_report(cause) for cause in error.exceptions]
+    return result
 
 
 def digest(raw):
@@ -354,10 +380,13 @@ class Transport:
             self.ftp.rename(temporary, path)
             if self.read(path) != raw:
                 raise RuntimeError('rename_integrity_error')
-        except Exception:
+        except Exception as original:
             # Remove only the temporary file created here, never a collision.
-            if self.metadata(temporary) is not None:
-                self.ftp.delete(temporary)
+            try:
+                if self.metadata(temporary) is not None:
+                    self.ftp.delete(temporary)
+            except Exception as cleanup_error:
+                raise ExceptionGroup('upload_cleanup_failed', [original, cleanup_error]) from None
             raise
 
     @contextmanager
@@ -476,9 +505,12 @@ def activate(transport, manifest, contents, transaction, *, http=http_read, skip
         journal['status'] = 'published'
         transport.put(journal_path, encode(journal), replace=True)
         transport.put(private+'/pending.json', encode({'status': 'complete'}), replace=True)
-    except Exception:
-        restore(transport, journal, http=http)
-        transport.put(private+'/pending.json', encode({'status': 'restored'}), replace=True)
+    except Exception as original:
+        try:
+            restore(transport, journal, http=http)
+            transport.put(private+'/pending.json', encode({'status': 'restored'}), replace=True)
+        except Exception as recovery_error:
+            raise ExceptionGroup('activation_recovery_failed', [original, recovery_error]) from None
         raise
     return {'status': 'published', 'component': component, 'commit': manifest['commit'],
             'files': list(manifest['files']), 'urls': urls, 'transaction': transaction,
@@ -530,9 +562,12 @@ def rollback(transport, component, version, transaction, *, http=http_read):
             journal['status'] = 'restored_bootstrap'
             transport.put(path, encode(journal), replace=True)
             transport.put(PRIVATE+'/'+component+'/pending.json', encode({'status':'complete'}), replace=True)
-        except Exception:
-            restore(transport, journal, http=http)
-            transport.put(PRIVATE+'/'+component+'/pending.json', encode({'status':'restored'}), replace=True)
+        except Exception as original:
+            try:
+                restore(transport, journal, http=http)
+                transport.put(PRIVATE+'/'+component+'/pending.json', encode({'status':'restored'}), replace=True)
+            except Exception as recovery_error:
+                raise ExceptionGroup('rollback_recovery_failed', [original, recovery_error]) from None
             raise
         return {'status': 'restored_bootstrap', 'component': component, 'commit': None}
     manifest = decode(transport.read(PRIVATE+'/'+component+'/versions/'+selected+'.json'))
@@ -565,8 +600,8 @@ def status(transport, component, *, http=http_read):
 def connect():
     if os.environ.get('LOCAWEB_FTP_PORT', '21') != '21':
         raise ValueError('ftp_port_must_be_21')
-    ftp = ftplib.FTP()
-    ftp.connect(os.environ['LOCAWEB_FTP_HOST'], 21, timeout=30)
+    ftp = PassiveFTP()
+    ftp.connect(os.environ['LOCAWEB_FTP_HOST'], 21, timeout=90)
     ftp.login(os.environ['LOCAWEB_FTP_USER'], os.environ['LOCAWEB_FTP_PASSWORD'])
     ftp.set_pasv(True)
     if ftp.pwd() != '/':
@@ -575,16 +610,7 @@ def connect():
     return ftp
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=['build', 'deploy', 'verify', 'status', 'rollback', 'recover'])
-    parser.add_argument('--component', choices=['portal', 'raio-x'], required=True)
-    parser.add_argument('--commit')
-    parser.add_argument('--directory', type=Path)
-    parser.add_argument('--version', default='previous')
-    parser.add_argument('--transaction', default='run-'+str(time.time_ns()))
-    parser.add_argument('--report', type=Path)
-    args = parser.parse_args()
+def execute(args):
     if args.action == 'build':
         result = build(args.component, args.commit, args.directory)
     elif args.action == 'verify':
@@ -608,6 +634,27 @@ def main():
                         result = rollback(transport, args.component, args.version, args.transaction)
         finally:
             ftp.close()
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('action', choices=['build', 'deploy', 'verify', 'status', 'rollback', 'recover'])
+    parser.add_argument('--component', choices=['portal', 'raio-x'], required=True)
+    parser.add_argument('--commit')
+    parser.add_argument('--directory', type=Path)
+    parser.add_argument('--version', default='previous')
+    parser.add_argument('--transaction', default='run-'+str(time.time_ns()))
+    parser.add_argument('--report', type=Path)
+    args = parser.parse_args()
+    try:
+        result = execute(args)
+    except Exception as error:
+        result = {'status': 'failed', 'component': args.component, 'operation': args.action, **error_report(error)}
+        if args.report:
+            args.report.write_bytes(encode(result))
+        print(json.dumps(result))
+        raise SystemExit(1)
     if args.report:
         args.report.write_bytes(encode(result))
     print(json.dumps(result))
@@ -618,8 +665,5 @@ if __name__ == '__main__':
         main()
     except Exception as error:
         # FTP errors and credential-bearing URLs must never enter logs.
-        result = {'status': 'failed', 'error_type': type(error).__name__}
-        if type(error) in {ValueError, RuntimeError} and re.fullmatch('[a-z][a-z0-9_]{0,100}', str(error)):
-            result['error_code'] = str(error)
-        print(json.dumps(result))
+        print(json.dumps({'status': 'failed', **error_report(error)}))
         raise SystemExit(1)

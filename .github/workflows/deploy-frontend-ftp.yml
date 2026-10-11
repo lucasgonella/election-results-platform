@@ -23,7 +23,8 @@ permissions:
   checks: read
   actions: read
 concurrency:
-  group: locaweb-frontend-${{ inputs.component }}
+  group: locaweb-frontend-production
+  queue: max
   cancel-in-progress: false
 jobs:
   publish:
