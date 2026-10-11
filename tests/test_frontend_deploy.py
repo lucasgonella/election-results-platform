@@ -180,7 +180,7 @@ class FrontendTest(unittest.TestCase):
 
     def test_second_client_cannot_acquire_lock(self):
         with self.transport.lock('portal'):
-            with self.assertRaises(ftplib.error_perm):
+            with self.assertRaisesRegex(RuntimeError, 'frontend_requires_recovery'):
                 with self.transport.lock('portal'):
                     self.fail('second client acquired lock')
 
@@ -481,6 +481,58 @@ class FrontendTest(unittest.TestCase):
         self.assertNotIn(path, first.files)
         self.assertNotIn(path+'.upload', first.files)
         self.assertFalse(any(event == 'rename' for event, _ in first.events))
+
+    def test_unrecovered_other_component_blocks_new_mutations(self):
+        self.ftp.dirs.add('/frontend-deploy/raio-x/lock')
+        with self.assertRaisesRegex(RuntimeError, 'frontend_requires_recovery'):
+            with self.transport.lock('portal'):
+                self.fail('mutation started while another component needs recovery')
+
+    def test_native_data_channel_preserves_control_checks_and_final_hash(self):
+        self.ftp.close = lambda: None
+        def transfer(path, raw=None):
+            if raw is not None:
+                self.ftp.files[path] = raw
+                return b''
+            return self.ftp.files[path]
+        transport = f.Transport(self.ftp, reconnect=lambda: self.ftp, transfer=transfer)
+        path = '/frontend-deploy/portal/current.json'
+        transport.put(path, b'verified native transfer')
+        self.assertEqual(transport.read(path), b'verified native transfer')
+        self.assertNotIn(path+'.upload', self.ftp.files)
+
+    def test_native_curl_is_plain_passive_and_keeps_credentials_out_of_argv(self):
+        credentials = {'LOCAWEB_FTP_HOST': 'ftp.example.test', 'LOCAWEB_FTP_USER': 'fixture-user',
+                       'LOCAWEB_FTP_PASSWORD': 'fixture-password'}
+        captured = {}
+        def command(args, **kwargs):
+            captured['args'] = args
+            captured['netrc'] = Path(args[args.index('--netrc-file')+1])
+            self.assertIn('fixture-password', captured['netrc'].read_text())
+            self.assertEqual(kwargs['input'], b'fixture body')
+            return Mock(returncode=0, stdout=b'', stderr=b'')
+        with patch.dict(f.os.environ, credentials), patch.object(f.shutil, 'which', return_value='curl'), \
+             patch.object(f.subprocess, 'run', side_effect=command):
+            f.curl_transfer('/frontend-deploy/portal/current.json.upload', b'fixture body')
+        args = captured['args']
+        self.assertEqual(args[1], '--disable')
+        self.assertIn('--ftp-pasv', args)
+        self.assertEqual(args[args.index('--proto')+1], '=ftp')
+        self.assertTrue(args[-1].startswith('ftp://ftp.example.test:21/'))
+        self.assertNotIn('fixture-password', ' '.join(args))
+        self.assertNotIn('fixture-user', ' '.join(args))
+        self.assertNotIn('--ssl', args)
+        self.assertNotIn('--retry', args)
+        self.assertFalse(captured['netrc'].exists())
+
+    def test_native_curl_errors_do_not_log_server_output(self):
+        with patch.dict(f.os.environ, {'LOCAWEB_FTP_HOST': 'ftp.example.test',
+                                       'LOCAWEB_FTP_USER': 'fixture-user', 'LOCAWEB_FTP_PASSWORD': 'fixture-secret'}), \
+             patch.object(f.shutil, 'which', return_value='curl'), \
+             patch.object(f.subprocess, 'run', return_value=Mock(returncode=28, stdout=b'', stderr=b'fixture-secret')):
+            with self.assertRaisesRegex(RuntimeError, 'native_ftp_error_28') as error:
+                f.curl_transfer('/frontend-deploy/portal/current.json.upload', b'fixture body')
+        self.assertNotIn('fixture-secret', json.dumps(f.error_report(error.exception)))
 
 
 if __name__ == '__main__':

@@ -65,6 +65,8 @@ python -m pytest -q
 ```
 
 Node e `deploy/frontend-requirements.txt` são necessários à validação visual;
+o deploy usa `curl` nativo para STOR/RETR FTP, sem credenciais em argv, dentro
+do mesmo módulo. Locks pendentes de qualquer componente bloqueiam novo deploy.
 o CI Linux executa os testes. Não desabilitar controles de segurança do Windows
 para executar testes locais. Revise o diff, confirme compatibilidade financeira
 e relate limitações reais; não versionar relatórios com segredos nem fixtures

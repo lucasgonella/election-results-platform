@@ -64,6 +64,11 @@ As credenciais existentes são `LOCAWEB_FTP_HOST`, `LOCAWEB_FTP_USER` e
 `LOCAWEB_FTP_PASSWORD`. Todo upload usa FTP convencional, porta 21, passivo,
 sem TLS. EPSV é preferido, com PASV somente quando não suportado em IPv4; nunca
 modo ativo. Timeout FTP limitado a 90 segundos. HTTPS é exclusivamente GET de verificação; não transfere arquivos.
+STOR/RETR usam o cliente nativo `curl`, já utilizado pelo ETL financeiro, dentro
+do mesmo módulo. Metadados e rename continuam sob os controles fixos do cliente.
+Cada canal de dados fecha/reabre a conexão de controle para evitar socket ocioso
+inválido. Netrc temporário 0600, sem credenciais em argv, TLS, proxy HTTP, retries
+de upload ou configuração implícita do curl. Saídas de erro não são registradas.
 O cliente independente é `python -m deploy.frontend`, sem imports do coletor.
 Não se instala endpoint PHP, executor remoto, DNS ou serviço.
 
