@@ -133,6 +133,13 @@ execução automática foi interrompida antes da ativação dos HTMLs e recupera
 preservando a versão anterior. Temporários de tentativas falhas não são versões
 aprovadas e não podem ser escolhidos para rollback.
 
+A inspeção real encontrou os dois HTMLs temporários completos com SHA-256 correto,
+apesar da falha de resposta. Em perda de conexão durante PUT, o cliente reconecta
+uma única vez e consulta temporário/destino. Somente bytes exatos permitem concluir
+o rename/verificação; não repete STOR nem adota um temporário preexistente a esta
+tentativa. Corrupção ou mudança externa interrompem. O recibo informa a quantidade
+de transferências reconciliadas; confirmação pública por HTTPS continua obrigatória.
+
 Verifique CI do SHA, var de Goiás, secrets presentes, conexão FTP21/passiva,
 metadados, colisões `.upload`, pending e URLs do relatório. Não imprimir secrets
 nem afrouxar permissões. HTTP 200 com bytes diferentes é falha, inclusive cache.

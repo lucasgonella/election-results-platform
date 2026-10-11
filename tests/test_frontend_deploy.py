@@ -430,6 +430,58 @@ class FrontendTest(unittest.TestCase):
         self.assertEqual(receipt['causes'][1]['ftp_code'], '550')
         self.assertNotIn('fixture-secret', json.dumps(receipt))
 
+    def interrupted_transport(self, *, corrupt=False, lose_rename=False):
+        class LostResponse(FakeFTP):
+            broken = False
+            def close(self):
+                pass
+            def sendcmd(self, command):
+                if self.broken:
+                    raise OSError('cannot read from timed out object')
+                return super().sendcmd(command)
+            def storbinary(self, command, stream):
+                super().storbinary(command, stream)
+                if not lose_rename:
+                    self.broken = True
+                    raise TimeoutError('lost completion response')
+            def rename(self, old, new):
+                super().rename(old, new)
+                self.broken = True
+                raise ConnectionResetError('lost rename response')
+        first = LostResponse()
+        first.corrupt_upload = corrupt
+        next_connection = FakeFTP()
+        next_connection.files = first.files
+        next_connection.dirs = first.dirs
+        next_connection.events = first.events
+        return first, f.Transport(first, reconnect=lambda: next_connection)
+
+    def test_lost_upload_response_is_reconciled_without_replaying_stor(self):
+        first, transport = self.interrupted_transport()
+        path = '/frontend-deploy/portal/current.json'
+        transport.put(path, b'verified bytes')
+        self.assertEqual(first.files[path], b'verified bytes')
+        self.assertEqual(sum(event == 'upload' for event, _ in first.events), 1)
+        self.assertNotIn(path+'.upload', first.files)
+        self.assertEqual(transport.reconciled_transfers, 1)
+
+    def test_lost_rename_response_is_reconciled_by_destination_hash(self):
+        first, transport = self.interrupted_transport(lose_rename=True)
+        path = '/frontend-deploy/portal/current.json'
+        transport.put(path, b'verified bytes')
+        self.assertEqual(first.files[path], b'verified bytes')
+        self.assertEqual(sum(event == 'rename' for event, _ in first.events), 1)
+        self.assertEqual(transport.reconciled_transfers, 1)
+
+    def test_interrupted_corrupt_upload_is_never_renamed(self):
+        first, transport = self.interrupted_transport(corrupt=True)
+        path = '/frontend-deploy/portal/current.json'
+        with self.assertRaises(ExceptionGroup):
+            transport.put(path, b'verified bytes')
+        self.assertNotIn(path, first.files)
+        self.assertNotIn(path+'.upload', first.files)
+        self.assertFalse(any(event == 'rename' for event, _ in first.events))
+
 
 if __name__ == '__main__':
     unittest.main()

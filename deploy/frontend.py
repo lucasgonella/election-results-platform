@@ -283,8 +283,10 @@ def http_read(url):
 
 class Transport:
     """Plain passive FTP, fixed paths only, read-after-write SHA verification."""
-    def __init__(self, ftp):
+    def __init__(self, ftp, *, reconnect=None):
         self.ftp = ftp
+        self.reconnect = reconnect
+        self.reconciled_transfers = 0
 
     def allowed(self, path):
         if any(c in path for c in ['\r', '\n', '\\']) or '..' in PurePosixPath(path).parts:
@@ -381,13 +383,36 @@ class Transport:
             if self.read(path) != raw:
                 raise RuntimeError('rename_integrity_error')
         except Exception as original:
+            # A lost FTP completion response does not imply a partial upload.
+            # Reconnect once, verify actual bytes, and never replay STOR blindly.
+            if self.reconnect and isinstance(original, (OSError, EOFError)):
+                try:
+                    self.ftp.close()
+                    self.ftp = self.reconnect()
+                    current = self.read(path, optional=True)
+                    pending = self.read(temporary, optional=True)
+                    if pending is None:
+                        if current != raw:
+                            raise RuntimeError('transfer_not_reconciled')
+                    else:
+                        if pending != raw:
+                            raise RuntimeError('transfer_integrity_error')
+                        if current != old:
+                            raise RuntimeError('external_writer_detected')
+                        self.ftp.rename(temporary, path)
+                        if self.read(path) != raw:
+                            raise RuntimeError('rename_integrity_error')
+                    self.reconciled_transfers += 1
+                    return
+                except Exception as reconciliation_error:
+                    original = ExceptionGroup('transfer_reconciliation_failed', [original, reconciliation_error])
             # Remove only the temporary file created here, never a collision.
             try:
                 if self.metadata(temporary) is not None:
                     self.ftp.delete(temporary)
             except Exception as cleanup_error:
                 raise ExceptionGroup('upload_cleanup_failed', [original, cleanup_error]) from None
-            raise
+            raise original
 
     @contextmanager
     def lock(self, component):
@@ -619,7 +644,7 @@ def execute(args):
     else:
         manifest = validate_package(args.directory, args.component) if args.action == 'deploy' else None
         ftp = connect()
-        transport = Transport(ftp)
+        transport = Transport(ftp, reconnect=connect)
         try:
             if args.action == 'recover':
                 result = recover(transport, args.component)
@@ -632,8 +657,9 @@ def execute(args):
                         result = activate(transport, manifest, contents, args.transaction)
                     else:
                         result = rollback(transport, args.component, args.version, args.transaction)
+            result['ftp_reconciliations'] = transport.reconciled_transfers
         finally:
-            ftp.close()
+            transport.ftp.close()
     return result
 
 
