@@ -17,10 +17,11 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import socket
+import shutil
 import subprocess
 import tempfile
 import time
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,6 +54,46 @@ def error_report(error):
     if isinstance(error, ExceptionGroup):
         result['causes'] = [error_report(cause) for cause in error.exceptions]
     return result
+
+
+def curl_transfer(path, raw=None):
+    """Native passive FTP data channel, matching the existing financial writer.
+
+    Credentials stay in a 0600 netrc, never argv/URLs or subprocess output.
+    No implicit curlrc, TLS, upload retry, directory creation or redirects.
+    """
+    checker = Transport(None)
+    checker.allowed(path)
+    if raw is not None:
+        if not path.endswith('.upload'):
+            raise ValueError('native_upload_requires_temporary')
+        checker.writable(path.removesuffix('.upload'))
+    executable = shutil.which('curl')
+    host = os.environ['LOCAWEB_FTP_HOST']
+    if not executable or not re.fullmatch('[A-Za-z0-9.-]+', host):
+        raise RuntimeError('native_ftp_unavailable')
+    def netrc_token(value):
+        if '\r' in value or '\n' in value:
+            raise ValueError('invalid_ftp_credential_format')
+        return '"'+value.replace('\\', '\\\\').replace('"', '\\"')+'"'
+    with tempfile.TemporaryDirectory() as directory:
+        netrc = Path(directory)/'credentials.netrc'
+        with netrc.open('x', encoding='utf-8') as stream:
+            os.chmod(netrc, 0o600)
+            stream.write('machine '+host+' login '+netrc_token(os.environ['LOCAWEB_FTP_USER'])+
+                         ' password '+netrc_token(os.environ['LOCAWEB_FTP_PASSWORD'])+'\n')
+        command = [executable, '--disable', '--fail', '--silent', '--show-error', '--proto', '=ftp',
+                   '--ftp-pasv', '--max-time', '90', '--connect-timeout', '20', '--max-filesize', str(MAX_BYTES),
+                   '--netrc-file', str(netrc), '--noproxy', '*']
+        if raw is not None:
+            command += ['--upload-file', '-']
+        command += ['ftp://'+host+':21/'+quote(path.lstrip('/'), safe='/')]
+        response = subprocess.run(command, input=raw, capture_output=True, timeout=100)
+        if response.returncode:
+            raise RuntimeError('native_ftp_error_'+str(response.returncode))
+        if len(response.stdout) > MAX_BYTES:
+            raise RuntimeError('oversized_ftp_file')
+        return response.stdout
 
 
 def digest(raw):
@@ -283,10 +324,27 @@ def http_read(url):
 
 class Transport:
     """Plain passive FTP, fixed paths only, read-after-write SHA verification."""
-    def __init__(self, ftp, *, reconnect=None):
+    def __init__(self, ftp, *, reconnect=None, transfer=None):
         self.ftp = ftp
         self.reconnect = reconnect
         self.reconciled_transfers = 0
+        self.transfer = transfer
+
+    def data_transfer(self, path, raw=None):
+        # One connection at a time; a long native transfer cannot poison an
+        # idle Python control socket. Reopen before integrity checks/activation.
+        self.ftp.close()
+        try:
+            result = self.transfer(self.allowed(path), raw)
+        except Exception as original:
+            try:
+                self.ftp = self.reconnect()
+            except Exception as reconnect_error:
+                raise ExceptionGroup('native_transfer_reconnect_failed', [original, reconnect_error]) from None
+            raise
+        else:
+            self.ftp = self.reconnect()
+            return result
 
     def allowed(self, path):
         if any(c in path for c in ['\r', '\n', '\\']) or '..' in PurePosixPath(path).parts:
@@ -342,6 +400,10 @@ class Transport:
             return None
         if meta is None or meta['type'] != 'file':
             raise RuntimeError('missing_regular_file')
+        if self.transfer:
+            if int(meta.get('size', str(MAX_BYTES+1))) > MAX_BYTES:
+                raise RuntimeError('oversized_ftp_file')
+            return self.data_transfer(path)
         out = bytearray()
         def receive(chunk):
             out.extend(chunk)
@@ -376,7 +438,10 @@ class Transport:
             raise RuntimeError('temporary_collision')
         self.directory(str(PurePosixPath(path).parent))
         try:
-            self.ftp.storbinary('STOR '+temporary, io.BytesIO(raw))
+            if self.transfer:
+                self.data_transfer(temporary, raw)
+            else:
+                self.ftp.storbinary('STOR '+temporary, io.BytesIO(raw))
             if self.read(temporary) != raw:
                 raise RuntimeError('transfer_integrity_error')
             self.ftp.rename(temporary, path)
@@ -385,7 +450,8 @@ class Transport:
         except Exception as original:
             # A lost FTP completion response does not imply a partial upload.
             # Reconnect once, verify actual bytes, and never replay STOR blindly.
-            if self.reconnect and isinstance(original, (OSError, EOFError)):
+            if self.reconnect and (isinstance(original, (OSError, EOFError)) or
+                                   isinstance(original, RuntimeError) and str(original).startswith('native_ftp_error_')):
                 try:
                     self.ftp.close()
                     self.ftp = self.reconnect()
@@ -416,6 +482,9 @@ class Transport:
 
     @contextmanager
     def lock(self, component):
+        for other in ['portal', 'raio-x']:
+            if self.metadata(PRIVATE+'/'+other+'/lock/') is not None:
+                raise RuntimeError('frontend_requires_recovery')
         base = PRIVATE+'/'+component
         self.directory(base)
         # Exclusive MKD, rather than flock on the NFS client. No stale lock
@@ -644,7 +713,7 @@ def execute(args):
     else:
         manifest = validate_package(args.directory, args.component) if args.action == 'deploy' else None
         ftp = connect()
-        transport = Transport(ftp, reconnect=connect)
+        transport = Transport(ftp, reconnect=connect, transfer=curl_transfer)
         try:
             if args.action == 'recover':
                 result = recover(transport, args.component)
