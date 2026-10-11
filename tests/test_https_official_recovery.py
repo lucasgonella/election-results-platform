@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import unittest
 
-from test_ftp_recovery import bundle, change
+from ftp_recovery_fixtures import bundle, change
 
 ROOT=Path(__file__).resolve().parents[1]
 
