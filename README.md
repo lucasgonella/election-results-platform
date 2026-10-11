@@ -1,5 +1,8 @@
 # Election Results Platform
 
+CI/CD visual do portal e Raio-X: [deploy FTP, rollback e recuperação](docs/frontend-ftp-deployment.md).
+O fluxo visual não publica dados TSE nem altera o pipeline financeiro.
+
 ![CI](https://github.com/lucasgonella/election-results-platform/actions/workflows/ci.yml/badge.svg)
 
 Plataforma para coleta, persistência e publicação de resultados eleitorais a partir dos arquivos disponibilizados pelo Tribunal Superior Eleitoral (TSE).
