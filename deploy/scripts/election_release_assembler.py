@@ -7,7 +7,7 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import shutil
 import tempfile
 
@@ -52,12 +52,15 @@ def assemble(base, inbox, destination, manifest):
         raise ValueError("incomplete_release_inventory")
     for name in names:
         safe_name(name)
+    if any(not isinstance(name, str) for name in changes):
+        raise ValueError("invalid_changed_set")
     if len(changes) != len(set(changes)) or not set(changes).issubset(names):
         raise ValueError("invalid_changed_set")
     for name, expected in inventory.items():
         if (not isinstance(expected, dict) or set(expected) != {"sha256", "size"}
                 or not isinstance(expected["sha256"], str)
                 or len(expected["sha256"]) != 64
+                or any(c not in "0123456789abcdef" for c in expected["sha256"])
                 or not isinstance(expected["size"], int)
                 or expected["size"] < 1):
             raise ValueError("invalid_file_fingerprint")
@@ -82,6 +85,9 @@ def assemble(base, inbox, destination, manifest):
     baseline_names = {p.relative_to(base).as_posix() for p in base.rglob("*") if p.is_file()}
     if baseline_names != names:
         raise ValueError("unexpected_baseline_inventory")
+    inbox_names = {p.relative_to(inbox).as_posix() for p in inbox.rglob("*") if p.is_file() or p.is_symlink()}
+    if inbox_names != set(changes):
+        raise ValueError("unexpected_delta_inventory")
 
     tmp = Path(tempfile.mkdtemp(prefix=".assembly-", dir=destination.parent))
     try:
