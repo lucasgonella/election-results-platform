@@ -17,8 +17,11 @@ def preflight(*, envelope, secret, current, pending, assembled, expected_base, b
     plan, release = authorize(envelope, secret, expected_base)
     if not isinstance(current, dict) or current.get("snapshot_id") != expected_base:
         raise ValueError("current_snapshot_mismatch")
-    if pending not in (None, {}) and pending.get("status") not in ("complete", "restored"):
-        raise ValueError("incomplete_prior_transaction")
+    if pending not in (None, {}):
+        if not isinstance(pending, dict) or pending.get("status") not in ("complete", "restored"):
+            raise ValueError("incomplete_prior_transaction")
+        if pending.get("snapshot_id") != expected_base:
+            raise ValueError("pending_baseline_mismatch")
     if not isinstance(plan, dict) or set(plan) != {"files", "changed"}:
         raise ValueError("invalid_assembly_plan")
     files = plan["files"]
