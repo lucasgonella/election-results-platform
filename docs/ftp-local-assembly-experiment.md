@@ -28,3 +28,9 @@ Do not change the production systemd unit or use this experiment to publish publ
 This is **not yet** a live deploy endpoint. It has no listener, no SSH privileges, no marker update, no automatic transition of pending/lock/watermarks, and no authorization to modify public files. A restrictive runner must supply safe directory roots and enforce trusted current-snapshot checks, one-shot delivery IDs, filesystem confinement, and transactional promotion. Signing alone does not prevent replay against an unchanged baseline; the destination-exists guard only prevents repeating the same output path.
 
 Until end-to-end authenticated delivery, rollback, journal reconciliation, and staging tests are complete, do not run this against production and do not enable automatic activation.
+
+## Replay-resistant claim (experimental)
+
+The executor now requires `--ledger`, a trusted pre-created private directory. Before any assembly, it atomically creates `<ledger>/<release_id>/`. If the claim exists, the delivery is rejected. Success writes a receipt and fsyncs it. On a crash, a claim without a receipt remains intentionally blocked; an operator must reconcile local and public state, and must **never** simply delete the claim to retry. The ledger is not yet connected to the production publisher's transaction journal. The trusted launcher must protect the ledger and establish exclusive access to it.
+
+No public marker or production site content is changed by this executor.
