@@ -9,9 +9,11 @@ from pathlib import Path
 
 from election_delta_executor import authorize
 from election_release_assembler import regular_file, safe_name, sha
+from collector.src.election_release import canonical, digest, targets, META
+from collector.src.static_election_publish import descriptor, compare
 
 
-def preflight(*, envelope, secret, current, pending, assembled, expected_base):
+def preflight(*, envelope, secret, current, pending, assembled, expected_base, baseline_values=None, reviews=None):
     plan, release = authorize(envelope, secret, expected_base)
     if not isinstance(current, dict) or current.get("snapshot_id") != expected_base:
         raise ValueError("current_snapshot_mismatch")
@@ -40,6 +42,14 @@ def preflight(*, envelope, secret, current, pending, assembled, expected_base):
     actual = {p.relative_to(assembled).as_posix() for p in assembled.rglob("*") if p.is_file() or p.is_symlink()}
     if actual != set(files):
         raise ValueError("unexpected_assembled_inventory")
+    if set(files) != set(targets()) | META:
+        raise ValueError("incorrect_electoral_inventory")
+    values = {name: regular_file(assembled / name) for name in files}
+    derived = descriptor(values)
+    if derived["files"] != files or digest(canonical(derived)) != release:
+        raise ValueError("electoral_release_identity_mismatch")
+    if baseline_values is not None:
+        compare(baseline_values, values, reviews=reviews)
     return {"state": "verified_for_transaction_review",
             "snapshot_id": release, "base_snapshot_id": expected_base,
             "files": len(files), "changed": len(plan["changed"]),
