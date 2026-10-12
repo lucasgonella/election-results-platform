@@ -131,8 +131,22 @@ def election_ftp_connect():
 
 
 def connect(environment):
-    ftp = election_ftp_connect()
-    return Transport(ftp, environment, reconnect=election_ftp_connect)
+    """Retry only FTP session establishment, before any transaction writes.
+
+    Never retry publish/activate here: a failed write may already have
+    succeeded remotely, and requires explicit reconciliation.
+    """
+    import time
+    last_error = None
+    for attempt in range(3):
+        try:
+            ftp = election_ftp_connect()
+            return Transport(ftp, environment, reconnect=election_ftp_connect)
+        except (ConnectionError, TimeoutError, EOFError, OSError) as error:
+            last_error = error
+            if attempt < 2:
+                time.sleep(attempt + 1)
+    raise RuntimeError('election_ftp_connect_failed') from last_error
 
 
 def http_read(environment, relative):
