@@ -67,6 +67,25 @@ class AssemblerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "incomplete_release_inventory"):
             assembler.assemble(self.base, self.inbox, self.new, self.plan)
 
+
+    def test_unexpected_delta_rejected(self):
+        (self.inbox / "extra.json").write_bytes(b"extra")
+        with self.assertRaisesRegex(ValueError, "unexpected_delta_inventory"):
+            assembler.assemble(self.base, self.inbox, self.new, self.plan)
+        self.assertFalse(self.new.exists())
+
+    def test_path_traversal_rejected(self):
+        name = "state/../item.json"
+        entry = self.plan["files"].pop("state/item-001.json")
+        self.plan["files"][name] = entry
+        with self.assertRaisesRegex(ValueError, "unsafe_release_path"):
+            assembler.assemble(self.base, self.inbox, self.new, self.plan)
+
+    def test_invalid_digest_rejected(self):
+        self.plan["files"]["alerts.json"]["sha256"] = "z" * 64
+        with self.assertRaisesRegex(ValueError, "invalid_file_fingerprint"):
+            assembler.assemble(self.base, self.inbox, self.new, self.plan)
+
     def test_existing_destination_preserved(self):
         self.new.mkdir()
         (self.new / "keep").write_text("keep")
