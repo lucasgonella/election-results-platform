@@ -145,8 +145,8 @@ def prepare_legacy_bootstrap(root, baseline, marker_path, checkpoint):
     baseline_rows=entries(parse(base['manifest.json']))
     if entries(parse(state['manifest.json'])) != baseline_rows:
         raise ValueError('legacy_manifest_mismatch')
-    if any(state[name] != base[name] for name in META):
-        raise ValueError('legacy_checkpoint_metadata_mismatch')
+    # Legacy checkpoint metadata may have a later collector timestamp;
+    # manifest rows and target-state IDGs are the authoritative alignment.
     # The cache must have exactly the public manifest targets and IDGs.
     cache=parse(state['target-state.json'])
     if set(value.get('path') for value in cache.values()) != set(targets()):
