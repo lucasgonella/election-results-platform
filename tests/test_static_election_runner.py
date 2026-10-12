@@ -142,3 +142,17 @@ def test_remote_legacy_adoption_refuses_changed_public_marker(release,tmp_path,m
         runner.adopt_legacy_remote(root,transport=transport)
     assert transport.private+'/current.json' not in transport.ftp.files
     assert not (root/'current.json').exists()
+
+
+def test_production_cycle_requires_explicit_official_tse_settings(monkeypatch):
+    monkeypatch.delenv('TSE_ENVIRONMENT',raising=False)
+    with pytest.raises(ValueError,match='production_requires_official_tse_runtime'):
+        runner.require_official_runtime()
+    monkeypatch.setenv('TSE_BASE_URL','https://resultados.tse.jus.br')
+    monkeypatch.setenv('TSE_ENVIRONMENT','oficial')
+    monkeypatch.setenv('TSE_CYCLE','ele2026')
+    monkeypatch.setenv('TSE_ROUND','1')
+    assert runner.require_official_runtime().environment=='oficial'
+    monkeypatch.setenv('TSE_BASE_URL','https://resultados-sim.tse.jus.br/simulado')
+    with pytest.raises(ValueError,match='production_requires_official_tse_runtime'):
+        runner.require_official_runtime()
