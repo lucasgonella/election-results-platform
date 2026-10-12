@@ -28,7 +28,10 @@ Todos os destinos públicos são `/public_html/data/turnos/2/releases/<sha256>` 
 `/data/version.json`, o Raio-X ou estudos. Metadados privados de transporte ficam
 em `/election-round2-deploy`, fora de `public_html`. Diretórios privados usam
 um prefixo de 24 caracteres do ID; o descritor conserva e valida o ID completo.
-Colisão de prefixo com bytes diferentes bloqueia sem sobrescrever. Credenciais existentes são
+Colisão de prefixo com bytes diferentes bloqueia sem sobrescrever. A criação
+de diretórios usa CWD por componente e MKD do basename: no ensaio Locaweb, MKD
+com caminho absoluto longo não respondeu, mas o mesmo destino por basename
+foi criado em 0,04s. A sessão volta a `/` antes dos demais comandos. Credenciais existentes são
 reutilizadas sem cópia permanente: systemd `LoadCredential` lê o `ftp.env`
 protegido. FTP convencional, passivo, porta 21; curl STOR/RETR com netrc temporário
 0600, sem secrets em argv; HTTPS somente GET.

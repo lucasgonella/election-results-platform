@@ -124,14 +124,26 @@ class Transport(wire.Transport):
         return super().put(path, raw, replace=replace)
 
     def directory(self, path):
-        # Do not create or modify the shared /data parent.
-        if path.rstrip('/') == '/public_html/data':
-            if not self.metadata(path + '/'):
-                raise RuntimeError('missing_shared_data_parent')
+        self.allowed(path + '/')
+        actual = self.metadata(path + '/')
+        if actual is not None:
+            if actual['type'] != 'dir': raise RuntimeError('not_directory')
             return
+        if path.rstrip('/') == '/public_html/data':
+            raise RuntimeError('missing_shared_data_parent')
+        parent = str(PurePosixPath(path).parent)
+        if parent not in {'/', '/public_html'}: self.directory(parent)
         try:
-            return super().directory(path)
-        except (OSError, EOFError, ftplib.error_temp):
+            # Locaweb drops long absolute MKD commands. CWD components followed
+            # by a basename MKD keeps the same guarded absolute destination.
+            self.ftp.cwd('/')
+            for component in PurePosixPath(parent).parts[1:]: self.ftp.cwd(component)
+            self.ftp.mkd(PurePosixPath(path).name)
+            self.ftp.cwd('/')
+            actual = self.metadata(path + '/')
+            if actual is None or actual['type'] != 'dir':
+                raise RuntimeError('second_round_directory_creation_unconfirmed')
+        except (OSError, EOFError, ftplib.Error):
             if self.reconnect is None: raise
             self.ftp.close()
             self.ftp = self.reconnect()

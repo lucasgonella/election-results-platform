@@ -16,6 +16,15 @@ from test_parser import build_payload
 
 class FTP(FakeFTP):
     def close(self): pass
+    def cwd(self, path):
+        from pathlib import PurePosixPath
+        current = getattr(self, '_cwd', '/')
+        self._cwd = str(PurePosixPath(current) / path)
+        assert self._cwd in self.dirs
+    def pwd(self): return getattr(self, '_cwd', '/')
+    def mkd(self, path):
+        from pathlib import PurePosixPath
+        return super().mkd(str(PurePosixPath(self.pwd()) / path))
 
 
 class Source:
@@ -339,7 +348,7 @@ def test_lost_mkd_response_reconciles_remote_directory_without_replay():
     ftp.mkd=lost
     t=Transport(ftp,reconnect=lambda:ftp)
     t.directory(PRIVATE)
-    assert attempts==[PRIVATE]
+    assert attempts==[PRIVATE.lstrip('/')]
     assert t.metadata(PRIVATE+'/')['type']=='dir'
 
 
@@ -391,3 +400,19 @@ def test_native_ftp_uses_nocwd_without_credentials_in_argv(monkeypatch):
     assert command[command.index('--ftp-method')+1]=='nocwd'
     assert command[command.index('--proto')+1]=='=ftp'
     assert command[-1].startswith('ftp://example.invalid:21/')
+
+
+def test_long_release_directory_uses_basename_mkd_and_restores_home():
+    ftp=FTP()
+    ftp.dirs.update({'/public_html/data','/public_html/data/turnos',SITE})
+    calls=[];original=ftp.mkd
+    def inspect(name):
+        calls.append(name)
+        assert '/' not in name
+        return original(name)
+    ftp.mkd=inspect
+    t=Transport(ftp)
+    t.directory(SITE+'/releases/'+'a'*64)
+    assert calls==['releases','a'*64]
+    assert ftp.pwd()=='/'
+    assert t.metadata(SITE+'/releases/'+'a'*64+'/')['type']=='dir'
