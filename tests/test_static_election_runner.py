@@ -172,7 +172,8 @@ def test_review_approval_pins_baseline_and_tse_source(tmp_path, release):
     assert approved[name]==digest(after[name])
     assert runner.pinned_reviews(tmp_path,'b'*64,before,after)=={}
     tampered=dict(after)
-    tampered[name]=canonical(parse(after[name])|{'candidate_count':999})
+    changed=parse(after[name]);changed['candidates'][0]['votes']+=1
+    tampered[name]=canonical(changed)
     assert runner.pinned_reviews(tmp_path,'a'*64,before,tampered)=={}
 
 
