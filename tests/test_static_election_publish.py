@@ -214,3 +214,30 @@ def test_forward_finalize_rejects_wrong_snapshot_and_retains_lock(release):
     with pytest.raises(ValueError,match='published_snapshot_changed|forward_finalization_state_mismatch'):
         finalize_published(transport,'f'*64,http=http)
     assert transport.metadata(transport.private+'/lock/') is not None
+
+
+def test_initial_ftp_connect_retries_transient_reset(monkeypatch):
+    from collector.src import static_election_publish as pub
+    calls=[]
+    def flaky():
+        calls.append(1)
+        if len(calls)<3:raise ConnectionResetError(104,'Connection reset by peer')
+        return ElectionFTP()
+    monkeypatch.setattr(pub,'election_ftp_connect',flaky)
+    monkeypatch.setattr('time.sleep',lambda _:None)
+    t=pub.connect('staging')
+    assert len(calls)==3
+    assert t.environment=='staging'
+
+
+def test_initial_ftp_connect_fails_closed_after_three_attempts(monkeypatch):
+    from collector.src import static_election_publish as pub
+    calls=[]
+    def failed():
+        calls.append(1)
+        raise ConnectionResetError(104,'Connection reset by peer')
+    monkeypatch.setattr(pub,'election_ftp_connect',failed)
+    monkeypatch.setattr('time.sleep',lambda _:None)
+    with pytest.raises(RuntimeError,match='election_ftp_connect_failed'):
+        pub.connect('production')
+    assert len(calls)==3
