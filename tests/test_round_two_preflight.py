@@ -43,3 +43,20 @@ def test_reject_symlink_round_two_state(tmp_path, monkeypatch):
     monkeypatch.setenv("ELECTION_STATIC_STATE_DIR", str(first))
     with pytest.raises(ValueError, match="unsafe_round_two_state"):
         second_round_preflight(settings(), {"snapshot_id": "a" * 64}, state_dir=second)
+
+
+def test_cli_inspects_checkpoint_without_creating_state(tmp_path, monkeypatch):
+    from collector.src.second_round_preflight import inspect
+    first = tmp_path / "turno-1"
+    second = tmp_path / "turno-2"
+    first.mkdir()
+    current = first / "current.json"
+    current.write_text('{"snapshot_id":"' + "a" * 64 + '"}')
+    monkeypatch.setenv("ELECTION_STATIC_STATE_DIR", str(first))
+    monkeypatch.setenv("TSE_ENVIRONMENT", "oficial")
+    monkeypatch.setenv("TSE_BASE_URL", "https://resultados.tse.jus.br")
+    monkeypatch.setenv("TSE_CYCLE", "ele2026")
+    monkeypatch.setenv("TSE_ROUND", "2")
+    result = inspect(first_round_current=current, round_two_state=second)
+    assert result["publication_enabled"] is False
+    assert not second.exists()
