@@ -45,6 +45,18 @@ def accept_checkpoint(root, package, receipt):
         'public_verified_at':receipt['verified_at'],'collected_at':desc['generated_at'],'eligible_changes':0})
 
 
+def require_official_runtime():
+    """Fail closed before collecting or writing to production."""
+    from .runtime import load_settings
+    settings=load_settings()
+    if (settings.environment!='oficial'
+            or settings.base_url!='https://resultados.tse.jus.br'
+            or settings.cycle!='ele2026'
+            or settings.round_number!=1):
+        raise ValueError('production_requires_official_tse_runtime')
+    return settings
+
+
 def run_cycle(root, *, collect=None):
     job=root/'in-flight.json'
     if job.exists() and parse(job.read_bytes()).get('status')!='complete':
@@ -317,7 +329,9 @@ def main():
                     receipt['published_at']=remote['published_at'];accept_checkpoint(root,package,receipt)
                     save(job,{'status':'complete','snapshot_id':sid});result={'status':'reconciled','snapshot_id':sid}
                 finally:transport.ftp.close()
-            else:result=run_cycle(root)
+            else:
+                require_official_runtime()
+                result=run_cycle(root)
             print(json.dumps(result));return 0
         except Exception as error:
             previous=parse((root/'health.json').read_bytes()) if (root/'health.json').exists() else {}
