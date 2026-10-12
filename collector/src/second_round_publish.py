@@ -124,7 +124,17 @@ class Transport(wire.Transport):
             if not self.metadata(path + '/'):
                 raise RuntimeError('missing_shared_data_parent')
             return
-        return super().directory(path)
+        try:
+            return super().directory(path)
+        except (OSError, EOFError, ftplib.error_temp):
+            if self.reconnect is None: raise
+            self.ftp.close()
+            self.ftp = self.reconnect()
+            actual = self.metadata(path + '/')
+            if actual is None or actual['type'] != 'dir':
+                raise RuntimeError('second_round_directory_creation_unconfirmed') from None
+            # Lost MKD response: adopt only the directory actually inspected.
+            return
 
 
 def native_transfer(path, raw=None):

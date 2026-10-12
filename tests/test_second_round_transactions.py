@@ -328,3 +328,16 @@ def test_publication_metadata_stale_control_socket_reconnects_without_write(monk
     assert transport.metadata(SITE+'/version.json') is None
     assert calls==[first,second]
     assert first.events==second.events==[]
+
+
+def test_lost_mkd_response_reconciles_remote_directory_without_replay():
+    ftp=FTP();original=ftp.mkd;attempts=[]
+    def lost(path):
+        attempts.append(path)
+        original(path)
+        raise EOFError('MKD reply lost')
+    ftp.mkd=lost
+    t=Transport(ftp,reconnect=lambda:ftp)
+    t.directory(PRIVATE)
+    assert attempts==[PRIVATE]
+    assert t.metadata(PRIVATE+'/')['type']=='dir'
