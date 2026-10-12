@@ -206,7 +206,7 @@ def alert_bundle(values, environment, generation):
 
 
 def prepare(baseline: Path, marker: Path, stage: Path, state: Path, pending: Path,
-            output: Path, include: list[str]):
+            output: Path, include: list[str], reviewed=None):
     if marker.is_symlink() or output.exists():
         raise ValueError('unsafe_output_or_marker')
     roots = [p.resolve() for p in (baseline, stage, state, pending)]
@@ -248,7 +248,8 @@ def prepare(baseline: Path, marker: Path, stage: Path, state: Path, pending: Pat
         raise ValueError('pending_stage_mismatch')
     if len(set(include)) != len(include) or any(name not in targets() or name not in original['stage'] for name in include):
         raise ValueError('invalid_selection')
-    if any(name.startswith('am/') for name in include):
+    reviewed = reviewed or {}
+    if any(name.startswith('am/') and reviewed.get(name) != digest(original['stage'][name]) for name in include):
         raise ValueError('amazonas_requires_review')
     result = dict(original['baseline']); rows = dict(base_rows); transitions = {}
     for name in include:

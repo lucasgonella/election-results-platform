@@ -57,6 +57,39 @@ def require_official_runtime():
     return settings
 
 
+def pinned_reviews(root, current_snapshot, baseline, stage):
+    """Approve only an explicitly reviewed candidate payload and baseline.
+
+    Pin normalized TSE source, not captured_at, which changes each cycle.
+    Approvals without exact baseline, evidence and matching source never apply.
+    """
+    path = root/'review-approvals.json'
+    if not path.exists():
+        return {}
+    approvals = parse(path.read_bytes())
+    if approvals.get('base_snapshot_id') != current_snapshot:
+        return {}
+    records = approvals.get('approvals')
+    if not isinstance(records, dict):
+        raise ValueError('invalid_review_approvals')
+    allowed = {}
+    for name, detail in records.items():
+        if name not in targets() or not isinstance(detail, dict):
+            raise ValueError('invalid_review_target')
+        fingerprint = detail.get('source_sha256')
+        evidence = detail.get('evidence')
+        if (not isinstance(fingerprint, str) or len(fingerprint)!=64
+                or not isinstance(evidence, str) or not evidence.startswith('https://')
+                or len(evidence)>2048 or not isinstance(detail.get('reason'), str)
+                or len(detail['reason'].strip())<12):
+            raise ValueError('invalid_review_evidence')
+        if name not in stage:
+            continue
+        if digest(canonical(source(parse(stage[name])))) == fingerprint:
+            allowed[name] = digest(stage[name])
+    return allowed
+
+
 def run_cycle(root, *, collect=None):
     job=root/'in-flight.json'
     if job.exists() and parse(job.read_bytes()).get('status')!='complete':
@@ -89,15 +122,17 @@ def run_cycle(root, *, collect=None):
         collection=collect(work)
     stage=tree(work/'stage');rows=entries(parse(stage['manifest.json']))
     from .election_release import validate_result
+    approved=pinned_reviews(root,current['snapshot_id'],before,stage)
     selected=[];quarantine={}
     for name in stage.keys()-META:
         validate_result(name,parse(stage[name]),rows[name],desc['environment'],desc['round'])
         if source(parse(before[name]))==source(parse(stage[name])):continue
         proposed=before|{name:stage[name]}
-        try:compare(before,proposed)
+        try:compare(before,proposed,reviews=approved)
         except ValueError as error:
             quarantine[name]={'reason':str(error),'before':parse(before[name])['snapshot'],
-                'proposed':parse(stage[name])['snapshot'],'proposed_sha256':digest(stage[name])}
+                'proposed':parse(stage[name])['snapshot'],'proposed_sha256':digest(stage[name]),
+                'source_sha256':digest(canonical(source(parse(stage[name]))))}
         else:selected.append(name)
     save(cycle/'review-required.json',quarantine)
     transport=connect('production')
@@ -109,10 +144,10 @@ def run_cycle(root, *, collect=None):
             marker_file=cycle/'baseline-marker.json';marker_file.write_bytes(marker)
             package=cycle/'package'
             prepare(baseline=baseline,marker=marker_file,stage=work/'stage',state=work/'state',pending=work/'pending',
-                    output=package,include=selected)
+                    output=package,include=selected,reviewed=approved)
             # No network transfer until the complete release and checkpoint are saved.
             save(root/'in-flight.json',{'package':str(package),'selected':selected,'prepared_at':parse(stage['version.json'])['generated_at']})
-            with transport.lock():receipt=activate(transport,tree(package/'candidate'))
+            with transport.lock():receipt=activate(transport,tree(package/'candidate'),reviews=approved)
             accept_checkpoint(root,package,receipt)
             # Keep completed job information; no directory or pending file is deleted.
             save(root/'in-flight.json',{'status':'complete','snapshot_id':receipt['snapshot_id']})

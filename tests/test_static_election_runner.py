@@ -156,3 +156,34 @@ def test_production_cycle_requires_explicit_official_tse_settings(monkeypatch):
     monkeypatch.setenv('TSE_BASE_URL','https://resultados-sim.tse.jus.br/simulado')
     with pytest.raises(ValueError,match='production_requires_official_tse_runtime'):
         runner.require_official_runtime()
+
+
+def test_review_approval_pins_baseline_and_tse_source(tmp_path, release):
+    _, before, after, _, _ = release
+    name = 'am/governor.json'
+    source_hash = digest(canonical(runner.source(parse(after[name]))))
+    runner.save(tmp_path/'review-approvals.json',{
+        'base_snapshot_id':'a'*64,
+        'approvals': {name:{
+            'source_sha256':source_hash,
+            'evidence':'https://resultados.tse.jus.br/',
+            'reason':'Verified official TSE candidate data'}}})
+    approved=runner.pinned_reviews(tmp_path,'a'*64,before,after)
+    assert approved[name]==digest(after[name])
+    assert runner.pinned_reviews(tmp_path,'b'*64,before,after)=={}
+    tampered=dict(after)
+    changed=parse(after[name]);changed['candidates'][0]['votes']+=1
+    tampered[name]=canonical(changed)
+    assert runner.pinned_reviews(tmp_path,'a'*64,before,tampered)=={}
+
+
+def test_review_approval_fails_closed_for_missing_evidence(tmp_path, release):
+    _, before, after, _, _ = release
+    runner.save(tmp_path/'review-approvals.json',{
+        'base_snapshot_id':'a'*64,
+        'approvals': {'am/governor.json':{
+            'source_sha256':digest(canonical(runner.source(parse(after['am/governor.json'])))),
+            'evidence':'none',
+            'reason':'Verified official TSE candidate data'}}})
+    with pytest.raises(ValueError,match='invalid_review_evidence'):
+        runner.pinned_reviews(tmp_path,'a'*64,before,after)
