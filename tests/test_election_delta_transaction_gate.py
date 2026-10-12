@@ -52,6 +52,10 @@ class TransactionGateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "incomplete_prior_transaction"):
             self.run_gate(pending={"status": "prepared"})
 
+    def test_previous_checkpoint_id_mismatch_rejected(self):
+        with self.assertRaisesRegex(ValueError, "pending_baseline_mismatch"):
+            self.run_gate(pending={"status": "complete", "snapshot_id": "c" * 64})
+
     def test_unexpected_baseline_rejected(self):
         with self.assertRaisesRegex(ValueError, "current_snapshot_mismatch"):
             self.run_gate(current={"snapshot_id": "c" * 64})
