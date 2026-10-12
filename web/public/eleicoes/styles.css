@@ -1456,3 +1456,15 @@ footer a:hover {
 .discovery-card-featured:hover,.discovery-card-featured:focus-visible{background:linear-gradient(126deg,#1d3c66,#3166a2)}
 .discovery-card a:focus-visible,.discovery-card:focus-visible{outline:3px solid #73aaf4;outline-offset:3px}
 @media(max-width:720px){.discovery-grid{grid-template-columns:1fr}.discovery-card{padding:22px}}
+
+.round-switch{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:-10px 0 26px;padding:14px 18px;background:#fff;border:1px solid #d8e2f0;border-radius:16px}
+.round-switch-title{font-weight:750;color:#273a57}
+.round-switch-controls{display:inline-flex;background:#eef2f7;border-radius:12px;padding:4px;gap:3px}
+.round-switch-button{padding:10px 19px;border-radius:9px;text-decoration:none;color:#32465e;font-weight:700}
+.round-switch-button.active,.round-switch-button[aria-current="page"]{background:#203f69;color:#fff;box-shadow:0 2px 8px #142c4929}
+.round-switch-button:focus-visible{outline:3px solid #579bea;outline-offset:3px}
+.round-unavailable{padding:25px;border:1px solid #bfd1e7;background:#f3f7fd;border-radius:16px;margin:0 0 24px;color:#213956}
+.round-unavailable strong{font-size:19px}
+.round-unavailable p{line-height:1.6;margin-bottom:0}
+body.round-two-unavailable .controls,body.round-two-unavailable .summary,body.round-two-unavailable .progress-card,body.round-two-unavailable #results,body.round-two-unavailable #elected-by-state,body.round-two-unavailable #seat-allocation,body.round-two-unavailable .discovery-grid{display:none!important}
+@media(max-width:540px){.round-switch{align-items:stretch;flex-direction:column}.round-switch-controls{display:flex}.round-switch-button{flex:1;text-align:center}}
