@@ -357,6 +357,51 @@ def recover(transport, *, http=None, expected_snapshot=None):
     return {'status':'recovered',**result}
 
 
+
+def finalize_published(transport, expected_snapshot, *, http=None):
+    """Finish an abandoned publication only after full remote/public verification."""
+    sid=identity(expected_snapshot)
+    lock=transport.private+'/lock'
+    if transport.metadata(lock+'/') is None:
+        raise ValueError('missing_abandoned_lock')
+    marker_raw=transport.read(transport.site+'/version.json')
+    marker=parse(marker_raw)
+    if marker.get('snapshot_id')!=sid:
+        raise ValueError('published_snapshot_changed')
+    current=parse(transport.read(transport.private+'/current.json'))
+    pending=parse(transport.read(transport.private+'/pending.json'))
+    tx=identity(current.get('transaction'))
+    journal_path=transport.private+'/transactions/'+tx+'/journal.json'
+    journal=parse(transport.read(journal_path))
+    desc=current.get('descriptor')
+    if (marker.get('snapshot_id')!=sid or current.get('snapshot_id')!=sid
+            or pending.get('status')!='prepared' or pending.get('snapshot_id')!=sid
+            or pending.get('transaction')!=tx or journal.get('transaction')!=tx
+            or journal.get('status') not in {'prepared','published'}
+            or journal.get('snapshot_id')!=sid or journal.get('marker')!=marker
+            or journal.get('descriptor')!=desc):
+        raise ValueError('forward_finalization_state_mismatch')
+    values,inventory=read_release(transport,marker)
+    if inventory!=desc:
+        raise ValueError('forward_finalization_inventory_mismatch')
+    marks=parse(transport.read(transport.private+'/watermarks.json'))
+    if set(marks)!=set(targets()) or any(marks[name]!=parse(values[name]) for name in targets()):
+        raise ValueError('forward_finalization_watermark_mismatch')
+    receipt=verify_public(transport,marker_raw,desc,http=http)
+    if journal['status']=='prepared':
+        published=journal|{'status':'published','published_at':current['published_at']}
+        transport.put(journal_path,canonical(published),replace=True)
+        if parse(transport.read(journal_path))!=published:
+            raise RuntimeError('forward_finalization_journal_mismatch')
+    completed={'status':'complete','snapshot_id':sid}
+    transport.put(transport.private+'/pending.json',canonical(completed),replace=True)
+    if parse(transport.read(transport.private+'/pending.json'))!=completed:
+        raise RuntimeError('forward_finalization_pending_mismatch')
+    if transport.read(transport.site+'/version.json')!=marker_raw:
+        raise ValueError('forward_finalization_marker_changed')
+    transport.ftp.rmd(lock)
+    return {'status':'forward_finalized',**receipt,'transaction':tx}
+
 def rollback(transport, *, http=None):
     current=parse(transport.read(transport.private+'/current.json'))
     sid=identity(current['transaction'])
@@ -372,7 +417,7 @@ def rollback(transport, *, http=None):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation',choices=['verify','publish','recover','rollback'])
+    parser.add_argument('operation',choices=['verify','publish','recover','rollback','finalize-published'])
     parser.add_argument('--environment',choices=['production','staging'],default='production')
     parser.add_argument('--directory',type=Path)
     parser.add_argument('--reviews',type=Path)
@@ -381,7 +426,7 @@ def main():
     parser.add_argument('--expected-snapshot')
     args=parser.parse_args()
     try:
-        if args.operation=='recover' and not args.writer_stopped:
+        if args.operation in {'recover','finalize-published'} and not args.writer_stopped:
             raise ValueError('confirm_writer_stopped_before_recovery')
         values=tree(args.directory) if args.directory else None
         reviews=parse(args.reviews.read_bytes()) if args.reviews else {}
@@ -391,6 +436,9 @@ def main():
             transport=connect(args.environment)
             try:
                 if args.operation=='recover': result=recover(transport,expected_snapshot=args.expected_snapshot)
+                elif args.operation=='finalize-published':
+                    if not args.expected_snapshot:raise ValueError('expected_snapshot_required')
+                    result=finalize_published(transport,args.expected_snapshot)
                 elif args.operation=='rollback':
                     with transport.lock():
                         result=rollback(transport)

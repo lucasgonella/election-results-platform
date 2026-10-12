@@ -182,3 +182,35 @@ def test_election_ftp_timeout_is_isolated(monkeypatch):
     assert renewed.sock.timeout == 15
     assert len(sessions) == 2
     assert sessions[0] is not sessions[1]
+
+
+def test_forward_finalize_published_release_without_rollback(release):
+    from collector.src.static_election_publish import finalize_published
+    transport,before,after,old,http=release
+    reviews={n:digest(after[n]) for n in targets() if n.startswith('am/')}
+    with transport.lock():
+        result=activate(transport,after,reviews=reviews,http=http)
+    sid=result['snapshot_id']
+    tx=result['transaction']
+    journal_path=transport.private+'/transactions/'+tx+'/journal.json'
+    journal=parse(transport.ftp.files[journal_path])
+    journal['status']='prepared'
+    journal.pop('published_at',None)
+    transport.ftp.files[journal_path]=canonical(journal)
+    transport.ftp.files[transport.private+'/pending.json']=canonical(journal)
+    transport.ftp.dirs.add(transport.private+'/lock')
+    finished=finalize_published(transport,sid,http=http)
+    assert finished['status']=='forward_finalized'
+    assert transport.metadata(transport.private+'/lock/') is None
+    assert transport.ftp.files[transport.site+'/version.json']!=old
+    assert parse(transport.ftp.files[journal_path])['status']=='published'
+    assert parse(transport.ftp.files[transport.private+'/pending.json'])=={'status':'complete','snapshot_id':sid}
+
+
+def test_forward_finalize_rejects_wrong_snapshot_and_retains_lock(release):
+    from collector.src.static_election_publish import finalize_published
+    transport,before,after,old,http=release
+    transport.ftp.dirs.add(transport.private+'/lock')
+    with pytest.raises(ValueError,match='published_snapshot_changed|forward_finalization_state_mismatch'):
+        finalize_published(transport,'f'*64,http=http)
+    assert transport.metadata(transport.private+'/lock/') is not None
