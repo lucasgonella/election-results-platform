@@ -34,3 +34,7 @@ Until end-to-end authenticated delivery, rollback, journal reconciliation, and s
 The executor now requires `--ledger`, a trusted pre-created private directory. Before any assembly, it atomically creates `<ledger>/<release_id>/`. If the claim exists, the delivery is rejected. Success writes a receipt and fsyncs it. On a crash, a claim without a receipt remains intentionally blocked; an operator must reconcile local and public state, and must **never** simply delete the claim to retry. The ledger is not yet connected to the production publisher's transaction journal. The trusted launcher must protect the ledger and establish exclusive access to it.
 
 No public marker or production site content is changed by this executor.
+
+## Interrupted delivery inspection
+
+`deploy/scripts/election_delta_reconcile.py` is read-only. It classifies an absent claim, an interrupted claim without receipt, a receipt with missing output and a completed assembly requiring **external validation**. None of these states automatically unlocks, retries, activates, or removes any files. An output-directory check alone does not prove integrity; the trusted transaction controller must verify hashes and the public release independently before marking complete.
