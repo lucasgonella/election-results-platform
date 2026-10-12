@@ -47,6 +47,20 @@ class DeltaAuthorizationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid_envelope"):
             authorize(self.envelope, self.secret, self.base)
 
+    def test_replayed_delivery_is_rejected_before_assembly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / self.release).mkdir()
+            secret = root / "secret"
+            secret.write_bytes(self.secret)
+            secret.chmod(0o600)
+            envelope = root / "envelope.json"
+            envelope.write_text(json.dumps(self.envelope))
+            with self.assertRaisesRegex(ValueError, "delivery_already_claimed"):
+                execute(base=root, inbox=root, output=root / "staged" / self.release,
+                        envelope_path=envelope, secret_path=secret,
+                        expected_base=self.base, ledger=root)
+
     def test_secret_file_permissions_fail_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -58,7 +72,7 @@ class DeltaAuthorizationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "insecure_secret_permissions"):
                 execute(base=root, inbox=root, output=root / self.release,
                         envelope_path=envelope, secret_path=secret,
-                        expected_base=self.base)
+                        expected_base=self.base, ledger=root)
 
 
 if __name__ == "__main__":
