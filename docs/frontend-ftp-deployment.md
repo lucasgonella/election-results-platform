@@ -145,6 +145,15 @@ o rename/verificação; não repete STOR nem adota um temporário preexistente a
 tentativa. Corrupção ou mudança externa interrompem. O recibo informa a quantidade
 de transferências reconciliadas; confirmação pública por HTTPS continua obrigatória.
 
+Assets versionados usam temporário com token aleatório por transferência
+(`app.<token>.js.upload`). Após interrupção do processo e recuperação do journal,
+uma nova tentativa pode completar a mesma versão com outro temporário, sem
+adotar, sobrescrever ou apagar o arquivo abandonado. O arquivo final continua
+imutável e exige os mesmos hashes FTP/HTTPS. Uma colisão no novo temporário
+interrompe antes do STOR. HTMLs estáveis e metadados privados conservam o
+temporário fixo e o bloqueio para recuperação supervisionada. Não há remoção
+automática de temporários de tentativas anteriores.
+
 Verifique CI do SHA, var de Goiás, secrets presentes, conexão FTP21/passiva,
 metadados, colisões `.upload`, pending e URLs do relatório. Não imprimir secrets
 nem afrouxar permissões. HTTP 200 com bytes diferentes é falha, inclusive cache.

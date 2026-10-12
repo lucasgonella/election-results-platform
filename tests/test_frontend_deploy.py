@@ -178,6 +178,65 @@ class FrontendTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'immutable_collision'):
             self.transport.put('/public_html/eleicoes/frontend-releases/'+'a'*40+'/app.js', b'new')
 
+    def test_abandoned_asset_temporary_is_preserved_during_new_attempt(self):
+        _, manifest, contents = self.package()
+        orphan = '/public_html/eleicoes/frontend-releases/'+'a'*40+'/app.js.upload'
+        self.ftp.files[orphan] = b'unknown partial upload'
+        with self.transport.lock('portal'):
+            result = f.activate(self.transport, manifest, contents, 'retry', http=self.http)
+        self.assertEqual(result['status'], 'published')
+        self.assertEqual(self.ftp.files[orphan], b'unknown partial upload')
+        self.assertFalse(any(path == orphan for operation, path in self.ftp.events))
+        f.verify_public(manifest, http=self.http, live=True)
+
+    def test_process_interruption_can_recover_then_publish_same_asset_version(self):
+        _, manifest, contents = self.package()
+        original_store = self.ftp.storbinary
+        interrupted = []
+        def terminate(command, stream):
+            original_store(command, stream)
+            if '/frontend-releases/' in command and not interrupted:
+                interrupted.append(command.removeprefix('STOR '))
+                raise SystemExit('simulated process termination')
+        self.ftp.storbinary = terminate
+        with self.assertRaises(SystemExit):
+            with self.transport.lock('portal'):
+                f.activate(self.transport, manifest, contents, 'interrupted', http=self.http)
+        for path, raw in self.original.items():
+            self.assertEqual(self.ftp.files[path], raw)
+        self.ftp.storbinary = original_store
+        new_transport = f.Transport(self.ftp)
+        f.recover(new_transport, 'portal', http=self.http)
+        orphan_bytes = self.ftp.files[interrupted[0]]
+        with new_transport.lock('portal'):
+            result = f.activate(new_transport, manifest, contents, 'retry', http=self.http)
+        self.assertEqual(result['status'], 'published')
+        self.assertEqual(self.ftp.files[interrupted[0]], orphan_bytes)
+        self.assertEqual(sum(operation == 'upload' and path == interrupted[0]
+                             for operation, path in self.ftp.events), 1)
+        f.verify_public(manifest, http=self.http, live=True)
+        self.assertEqual(self.ftp.files['/public_html/data/version.json'], b'protected election marker')
+        self.assertEqual(self.ftp.files['/public_html/eleicoes/goias/raio-x/data/go-2026.json'], b'protected finance')
+
+    def test_fresh_asset_temporary_collision_still_fails_closed(self):
+        path = '/public_html/eleicoes/frontend-releases/'+'a'*40+'/app.js'
+        temporary = path.removesuffix('.js')+'.'+'b'*32+'.js.upload'
+        self.ftp.files[temporary] = b'foreign bytes'
+        with patch.object(f.secrets, 'token_hex', return_value='b'*32), \
+             self.assertRaisesRegex(RuntimeError, 'temporary_collision'):
+            self.transport.put(path, b'new bytes')
+        self.assertNotIn(path, self.ftp.files)
+        self.assertEqual(self.ftp.files[temporary], b'foreign bytes')
+        self.assertFalse(self.ftp.events)
+
+    def test_stable_entrypoint_temporary_collision_still_requires_recovery(self):
+        path = '/public_html/eleicoes/index.html'
+        self.ftp.files[path+'.upload'] = b'foreign entrypoint'
+        with self.assertRaisesRegex(RuntimeError, 'temporary_collision'):
+            self.transport.put(path, b'new html', replace=True)
+        self.assertEqual(self.ftp.files[path], self.original[path])
+        self.assertEqual(self.ftp.files[path+'.upload'], b'foreign entrypoint')
+
     def test_second_client_cannot_acquire_lock(self):
         with self.transport.lock('portal'):
             with self.assertRaisesRegex(RuntimeError, 'frontend_requires_recovery'):
@@ -464,6 +523,18 @@ class FrontendTest(unittest.TestCase):
         self.assertEqual(sum(event == 'upload' for event, _ in first.events), 1)
         self.assertNotIn(path+'.upload', first.files)
         self.assertEqual(transport.reconciled_transfers, 1)
+
+    def test_lost_asset_upload_response_reconciles_only_its_fresh_temporary(self):
+        first, transport = self.interrupted_transport()
+        path = '/public_html/eleicoes/frontend-releases/'+'a'*40+'/app.js'
+        foreign = path+'.upload'
+        first.files[foreign] = b'unknown prior upload'
+        transport.put(path, b'verified asset')
+        self.assertEqual(first.files[path], b'verified asset')
+        self.assertEqual(first.files[foreign], b'unknown prior upload')
+        self.assertEqual(sum(event == 'upload' for event, _ in first.events), 1)
+        self.assertEqual(transport.reconciled_transfers, 1)
+        self.assertEqual([p for p in first.files if p.endswith('.upload')], [foreign])
 
     def test_lost_rename_response_is_reconciled_by_destination_hash(self):
         first, transport = self.interrupted_transport(lose_rename=True)
