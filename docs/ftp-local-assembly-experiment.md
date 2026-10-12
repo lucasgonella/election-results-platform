@@ -38,3 +38,9 @@ No public marker or production site content is changed by this executor.
 ## Interrupted delivery inspection
 
 `deploy/scripts/election_delta_reconcile.py` is read-only. It classifies an absent claim, an interrupted claim without receipt, a receipt with missing output and a completed assembly requiring **external validation**. None of these states automatically unlocks, retries, activates, or removes any files. An output-directory check alone does not prove integrity; the trusted transaction controller must verify hashes and the public release independently before marking complete.
+
+## Transaction preflight gate (read-only)
+
+`deploy/scripts/election_delta_transaction_gate.py` reads a signed envelope, trusted `current.json` and `pending.json` checkpoint snapshots, and the complete assembled release. It refuses stale base snapshots, unfinished prior transactions, unexpected files or changed bytes. A positive receipt deliberately reports `activation_permitted: false`: the gate is **not** a transaction commit and does not mutate live files.
+
+Before production use, the controller must validate the full electoral release semantics with `collector.src.static_election_publish.descriptor`, recompute the expected release identifier, enforce explicit TSE review approvals, bind authenticated identities to trusted on-host current state (not FTP-supplied JSON), acquire the production lock, and use the existing journal/HTTPS/marker/recovery protocol. The current gate alone cannot authorize publication. No production systemd change is included.
