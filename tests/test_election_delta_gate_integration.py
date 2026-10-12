@@ -36,7 +36,7 @@ def test_valid_electoral_release_passes_read_only(tmp_path):
     updated_temp.rename(output)
     approvals = {name: digest(after[name]) for name in targets() if name.startswith("am/")}
     receipt = preflight(envelope=envelope, secret=key,
-                        current={"snapshot_id": old_id}, pending={"status": "complete"},
+                        current={"snapshot_id": old_id}, pending={"status": "complete", "snapshot_id": old_id},
                         assembled=output, expected_base=old_id,
                         baseline_values=before, reviews=approvals)
     assert receipt["activation_permitted"] is False
@@ -57,6 +57,6 @@ def test_unapproved_amazonas_change_is_blocked(tmp_path):
     candidate.rename(output)
     with pytest.raises(ValueError, match="candidate_change_requires_specific_review"):
         preflight(envelope=envelope, secret=key,
-                  current={"snapshot_id": old_id}, pending={"status": "complete"},
+                  current={"snapshot_id": old_id}, pending={"status": "complete", "snapshot_id": old_id},
                   assembled=output, expected_base=old_id,
                   baseline_values=before)
