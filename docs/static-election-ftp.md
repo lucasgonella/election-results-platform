@@ -20,10 +20,9 @@ O protocolo anterior do PR #75 fica separado; seus gates não são falsificados.
 - `publication_health.py`: GETs públicos, data da publicação confirmada e da
   última coleta concluída, falhas e alterações aguardando revisão.
 
-O transporte reutiliza `deploy.frontend.Transport`, `PassiveFTP`, `connect` e
-`curl_transfer` da main. A única extensão do transporte visual é um argumento
-opcional de validação de destinos; o comportamento padrão e os destinos visual/
-financeiro permanecem iguais. Nenhum workflow visual ou financeiro muda.
+O transporte reutiliza `deploy.frontend.Transport`, `PassiveFTP` e `connect` da
+main, com uma conexão persistente para os JSONs pequenos. O módulo e os workflows
+visuais/financeiros permanecem byte a byte iguais à main.
 O novo escritor só escreve os namespaces abaixo; não aceita dados como artefato
 visual. Não instala PHP, transfere segredo ou consulta o receptor HTTPS legado.
 
@@ -36,7 +35,8 @@ visual. Não instala PHP, transfere segredo ou consulta o receptor HTTPS legado.
 FTP PWD deve continuar `/`, equivalente à home já auditada. Uma mudança desse
 mapeamento bloqueia o cliente. Não usar `LOCAWEB_FTP_GOIAS_DIR`. Credenciais
 somente do arquivo protegido existente/EnvironmentFile; nenhum segredo em argv,
-URL, stdout, relatório ou Git. curl usa netrc temporário 0600 e erro sanitizado.
+URL, stdout, relatório ou Git. O controle FTP usa login sem imprimir credenciais;
+erros do publicador são sanitizados.
 
 ## Contrato e comparação
 

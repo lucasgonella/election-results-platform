@@ -92,9 +92,9 @@ class Transport(wire.Transport):
 
 def connect(environment):
     ftp = wire.connect()
-    checker = Transport(None, environment)
-    return Transport(ftp, environment, reconnect=wire.connect,
-                     transfer=lambda path, raw=None: wire.curl_transfer(path, raw, checker=checker))
+    # Small JSON files use the existing transport's persistent data channel.
+    # Avoid hundreds of reconnects while transferring the complete inventory.
+    return Transport(ftp, environment, reconnect=wire.connect)
 
 
 def http_read(environment, relative):
