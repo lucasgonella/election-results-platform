@@ -44,3 +44,7 @@ No public marker or production site content is changed by this executor.
 `deploy/scripts/election_delta_transaction_gate.py` reads a signed envelope, trusted `current.json` and `pending.json` checkpoint snapshots, and the complete assembled release. It refuses stale base snapshots, unfinished prior transactions, unexpected files or changed bytes. A positive receipt deliberately reports `activation_permitted: false`: the gate is **not** a transaction commit and does not mutate live files.
 
 Before production use, the controller must validate the full electoral release semantics with `collector.src.static_election_publish.descriptor`, recompute the expected release identifier, enforce explicit TSE review approvals, bind authenticated identities to trusted on-host current state (not FTP-supplied JSON), acquire the production lock, and use the existing journal/HTTPS/marker/recovery protocol. The current gate alone cannot authorize publication. No production systemd change is included.
+
+## Mandatory TSE gate
+
+The transaction preflight CLI now requires `--baseline`, a trusted complete directory of the previous electoral release. `compare()` is mandatory and blocks candidate changes requiring specific approval; it is never omitted for absent baseline input. The current CLI does not load approval records, and so it intentionally rejects those sensitive changes. An authenticated controller must supply narrowly scoped verified approvals and pin them to the source digest before production activation. The CLI never changes the public marker.
