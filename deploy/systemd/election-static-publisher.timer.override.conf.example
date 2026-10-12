@@ -1,0 +1,5 @@
+[Timer]
+OnActiveSec=
+OnActiveSec=30s
+OnUnitInactiveSec=
+OnUnitInactiveSec=60s

@@ -1,0 +1,26 @@
+name: Validate static election FTP publisher
+on:
+  pull_request:
+  push:
+    branches: [main, feat/static-election-ftp]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.13', '3.14']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r collector/requirements-dev.txt -r deploy/frontend-requirements.txt
+      - run: python -m pytest -q
+      - run: python -m compileall -q collector deploy
+      - run: git diff --check
+      - run: node --check web/public/eleicoes/app.js && node --check web/public/eleicoes/favorites.js && node --check web/public/eleicoes/composition.js

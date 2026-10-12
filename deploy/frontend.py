@@ -56,13 +56,13 @@ def error_report(error):
     return result
 
 
-def curl_transfer(path, raw=None):
+def curl_transfer(path, raw=None, *, checker=None):
     """Native passive FTP data channel, matching the existing financial writer.
 
     Credentials stay in a 0600 netrc, never argv/URLs or subprocess output.
     No implicit curlrc, TLS, upload retry, directory creation or redirects.
     """
-    checker = Transport(None)
+    checker = checker or Transport(None)
     checker.allowed(path)
     if raw is not None:
         if not path.endswith('.upload'):
