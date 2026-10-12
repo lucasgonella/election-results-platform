@@ -55,7 +55,7 @@ def test_official_alert_feed_still_drives_state_results():
     )
 
     assert (
-        '"/data/alerts.json"'
+        'ROUND_DATA_ROOT + "/alerts.json"'
         in app
     )
 

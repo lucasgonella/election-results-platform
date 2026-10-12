@@ -23,8 +23,8 @@ def test_main_portal_polls_lightweight_version_file():
         encoding="utf-8"
     )
 
-    assert '"/data/version.json"' in app
-    assert '"/data/manifest.json"' in app
+    assert 'ROUND_DATA_ROOT + "/version.json"' in app
+    assert 'ROUND_DATA_ROOT + "/manifest.json"' in app
     assert "const REFRESH_MS = 5000;" in app
     assert "publicationToken" in app
     assert "nextVersion" in app

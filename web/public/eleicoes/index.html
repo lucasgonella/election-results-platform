@@ -76,7 +76,7 @@
 
     <link
         rel="stylesheet"
-        href="styles.css?v=13"
+        href="styles.css?v=14"
     >
 </head>
 
@@ -133,6 +133,18 @@
         </div>
 
     </header>
+
+    <nav class="round-switch" aria-label="Selecionar turno da eleição">
+        <span class="round-switch-title">Acompanhar apuração</span>
+        <div class="round-switch-controls">
+            <a id="round-first" class="round-switch-button" href="?turno=1">1º turno</a>
+            <a id="round-second" class="round-switch-button" href="?turno=2">2º turno</a>
+        </div>
+    </nav>
+    <div id="round-unavailable" class="round-unavailable" role="status" hidden>
+        <strong>2º turno: aguardando dados oficiais validados</strong>
+        <p>A votação do segundo turno está prevista para 25 de outubro de 2026. Não exibiremos dados do primeiro turno como se fossem do segundo. Continue acompanhando o primeiro turno no botão acima.</p>
+    </div>
 
     <section class="discovery-grid" aria-label="Explorar análises eleitorais">
         <a class="discovery-card discovery-card-featured" href="goias/raio-x/">
@@ -503,7 +515,7 @@
 </div>
 
     <script src="favorites.js?v=8"></script>
-    <script src="app.js?v=16"></script>
+    <script src="app.js?v=17"></script>
 
 </body>
 </html>

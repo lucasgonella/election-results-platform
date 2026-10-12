@@ -13,9 +13,11 @@ class VersionedReadTests(unittest.TestCase):
     def test_frontend_uses_pinned_snapshot_paths_and_fallback(self):
         app = APP.read_text(encoding="utf-8")
         composition = COMPOSITION.read_text(encoding="utf-8")
+        self.assertIn('if (id == null) return ROUND_DATA_ROOT;', app)
+        self.assertIn('${ROUND_DATA_ROOT}/releases/${id}', app)
+        self.assertIn('if (id == null) return "/data";', composition)
+        self.assertIn('/data/releases/', composition)
         for source in (app, composition):
-            self.assertIn('if (id == null) return "/data";', source)
-            self.assertIn('/data/releases/', source)
             self.assertIn('^[a-f0-9]{32,64}$', source)
         self.assertIn("dataBaseForVersion(version)", app)
         self.assertIn("compositionDataBaseForVersion(version)", composition)
