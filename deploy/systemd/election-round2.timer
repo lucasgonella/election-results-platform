@@ -1,0 +1,10 @@
+[Unit]
+Description=Poll official round two with independent rate limiting and backoff
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=60s
+RandomizedDelaySec=10s
+AccuracySec=5s
+Unit=election-round2.service
+[Install]
+WantedBy=timers.target

@@ -329,3 +329,7 @@ Desenvolvido por **Lucas Gonella**.
 - GitHub: https://github.com/lucasgonella
 - Repositório: https://github.com/lucasgonella/election-results-platform
 - Aplicação: https://afgnet.com.br/eleicoes/
+
+A operação isolada do segundo turno de 2026, incluindo FTP transacional,
+recuperação, timer da app01 e diagnóstico, está em
+[Segundo turno em produção](docs/second-round-production.md).

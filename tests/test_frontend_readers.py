@@ -36,3 +36,40 @@ vm.runInContext(SOURCE,context);
 })().catch(error=>{console.error(error);process.exitCode=1;});
 '''.replace('SOURCE',json.dumps(source))
     subprocess.run([node,'-e',script],check=True,capture_output=True,text=True)
+
+
+def test_round_two_waiting_page_retries_until_official_activation():
+    node=shutil.which('node')
+    assert node, 'Node required'
+    source=(Path(__file__).resolve().parents[1]/'web/public/eleicoes/app.js').read_text()
+    # Run actual initialize/loadVersion/loadManifest, stub DOM rendering only.
+    source=source[:source.index('document.getElementById(\n    "scope-select"')]
+    script=r'''
+const vm=require('node:vm'), assert=require('node:assert/strict');
+const timers=new Map(), urls=[], elements=new Map(), classes=new Set();
+let available=false, timerId=0;
+const sid='a'.repeat(64);
+const row={round:2,scope:'ac',office:3,path:'ac/governor.json'};
+const context={URLSearchParams,window:{location:{search:'?turno=2'},Favorites:{setManifest:()=>{}}},
+ document:{body:{classList:{add:c=>classes.add(c),remove:c=>classes.delete(c)}},
+ getElementById:id=>{if(!elements.has(id))elements.set(id,{hidden:true,setAttribute:()=>{}});return elements.get(id);}},
+ console,setInterval:fn=>{timers.set(++timerId,fn);return timerId;},clearInterval:id=>timers.delete(id),
+ fetch:async url=>{urls.push(url);return {ok:available,json:async()=>url.endsWith('version.json')?
+ {environment:'oficial',round:2,snapshot_id:sid,generated_at:'2026-10-25T12:00:00Z'}:{environment:'oficial',results:[row]}};}};
+vm.createContext(context);vm.runInContext(SOURCE,context);
+vm.runInContext(`loadAlerts=async()=>{};selectInitialRoute=()=>{};renderEnvironment=()=>{};
+ renderElectedByState=()=>{};renderScopeSelector=()=>{};renderOfficeTabs=()=>{};updateUrl=()=>{};
+ loadSelectedResult=async()=>{};currentManifestItem=()=>({});`,context);
+(async()=>{
+ await vm.runInContext('initialize()',context);
+ assert(classes.has('round-two-unavailable'));
+ assert.equal(timers.size,1);
+ available=true;await [...timers.values()][0]();
+ assert(!classes.has('round-two-unavailable'));
+ assert.equal(elements.get('round-unavailable').hidden,true);
+ assert.equal(timers.size,1); // replaces waiting interval with the regular refresh
+ assert(urls.every(url=>url.startsWith('/data/turnos/2/')));
+ assert.equal(vm.runInContext('activeDataBase',context),`/data/turnos/2/releases/${sid}`);
+})().catch(e=>{console.error(e);process.exitCode=1;});
+'''.replace('SOURCE',json.dumps(source))
+    subprocess.run([node,'-e',script],check=True,capture_output=True,text=True)
