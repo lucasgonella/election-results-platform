@@ -39,7 +39,7 @@ class TransactionGateTests(unittest.TestCase):
     def run_gate(self, **kwargs):
         args = {"envelope": self.envelope, "secret": self.secret,
                 "current": {"snapshot_id": self.base},
-                "pending": {"status": "complete"},
+                "pending": {"status": "complete", "snapshot_id": self.base},
                 "assembled": self.output, "expected_base": self.base}
         args.update(kwargs)
         return preflight(**args)
