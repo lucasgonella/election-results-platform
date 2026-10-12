@@ -115,11 +115,24 @@ class Transport(wire.Transport):
                 self.ftp.rmd(lock)
 
 
-def connect(environment):
+ELECTION_FTP_TIMEOUT = 15
+
+
+def election_ftp_connect():
+    """Keep the shared EPSV transport, but bound election FTP I/O to 15s.
+
+    The shared frontend/Goias FTP client retains its original timeout.
+    Both control and future data sockets must use the shorter timeout.
+    """
     ftp = wire.connect()
-    # Small JSON files use the existing transport's persistent data channel.
-    # Avoid hundreds of reconnects while transferring the complete inventory.
-    return Transport(ftp, environment, reconnect=wire.connect)
+    ftp.timeout = ELECTION_FTP_TIMEOUT
+    ftp.sock.settimeout(ELECTION_FTP_TIMEOUT)
+    return ftp
+
+
+def connect(environment):
+    ftp = election_ftp_connect()
+    return Transport(ftp, environment, reconnect=election_ftp_connect)
 
 
 def http_read(environment, relative):
