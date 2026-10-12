@@ -48,8 +48,11 @@ def preflight(*, envelope, secret, current, pending, assembled, expected_base, b
     derived = descriptor(values)
     if derived["files"] != files or digest(canonical(derived)) != release:
         raise ValueError("electoral_release_identity_mismatch")
-    if baseline_values is not None:
-        compare(baseline_values, values, reviews=reviews)
+    if baseline_values is None:
+        raise ValueError("trusted_baseline_required")
+    if set(baseline_values) != set(files):
+        raise ValueError("baseline_inventory_mismatch")
+    compare(baseline_values, values, reviews=reviews)
     return {"state": "verified_for_transaction_review",
             "snapshot_id": release, "base_snapshot_id": expected_base,
             "files": len(files), "changed": len(plan["changed"]),
