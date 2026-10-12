@@ -131,7 +131,8 @@ def run_cycle(root, *, collect=None):
         try:compare(before,proposed,reviews=approved)
         except ValueError as error:
             quarantine[name]={'reason':str(error),'before':parse(before[name])['snapshot'],
-                'proposed':parse(stage[name])['snapshot'],'proposed_sha256':digest(stage[name])}
+                'proposed':parse(stage[name])['snapshot'],'proposed_sha256':digest(stage[name]),
+                'source_sha256':digest(canonical(source(parse(stage[name]))))}
         else:selected.append(name)
     save(cycle/'review-required.json',quarantine)
     transport=connect('production')
