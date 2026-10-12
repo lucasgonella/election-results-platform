@@ -805,10 +805,15 @@ function currentManifestItem() {
 }
 
 
+function awaitingSecondRoundCount(result = currentResult) {
+    return result?.election?.round === 2 && result?.snapshot?.sections?.totalized === 0;
+}
+
 function renderSummary() {
 
     const data =
         currentResult;
+    const awaiting = awaitingSecondRoundCount(data);
 
     const percentage =
         data.snapshot
@@ -831,7 +836,7 @@ function renderSummary() {
     document.getElementById(
         "sections-summary"
     ).textContent =
-        `${formatPercentage(
+        awaiting ? "Aguardando apuração" : `${formatPercentage(
             percentage
         )}%`;
 
@@ -845,7 +850,7 @@ function renderSummary() {
     document.getElementById(
         "progress-label"
     ).textContent =
-        `${formatPercentage(
+        awaiting ? "Aguardando apuração" : `${formatPercentage(
             percentage
         )}%`;
 
@@ -1390,11 +1395,12 @@ function renderCandidateCard(
                 : "candidate"
         );
 
+    const awaiting = awaitingSecondRoundCount();
     const positionElement =
         createElement(
             "div",
             "position",
-            String(position)
+            awaiting ? "—" : String(position)
         );
 
     const main =
@@ -1509,13 +1515,13 @@ function renderCandidateCard(
     );
 
     if (
-        candidate.result_status
+        awaiting || candidate.result_status
     ) {
         main.appendChild(
             createElement(
                 "div",
                 "candidate-status",
-                candidate.result_status
+                awaiting ? "Aguardando apuração" : candidate.result_status
             )
         );
     }
@@ -1530,7 +1536,7 @@ function renderCandidateCard(
         createElement(
             "strong",
             null,
-            formatNumber(
+            awaiting ? "—" : formatNumber(
                 candidate.votes
             )
         );
@@ -1539,14 +1545,14 @@ function renderCandidateCard(
         createElement(
             "span",
             null,
-            " votos"
+            awaiting ? " votos ainda não apurados" : " votos"
         );
 
     const percentage =
         createElement(
             "div",
             "vote-percentage",
-            `${
+            awaiting ? "—" : `${
                 formatPercentage(
                     candidate
                         .vote_percentage
@@ -1566,7 +1572,7 @@ function renderCandidateCard(
         votes
     );
 
-    if (majorOffice) {
+    if (majorOffice && !awaiting) {
 
         const barTrack =
             createElement(
@@ -1847,7 +1853,10 @@ async function loadManifest(base = activeDataBase) {
     if (guideTitle && guideDescription) {
         const results = Array.isArray(manifest?.results) ? manifest.results : [];
         const rounds = new Set(results.map(item => Number(item.round)));
-        if (rounds.has(2)) {
+        if (rounds.has(2) && manifest.publication_phase === "candidate_roster") {
+            guideTitle.textContent = "Candidatos do 2º turno";
+            guideDescription.textContent = "Candidaturas divulgadas oficialmente pelo TSE. Aguardando o início da apuração; votos e percentuais serão atualizados automaticamente.";
+        } else if (rounds.has(2)) {
             guideTitle.textContent = "Dados do 2º turno disponíveis";
             guideDescription.textContent =
                 "O conjunto publicado pelo TSE inclui resultados do segundo turno. Consulte a localidade e o cargo para acompanhar a apuração.";
