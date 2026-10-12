@@ -278,9 +278,18 @@ def activate(transport, values, *, reviews=None, http=None):
     transaction=secrets.token_hex(32)
     journal_root = transport.private+'/transactions/'+transaction
     backup_root=transport.private+'/backups/'+identity(old['snapshot_id'])+'/files'
-    # Complete backup and exact marker are verified before any selected byte changes.
+    # Previous-snapshot backups are immutable and reusable across retries.
+    # Verify the exact bytes before reusing; never trust an existing path alone.
+    # For an absent file, upload and then verify it before proceeding.
+    # A mismatched existing backup is a hard failure, not an overwrite.
     for name, raw in before.items():
-        transport.put(backup_root+'/'+name, raw)
+        destination = backup_root+'/'+name
+        saved = transport.read(destination, optional=True)
+        if saved is None:
+            transport.put(destination, raw)
+            saved = transport.read(destination)
+        if saved != raw:
+            raise ValueError('existing_backup_content_mismatch')
     transport.put(journal_root+'/before-marker.json', old_marker)
     transport.put(journal_root+'/before-descriptor.json', canonical(prior_desc))
     journal = {'schema_version':1, 'status':'prepared', 'snapshot_id':sid,
