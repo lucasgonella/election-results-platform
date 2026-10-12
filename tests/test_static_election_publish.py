@@ -149,3 +149,36 @@ def test_static_read_retry_is_bounded(monkeypatch):
     with pytest.raises(RuntimeError, match="ftp_read_failed.*attempts=3.*TimeoutError"):
         transport.read(transport.site + "/version.json")
     assert len(calls) == 3
+
+
+def test_election_ftp_timeout_is_isolated(monkeypatch):
+    from collector.src import static_election_publish as pub
+    from deploy import frontend as wire
+
+    class Socket:
+        def __init__(self):
+            self.timeout = None
+        def settimeout(self, value):
+            self.timeout = value
+
+    class FTP:
+        def __init__(self):
+            self.timeout = 90
+            self.sock = Socket()
+
+    sessions = []
+    def original_connect():
+        session = FTP()
+        sessions.append(session)
+        return session
+
+    monkeypatch.setattr(wire, "connect", original_connect)
+    transport = pub.connect("staging")
+    assert transport.ftp.timeout == 15
+    assert transport.ftp.sock.timeout == 15
+    assert transport.reconnect is pub.election_ftp_connect
+    renewed = transport.reconnect()
+    assert renewed.timeout == 15
+    assert renewed.sock.timeout == 15
+    assert len(sessions) == 2
+    assert sessions[0] is not sessions[1]
