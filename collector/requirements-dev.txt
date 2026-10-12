@@ -1,4 +1,7 @@
-﻿-r requirements.txt
+-r requirements.txt
 
 pytest>=8,<10
 pytest-cov>=6,<8
+
+# Isolated loopback FTP transaction tests (never production credentials).
+pyftpdlib>=2,<3

@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from .election_release import candidates, parse, stamp, tree
+from .election_release import UFS, candidates, parse, stamp, tree, validate_result
 
 
 META = {"manifest.json", "version.json", "alerts.json"}
@@ -21,7 +22,10 @@ def canonical(value):
 
 
 def verify(directory: Path):
-    values = tree(directory)
+    return verify_values(tree(directory))
+
+
+def verify_values(values, *, strict=False):
     if not META.issubset(values):
         raise ValueError("missing_second_round_metadata")
     version = parse(values["version.json"])
@@ -48,9 +52,11 @@ def verify(directory: Path):
         office = item.get("office")
         scope = item.get("scope")
         if (type(office) is not int or office not in OFFICES or not isinstance(scope, str)
-                or not (scope == "br" or scope == "zz" or (len(scope) == 2 and scope.isalpha() and scope.islower()))
+                or not scope in UFS + ["br", "zz"]
                 or name != f"{scope}/{OFFICES[office]}.json" or name in names):
             raise ValueError("invalid_second_round_path")
+        if item.get("round") != 2 or (office == 3 and scope not in UFS):
+            raise ValueError("invalid_second_round_entry_identity")
         names.add(name)
         payload = parse(values[name]) if name in values else None
         if not isinstance(payload, dict):
@@ -65,6 +71,35 @@ def verify(directory: Path):
                 or payload.get("snapshot", {}).get("captured_at") != item.get("captured_at")):
             raise ValueError("invalid_second_round_result_identity")
         candidates(payload)
+        if strict:
+            validate_result(name, payload, item, 'oficial', 2)
+            for candidate in payload['candidates']:
+                if not isinstance(candidate.get('name'), str) or not candidate['name'].strip():
+                    raise ValueError('invalid_second_round_candidate_name')
+                if candidate['elected'] and not candidate['result_status'].casefold().startswith('eleito'):
+                    raise ValueError('invalid_second_round_elected_status')
+            sections = payload['snapshot'].get('sections', {})
+            for field in ('total', 'totalized'):
+                if type(sections.get(field)) is not int or sections[field] < 0:
+                    raise ValueError('invalid_second_round_sections')
+            if sections['totalized'] > sections['total']:
+                raise ValueError('invalid_second_round_sections')
+            for group in ('sections', 'turnout', 'abstentions'):
+                percent = payload['snapshot'].get(group, {}).get('percentage')
+                if percent is not None:
+                    try: numeric = Decimal(str(percent))
+                    except InvalidOperation: raise ValueError('invalid_second_round_statistics') from None
+                    if not numeric.is_finite() or not 0 <= numeric <= 100:
+                        raise ValueError('invalid_second_round_statistics')
+            for group in ('electorate', 'turnout', 'abstentions'):
+                for key, value in payload['snapshot'].get(group, {}).items():
+                    if key != 'percentage' and value is not None and (type(value) is not int or value < 0):
+                        raise ValueError('invalid_second_round_statistics')
+            if not isinstance(payload['snapshot'].get('votes'), dict):
+                raise ValueError('invalid_second_round_votes')
+            for value in payload['snapshot']['votes'].values():
+                if value is not None and (type(value) is not int or value < 0):
+                    raise ValueError('invalid_second_round_votes')
         count += payload["candidate_count"]
     if set(values) != names | META:
         raise ValueError("unexpected_second_round_files")

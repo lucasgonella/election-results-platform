@@ -74,6 +74,8 @@ const SCOPE_NAMES = {
 let manifest = null;
 let alerts = [];
 let publishedVersion = null;
+let roundTwoWaitingTimer = null;
+let roundTwoRetryPending = false;
 
 let selectedScope = null;
 let selectedOffice = null;
@@ -1804,7 +1806,12 @@ async function loadVersion() {
         );
     }
 
-    return response.json();
+    const version = await response.json();
+    if (SELECTED_ROUND === 2 && (version.environment !== "oficial" || version.round !== 2
+        || typeof version.snapshot_id !== "string" || !/^[a-f0-9]{64}$/.test(version.snapshot_id))) {
+        throw new Error("second_round_marker_not_official");
+    }
+    return version;
 }
 
 
@@ -1826,8 +1833,13 @@ async function loadManifest(base = activeDataBase) {
         );
     }
 
-    manifest =
-        await response.json();
+    const nextManifest = await response.json();
+    if (SELECTED_ROUND === 2 && (nextManifest.environment !== "oficial"
+        || !Array.isArray(nextManifest.results) || !nextManifest.results.length
+        || nextManifest.results.some(row => Number(row.round) !== 2))) {
+        throw new Error("second_round_not_official");
+    }
+    manifest = nextManifest;
 
     // Only announce a second-round dataset when it is actually present.
     const guideTitle = document.getElementById("round-guide-title");
@@ -1875,6 +1887,7 @@ async function refreshIfChanged() {
         activeDataBase = candidateBase;
 
         renderElectedByState();
+        renderScopeSelector();
 
         const newItem =
             currentManifestItem();
@@ -1917,6 +1930,16 @@ async function initialize() {
         } catch (error) {
             document.body.classList.add("round-two-unavailable");
             document.getElementById("round-unavailable").hidden = false;
+            document.getElementById("environment-badge").textContent = "Aguardando dados oficiais";
+            if (!roundTwoWaitingTimer) {
+                roundTwoWaitingTimer = setInterval(async () => {
+                    if (roundTwoRetryPending) return;
+                    roundTwoRetryPending = true;
+                    try { await initialize(); }
+                    catch (retryError) { console.error("Round two retry failed:", retryError); }
+                    finally { roundTwoRetryPending = false; }
+                }, REFRESH_MS);
+            }
             return;
         }
     }
@@ -1951,6 +1974,13 @@ async function initialize() {
     updateUrl();
 
     await loadSelectedResult();
+
+    if (roundTwoWaitingTimer) {
+        clearInterval(roundTwoWaitingTimer);
+        roundTwoWaitingTimer = null;
+    }
+    document.body.classList.remove("round-two-unavailable");
+    document.getElementById("round-unavailable").hidden = true;
 
     setInterval(
         refreshIfChanged,
