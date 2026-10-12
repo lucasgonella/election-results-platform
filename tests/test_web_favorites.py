@@ -122,8 +122,8 @@ def test_favorites_refresh_current_published_data():
         encoding="utf-8"
     )
 
-    assert '"/data/version.json"' in js
-    assert '"/data/manifest.json"' in js
+    assert 'ROUND_DATA_ROOT + "/version.json"' in js
+    assert 'ROUND_DATA_ROOT + "/manifest.json"' in js
     assert "const REFRESH_MS = 5000;" in js
     assert "checkForPublication" in js
     assert "resultCache" in js

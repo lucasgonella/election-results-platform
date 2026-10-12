@@ -4,11 +4,12 @@
     const STORAGE_KEY =
         "election-results:favorites:v1";
 
-    const VERSION_URL =
-        "/data/version.json";
+    const SELECTED_ROUND = new URLSearchParams(window.location?.search || "").get("turno") === "2" ? 2 : 1;
+    const ROUND_DATA_ROOT = SELECTED_ROUND === 2 ? "/data/turnos/2" : "/data";
+    const VERSION_URL = ROUND_DATA_ROOT + "/version.json";
 
     const MANIFEST_URL =
-        "/data/manifest.json";
+        ROUND_DATA_ROOT + "/manifest.json";
 
     const REFRESH_MS = 5000;
 
@@ -23,7 +24,7 @@
 
     let manifest = null;
     let publishedVersion = null;
-    let activeDataBase = "/data";
+    let activeDataBase = ROUND_DATA_ROOT;
     let refreshTimer = null;
     let rendering = false;
 
@@ -185,7 +186,7 @@
     function setManifest(
         value,
         version = null,
-        base = "/data"
+        base = ROUND_DATA_ROOT
     ) {
         const changed = (
             version !== null
@@ -349,14 +350,18 @@
             );
         }
 
-        return response.json();
+        const version = await response.json();
+        if (SELECTED_ROUND === 2 && (version.round !== 2 || version.environment !== "oficial" || !/^[a-f0-9]{64}$/.test(version.snapshot_id || ""))) {
+            throw new Error("second_round_marker_not_official");
+        }
+        return version;
     }
 
 
     async function refreshManifest(version = null) {
         version = version || await loadVersion();
         const base = /^[a-f0-9]{32,64}$/.test(version.snapshot_id || "")
-            ? `/data/releases/${version.snapshot_id}` : "/data";
+            ? `${ROUND_DATA_ROOT}/releases/${version.snapshot_id}` : ROUND_DATA_ROOT;
         const response =
             await fetch(
                 `${base}/manifest.json`,
@@ -371,8 +376,11 @@
             );
         }
 
-        manifest =
-            await response.json();
+        const nextManifest = await response.json();
+        if (SELECTED_ROUND === 2 && (nextManifest.environment !== "oficial" || !nextManifest.results?.length || nextManifest.results.some(row => Number(row.round) !== 2))) {
+            throw new Error("second_round_not_official");
+        }
+        manifest = nextManifest;
         activeDataBase = base;
 
         return manifest;
@@ -785,6 +793,7 @@
             }`;
 
 
+        const awaiting = result.election?.round === 2 && result.snapshot?.sections?.totalized === 0;
         const numbers =
             document.createElement(
                 "div"
@@ -800,7 +809,7 @@
             );
 
         votes.innerHTML =
-            `<strong>${
+            awaiting ? "<strong>—</strong><span> votos ainda não apurados</span>" : `<strong>${
                 formatNumber(
                     candidate.votes
                 )
@@ -813,7 +822,7 @@
             );
 
         percentage.innerHTML =
-            `<strong>${
+            awaiting ? "<strong>—</strong>" : `<strong>${
                 formatPercentage(
                     candidate
                         .vote_percentage
@@ -835,7 +844,7 @@
 
 
         if (
-            candidate.result_status
+            awaiting || candidate.result_status
         ) {
             const status =
                 document.createElement(
@@ -846,7 +855,7 @@
                 "favorite-status";
 
             status.textContent =
-                candidate.result_status;
+                awaiting ? "Aguardando apuração" : candidate.result_status;
 
             card.appendChild(
                 status
@@ -879,7 +888,7 @@
             ],
             [
                 "Apuração",
-                `${
+                awaiting ? "Aguardando apuração" : `${
                     formatPercentage(
                         result.snapshot
                             .sections

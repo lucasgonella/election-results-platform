@@ -77,7 +77,11 @@ def cycle(state, *, dry_run=False, client=None, connector=connect):
         verified = describe(values)
         result = ({'status': 'verified_dry_run', 'snapshot_id': verified['snapshot_id']}
                   if dry_run else publisher.publish(destination))
-        result.update(collected_at=now(), round=2, failures=0, retry_after_epoch=0)
+        result.update(collected_at=now(), round=2, failures=0,
+                      publication_phase=verified['publication_phase'],
+                      official_files_checked=len(client.records),
+                      ea20_files_checked=sum(url.endswith('-u.json') for url in client.records),
+                      retry_after_epoch=time.time() + 300 if verified['publication_phase'] == 'candidate_roster' else 0)
         save(health_path, result)
         return result
     except AwaitingData:

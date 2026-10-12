@@ -136,6 +136,8 @@ def build_values(client, plans):
                 raise ValueError('non_official_second_round_result')
             parsed = parse_ea20(raw)
             validate_target(target, parsed)
+            if not parsed.offices[0].candidates:
+                raise AwaitingData()
             if parsed.generated_at is None:
                 raise ValueError('missing_official_generation')
             # Source generation gives identical packages for identical data.
@@ -145,11 +147,12 @@ def build_values(client, plans):
                 raise ValueError('duplicate_second_round_result')
             values[name] = payload
             started |= bool(parsed.stats.sections_totalized and parsed.stats.sections_totalized > 0)
-    if not values or not started:
+    if not values:
         raise AwaitingData()
     generation = max(v['snapshot']['generated_at'] for v in values.values())
     rows = [manifest_item(value, Path(name)) for name, value in sorted(values.items())]
-    meta = {'schema_version': 1, 'environment': 'oficial', 'round': 2, 'generated_at': generation}
+    meta = {'schema_version': 1, 'environment': 'oficial', 'round': 2, 'generated_at': generation,
+            'publication_phase': 'counting' if started else 'candidate_roster'}
     values['manifest.json'] = {**meta, 'result_count': len(rows),
         'candidate_count': sum(r['candidate_count'] for r in rows), 'results': rows}
     values['version.json'] = meta

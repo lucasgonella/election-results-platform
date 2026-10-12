@@ -223,10 +223,7 @@ def http_read(relative):
 
 
 def describe(values):
-    verified = verify_values(values, strict=True)
-    if not any(parse(raw)['snapshot']['sections']['totalized'] > 0 for name, raw in values.items() if name not in META):
-        raise ValueError('second_round_apuration_not_started')
-    return verified
+    return verify_values(values, strict=True)
 
 
 def marker_for(verified):
@@ -292,6 +289,7 @@ class Publisher:
         checkpoint = load(self.checkpoint_path)
         return {'status': 'verified' if marker else 'awaiting_official_round_two_data',
                 'snapshot_id': verified['snapshot_id'] if verified else None,
+                'publication_phase': verified['publication_phase'] if verified else None,
                 'checkpoint_matches': (checkpoint or {}).get('snapshot_id') == (verified or {}).get('snapshot_id'),
                 'pending': bool(load(self.job_path)), 'remote_lock': self.t.metadata(PRIVATE + '/lock/') is not None,
                 'checked_at': now()}
@@ -422,6 +420,8 @@ class Publisher:
             if not before_names <= after_names: raise ValueError('second_round_inventory_regression')
             for name in before_names:
                 old, new = parse(prior[name]), parse(values[name])
+                if old['snapshot']['sections']['totalized'] > 0 and new['snapshot']['sections']['totalized'] == 0:
+                    raise ValueError('second_round_counting_regression')
                 if {str(c['tse_candidate_seq']) for c in old['candidates']} != {str(c['tse_candidate_seq']) for c in new['candidates']}:
                     raise ValueError('second_round_roster_change_requires_review')
                 transition(name, old, new)

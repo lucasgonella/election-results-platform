@@ -10,7 +10,9 @@ from test_second_round_transactions import Source, package
 
 def test_real_pipeline_waiting_has_no_public_connection_in_dry_run(tmp_path):
     state=tmp_path/'state'
-    result=cycle(state,dry_run=True,client=Source(totalized=0),connector=lambda:pytest.fail('FTP in dry-run'))
+    client=Source(totalized=0)
+    client.payload['carg'][0]['agr']=[]
+    result=cycle(state,dry_run=True,client=client,connector=lambda:pytest.fail('FTP in dry-run'))
     assert result['status']=='awaiting_official_round_two_data'
     assert load(state/'health.json')['failures']==0
     assert not (state/'checkpoint.json').exists()
@@ -95,3 +97,14 @@ def test_round2_service_isolated_and_existing_units_untouched():
     env=(root/'deploy/env/round2.env.example').read_text()
     assert 'TSE_ROUND=2' in env
     assert 'collector.env' not in service
+
+
+def test_complete_official_roster_dry_run_has_proof_without_activation(tmp_path):
+    state=tmp_path/'roster-state'
+    result=cycle(state,dry_run=True,client=Source(totalized=0))
+    root=next((state/'cycles').glob('*/package'))
+    assert result['status']=='verified_dry_run'
+    assert result['publication_phase']=='candidate_roster'
+    assert verify_proof(root)['snapshot_id']==result['snapshot_id']
+    assert result['retry_after_epoch']>__import__('time').time()
+    assert not (state/'checkpoint.json').exists()

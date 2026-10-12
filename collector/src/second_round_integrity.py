@@ -82,6 +82,10 @@ def verify_values(values, *, strict=False):
             for field in ('total', 'totalized'):
                 if type(sections.get(field)) is not int or sections[field] < 0:
                     raise ValueError('invalid_second_round_sections')
+            if payload['candidate_count'] < 1:
+                raise ValueError('missing_second_round_candidates')
+            if sections['totalized'] == 0 and any(c['votes'] != 0 or c['elected'] or Decimal(str(c['vote_percentage'])) != 0 for c in payload['candidates']):
+                raise ValueError('second_round_results_without_totalized_sections')
             if sections['totalized'] > sections['total']:
                 raise ValueError('invalid_second_round_sections')
             for group in ('sections', 'turnout', 'abstentions'):
@@ -108,6 +112,9 @@ def verify_values(values, *, strict=False):
     if (not isinstance(alerts.get("alerts"), list)
             or alerts.get("alert_count") != len(alerts["alerts"])):
         raise ValueError("invalid_second_round_alerts")
+    phase = 'counting' if any(parse(values[name]).get('snapshot', {}).get('sections', {}).get('totalized', 0) > 0 for name in names) else 'candidate_roster'
+    if strict and any(meta.get('publication_phase', phase) != phase for meta in (version, manifest, alerts)):
+        raise ValueError('second_round_publication_phase_mismatch')
     listing = {name: {"sha256": hashlib.sha256(raw).hexdigest(), "size": len(raw)}
                for name, raw in sorted(values.items())}
     descriptor = {"schema_version": 1, "environment": "oficial", "round": 2,
@@ -115,4 +122,5 @@ def verify_values(values, *, strict=False):
     release_id = hashlib.sha256(canonical(descriptor)).hexdigest()
     return {"status": "verified_offline", "round": 2, "snapshot_id": release_id,
             "files": len(values), "targets": len(rows), "descriptor": descriptor,
+            "publication_phase": phase,
             "publication_enabled": False}

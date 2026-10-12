@@ -11,11 +11,14 @@ experimental e não é uma dependência; o PR #75 não é integrado.
 
 `second_round_collection` guarda ETag/payload somente em `http-cache` dedicado,
 recusa redirects, fontes simuladas e `f != o`, valida eleição/turno/abrangência/
-cargo do EA14/EA20. Todos os targets precisam estar presentes. Zero seções
-totalizadas em todos os arquivos produz `awaiting_official_round_two_data`,
-exit 0, sem marcador ou release pública. Os votos zero do TSE não são estimativas.
-Quando pelo menos um target começa a apuração, o pacote completo pode incluir
-outros targets ainda zerados, exclusivamente como publicados pelo TSE.
+cargo do EA14/EA20. Todos os targets e seus candidatos precisam estar presentes.
+Ausência de configuração, arquivos ou cadastro de candidatos produz
+`awaiting_official_round_two_data`, exit 0, sem ativação incompleta. O cadastro
+oficial completo já é publicável antes da apuração: metadados anunciam
+`publication_phase=candidate_roster`, e o portal mostra nomes/números/partidos,
+com “Aguardando apuração” em vez de votos e percentuais. Zero seções exige votos
+zero e nenhum eleito. Quando o TSE totaliza seções, a fase passa automaticamente
+a `counting`; localidades ainda zeradas continuam com a indicação de espera.
 
 O timestamp de captura é fixado na geração oficial para identidade determinística;
 a hora real da coleta fica na prova privada e no health. SHA-256 de cada arquivo,
@@ -75,7 +78,7 @@ e `StateDirectory` restringem escrita local. O instalador faz preflight sem FTP
 em um subdiretório separado, executa um ciclo real e somente então habilita timer.
 Não instalar um segundo writer do mesmo namespace em outra máquina.
 
-Timer: 60 segundos após conclusão, jitter até 10s. Ausência de apuração faz nova
+Timer: 60 segundos após conclusão, jitter até 10s. Cadastro anterior à apuração ou ausência de dados faz nova
 consulta após 300s. 429 respeita Retry-After limitado a 60–3600s; falhas de rede
 usam backoff exponencial limitado a 3600s, sem replay imediato de STOR/ativação.
 Não há retentativa dentro de uma execução que ignore journal. A execução seguinte
@@ -99,8 +102,9 @@ sudo -u electionround2 sh -c 'cd /opt/election-round2/current && /opt/election-r
 checkpoint. `health` verifica informação recente (900s) e retorna exit 2 em erro.
 `health.json`, `http-cache`, `cycles/*/source-proof.json`, `pending.json`,
 `journals`, `receipts` e `checkpoint.json` ficam no estado dedicado. Somente uma
-publicação confirmada escreve checkpoint. Enquanto aguarda, checkpoint ausente é
-normal. Não existe notificação externa configurada; journald/health são auditáveis.
+publicação confirmada escreve checkpoint. Enquanto não há pacote oficial completo, checkpoint ausente é
+normal. Um cadastro oficial completo publicado já tem recibo e checkpoint, mesmo
+antes de haver votos apurados. Não existe notificação externa configurada; journald/health são auditáveis.
 
 ## Recuperação
 

@@ -19,7 +19,7 @@ const urls = [];
 const id = 'a'.repeat(64);
 const version = {environment:'fixture', generated_at:'same', snapshot_id:id, activation_revision:'1'};
 const item = {scope:'ac', office:1, path:'ac/president.json', election_code:1, round:1, tse_idg:'1', captured_at:'same'};
-const context = {window:{}, document:{}, console, localStorage:{getItem:()=>null}, fetch:async(url)=>{
+const context = {URLSearchParams,window:{}, document:{}, console, localStorage:{getItem:()=>null}, fetch:async(url)=>{
   urls.push(url);
   return {ok:true,json:async()=>url.endsWith('manifest.json')?{results:[item]}:
     {candidates:[], snapshot:{tse_idg:'1', captured_at:'same'}}};
@@ -73,3 +73,65 @@ vm.runInContext(`loadAlerts=async()=>{};selectInitialRoute=()=>{};renderEnvironm
 })().catch(e=>{console.error(e);process.exitCode=1;});
 '''.replace('SOURCE',json.dumps(source))
     subprocess.run([node,'-e',script],check=True,capture_output=True,text=True)
+
+
+@pytest.mark.parametrize('round_number',[1,2])
+def test_favorites_refresh_stays_in_the_selected_round(round_number):
+    source=(Path(__file__).resolve().parents[1]/'web/public/eleicoes/favorites.js').read_text()
+    source=source.replace('    init();','    window.harness = {loadVersion, refreshManifest, loadFavoriteData};')
+    script=r'''
+const vm=require('node:vm'),assert=require('node:assert/strict'),urls=[];
+const round=ROUND,root=round===2?'/data/turnos/2':'/data',id='a'.repeat(64);
+const version={environment:'oficial',round,snapshot_id:id,generated_at:'2026-10-12T12:00:00Z'};
+const item={scope:'ac',office:3,path:'ac/governor.json',election_code:6260,round,tse_idg:'1',captured_at:'same'};
+let mixed=false;
+const context={URLSearchParams,window:{location:{search:'?turno='+round}},document:{},console,
+ localStorage:{getItem:()=>null},fetch:async url=>{urls.push(url);return {ok:true,json:async()=>
+ url.endsWith('version.json')?version:url.endsWith('manifest.json')?
+ {environment:'oficial',results:[{...item,round:mixed?1:round}]}:
+ {candidates:[],snapshot:{tse_idg:'1',captured_at:'same'}}};}};
+vm.createContext(context);vm.runInContext(SOURCE,context);
+(async()=>{
+ const h=context.window.harness;await h.refreshManifest(await h.loadVersion());
+ await h.loadFavoriteData({scope:'ac',office:3,election_code:6260,round,tse_candidate_seq:'missing'});
+ assert.deepEqual(urls,[root+'/version.json',root+'/releases/'+id+'/manifest.json',root+'/releases/'+id+'/ac/governor.json']);
+ if(round===2){mixed=true;await assert.rejects(h.refreshManifest(version),/second_round_not_official/);}
+})().catch(e=>{console.error(e);process.exitCode=1;});
+'''.replace('ROUND',str(round_number)).replace('SOURCE',json.dumps(source))
+    subprocess.run([shutil.which('node'),'-e',script],check=True,capture_output=True,text=True)
+
+
+def test_candidate_and_favorite_cards_show_waiting_before_round_two_count():
+    root=Path(__file__).resolve().parents[1]/'web/public/eleicoes'
+    app=(root/'app.js').read_text();app=app[:app.index('document.getElementById(\n    "scope-select"')]
+    favorites=(root/'favorites.js').read_text().replace('    init();','    window.favoriteHarness = {createCard};')
+    script=r'''
+const vm=require('node:vm'),assert=require('node:assert/strict');
+class Element{
+ constructor(){this.children=[];this.style={};this.classList={add:()=>{},remove:()=>{}};}
+ append(...nodes){this.children.push(...nodes);}appendChild(node){this.children.push(node);}
+ setAttribute(){}addEventListener(){}
+ set textContent(value){this.text=String(value);}get textContent(){return (this.text||'')+this.children.map(n=>n.textContent).join(' ');}
+ set innerHTML(value){this.text=value.replace(/<[^>]*>/g,'');}
+}
+const context={URLSearchParams,console,window:{location:{search:'?turno=2'},Favorites:{isFavorite:()=>false}},
+ document:{createElement:()=>new Element()},localStorage:{getItem:()=>null}};
+vm.createContext(context);vm.runInContext(APP,context);vm.runInContext(FAVORITES,context);
+const candidate={tse_candidate_seq:1,ballot_name:'Candidatura oficial',name:'Nome oficial',ballot_number:13,
+ party_acronym:'PTST',votes:0,vote_percentage:0,result_status:'',elected:false};
+const result={election:{round:2},office:{name:'Governador'},scope:{code:'ac'},
+ snapshot:{sections:{totalized:0,percentage:0},captured_at:'2026-10-12T12:00:00Z'},candidate_count:1,candidates:[candidate]};
+context.result=result;context.candidate=candidate;
+vm.runInContext(`selectedScope='ac';selectedOffice=3;currentResult=result;`,context);
+let card=vm.runInContext('renderCandidateCard(candidate,1,true)',context);
+assert(card.textContent.includes('Candidatura oficial'));assert(card.textContent.includes('Aguardando apuração'));
+assert(!card.textContent.includes('0%'));assert(!card.textContent.includes('0 votos'));
+const favorite={scope:'ac',scope_name:'Acre',office:3,office_name:'Governador'};
+let favoriteCard=context.window.favoriteHarness.createCard({favorite,candidate,result,synced:true});
+assert(favoriteCard.textContent.includes('Aguardando apuração'));assert(!favoriteCard.textContent.includes('0%'));
+result.snapshot.sections.totalized=1;candidate.votes=123;candidate.vote_percentage=50;
+card=vm.runInContext('renderCandidateCard(candidate,1,true)',context);
+assert(card.textContent.includes('123'));assert(card.textContent.includes('50,00%'));
+assert(!card.textContent.includes('Aguardando apuração'));
+'''.replace('APP',json.dumps(app)).replace('FAVORITES',json.dumps(favorites))
+    subprocess.run([shutil.which('node'),'-e',script],check=True,capture_output=True,text=True)

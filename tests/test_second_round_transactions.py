@@ -37,7 +37,12 @@ class Source:
         payload.update(f='o', ele='6260', t='2', dg='25/10/2026', hg=f'12:00:{generation:02d}')
         payload['s']['st'] = str(totalized)
         for candidate in payload['carg'][0]['agr'][0]['par'][0]['cand']:
-            candidate.update(st='Não eleito', e='n')
+            candidate.update(st='Não eleito' if totalized else '', e='n')
+            if totalized == 0: candidate.update(vap='0', pvapn='0')
+        if totalized == 0:
+            payload['s']['pstn'] = '0'
+            for key in payload['v']: payload['v'][key] = '0'
+            for key in ('est', 'c', 'pcn', 'a', 'pan'): payload['e'][key] = '0'
         self.config, self.ea14, self.payload = config, ea14, payload
         self.records = {}
 
@@ -82,8 +87,9 @@ def test_ea14_wrong_identity_fails(field,value):
     with pytest.raises(ValueError, match='invalid_second_round_ea14'): discover(client)
 
 
-def test_no_results_is_informative():
+def test_missing_official_candidates_is_informative():
     client = Source(totalized=0)
+    client.payload['carg'][0]['agr'] = []
     with pytest.raises(AwaitingData): build_values(client, discover(client))
 
 
@@ -425,3 +431,57 @@ def test_production_data_transport_keeps_one_passive_session(monkeypatch):
     t=pub.connect()
     assert t.ftp is ftp and t.transfer is None
     assert t.reconnect() is ftp
+
+
+def test_official_zero_section_roster_is_publishable_and_deterministic():
+    a,b=Source(totalized=0),Source(totalized=0)
+    values=build_values(a,discover(a))
+    assert values==build_values(b,discover(b))
+    verified=describe(values)
+    assert verified['publication_phase']=='candidate_roster'
+    result=parse(values['ac/governor.json'])
+    assert result['candidate_count']==2
+    assert all(c['votes']==0 and c['elected'] is False for c in result['candidates'])
+
+
+def test_roster_publication_transitions_automatically_to_counting(rig,tmp_path):
+    p,_,ftp=rig
+    source=Source(totalized=0)
+    values=build_values(source,discover(source))
+    roster=tmp_path/'roster';roster.mkdir()
+    for name,raw in values.items():
+        path=roster/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
+    receipt=p.publish(roster)
+    assert p.publish(roster)['status']=='unchanged'
+    assert p.publish(package(tmp_path/'counting',2))['snapshot_id']!=receipt['snapshot_id']
+    assert p.status()['checkpoint_matches']
+    assert ftp.files['/public_html/data/version.json']==b'first round unchanged'
+
+
+@pytest.mark.parametrize('case',['votes','percentage','elected','phase'])
+def test_zero_section_roster_rejects_premature_results(case):
+    source=Source(totalized=0)
+    values=build_values(source,discover(source))
+    result=parse(values['ac/governor.json'])
+    if case=='votes':result['candidates'][0]['votes']=1
+    if case=='percentage':result['candidates'][0]['vote_percentage']='1'
+    if case=='elected':result['candidates'][0].update(elected=True,result_status='Eleito')
+    if case=='phase':
+        manifest=parse(values['manifest.json']);manifest['publication_phase']='counting'
+        values['manifest.json']=canonical(manifest)
+    values['ac/governor.json']=canonical(result)
+    with pytest.raises(ValueError):describe(values)
+
+
+def test_counting_cannot_regress_to_a_zero_section_roster(rig,tmp_path):
+    publisher,first,ftp=rig
+    publisher.publish(first)
+    before=ftp.files[SITE+'/version.json']
+    source=Source(totalized=0,generation=2)
+    values=build_values(source,discover(source))
+    directory=tmp_path/'regressed';directory.mkdir()
+    for name,raw in values.items():
+        path=directory/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
+    with pytest.raises(ValueError,match='counting_regression'):publisher.publish(directory)
+    assert ftp.files[SITE+'/version.json']==before
+    assert load(publisher.job_path) is None
