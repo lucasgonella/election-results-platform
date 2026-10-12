@@ -46,7 +46,7 @@ def accept_checkpoint(root, package, receipt):
 
 
 def require_official_runtime():
-    """Fail closed before collecting or writing to production."""
+    """Production writer is first-round only until second-round isolation is proven."""
     from .runtime import load_settings
     settings=load_settings()
     if (settings.environment!='oficial'
@@ -55,6 +55,27 @@ def require_official_runtime():
             or settings.round_number!=1):
         raise ValueError('production_requires_official_tse_runtime')
     return settings
+
+
+def second_round_preflight(settings, current, *, state_dir):
+    """Read-only readiness check. NEVER authorizes the first-round writer to run round 2."""
+    from .runtime import RuntimeSettings
+    if not isinstance(settings, RuntimeSettings) or settings.environment!='oficial' or settings.base_url!='https://resultados.tse.jus.br' or settings.cycle!='ele2026' or settings.round_number!=2:
+        raise ValueError('invalid_second_round_runtime')
+    state_dir = Path(state_dir)
+    if state_dir.is_symlink() or not state_dir.is_absolute():
+        raise ValueError('unsafe_round_two_state')
+    if not isinstance(current, dict) or not isinstance(current.get('snapshot_id'), str):
+        raise ValueError('invalid_first_round_checkpoint')
+    # Explicit separation from the active first-round state; never infer it from FTP.
+    first_root = root_path().resolve()
+    candidate = state_dir.resolve()
+    if candidate == first_root or candidate.is_relative_to(first_root) or first_root.is_relative_to(candidate):
+        raise ValueError('round_state_overlap')
+    return {'status': 'preflight_only', 'round': 2,
+            'first_round_snapshot_id': current['snapshot_id'],
+            'round_two_state_directory': str(candidate),
+            'publication_enabled': False}
 
 
 def pinned_reviews(root, current_snapshot, baseline, stage):
