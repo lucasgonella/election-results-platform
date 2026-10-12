@@ -354,3 +354,40 @@ def test_private_prefix_collision_fails_closed_without_overwrite():
     with pytest.raises(RuntimeError,match='immutable_collision'):
         t.put(transaction_path(second,'descriptor.json'),canonical({'snapshot_id':second}))
     assert t.read(path)==original
+
+
+def test_connection_timeout_port_passive_and_home_are_pinned(monkeypatch):
+    from collector.src.second_round_publish import ftp_connect
+    from deploy import frontend as wire
+    calls=[]
+    class Session:
+        def connect(self,host,port,timeout):calls.append(('connect',port,timeout))
+        def login(self,user,password):pass
+        def set_pasv(self,value):calls.append(('passive',value))
+        def pwd(self):return '/'
+        def close(self):pass
+    monkeypatch.setattr(wire,'PassiveFTP',Session)
+    for key in ('HOST','USER','PASSWORD'):monkeypatch.setenv('LOCAWEB_FTP_'+key,'synthetic-only')
+    monkeypatch.setenv('LOCAWEB_FTP_PORT','21')
+    assert isinstance(ftp_connect(),Session)
+    assert calls==[('connect',21,15),('passive',True)]
+
+
+def test_native_ftp_uses_nocwd_without_credentials_in_argv(monkeypatch):
+    from collector.src.second_round_publish import native_transfer
+    from types import SimpleNamespace
+    calls=[]
+    monkeypatch.setenv('LOCAWEB_FTP_HOST','example.invalid')
+    monkeypatch.setenv('LOCAWEB_FTP_USER','synthetic-user')
+    monkeypatch.setenv('LOCAWEB_FTP_PASSWORD','synthetic-secret')
+    def run(command,**kwargs):
+        calls.append(command)
+        assert 'synthetic-user' not in ' '.join(command)
+        assert 'synthetic-secret' not in ' '.join(command)
+        return SimpleNamespace(returncode=0,stdout=b'bytes')
+    monkeypatch.setattr('subprocess.run',run)
+    assert native_transfer(SITE+'/version.json')==b'bytes'
+    command=calls[0]
+    assert command[command.index('--ftp-method')+1]=='nocwd'
+    assert command[command.index('--proto')+1]=='=ftp'
+    assert command[-1].startswith('ftp://example.invalid:21/')

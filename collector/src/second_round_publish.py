@@ -159,7 +159,7 @@ def native_transfer(path, raw=None):
         path_netrc.write_text('machine ' + host + ' login ' + token(os.environ['LOCAWEB_FTP_USER']) +
             ' password ' + token(os.environ['LOCAWEB_FTP_PASSWORD']) + '\n')
         command = ['curl', '--disable', '--silent', '--fail', '--proto', '=ftp', '--ftp-pasv',
-            '--max-time', '45', '--connect-timeout', '15', '--max-filesize', str(wire.MAX_BYTES),
+            '--ftp-method', 'nocwd', '--max-time', '45', '--connect-timeout', '15', '--max-filesize', str(wire.MAX_BYTES),
             '--netrc-file', str(path_netrc), '--noproxy', '*']
         if raw is not None: command += ['--upload-file', '-']
         command += ['ftp://' + host + ':21/' + quote(path.lstrip('/'), safe='/')]
@@ -173,10 +173,18 @@ def ftp_connect():
     import time
     for attempt in range(3):
         try:
-            ftp = wire.connect()
-            ftp.timeout = 15
-            ftp.sock.settimeout(15)
-            return ftp
+            if os.environ.get('LOCAWEB_FTP_PORT', '21') != '21':
+                raise ValueError('plain_ftp_port_21_required')
+            ftp = wire.PassiveFTP()
+            try:
+                ftp.connect(os.environ['LOCAWEB_FTP_HOST'], 21, timeout=15)
+                ftp.login(os.environ['LOCAWEB_FTP_USER'], os.environ['LOCAWEB_FTP_PASSWORD'])
+                ftp.set_pasv(True)
+                if ftp.pwd() != '/': raise RuntimeError('ftp_home_mismatch')
+                return ftp
+            except BaseException:
+                ftp.close()
+                raise
         except (OSError, EOFError):
             if attempt == 2: raise
             time.sleep(attempt + 1)
