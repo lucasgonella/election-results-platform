@@ -366,6 +366,8 @@ def finalize_published(transport, expected_snapshot, *, http=None):
         raise ValueError('missing_abandoned_lock')
     marker_raw=transport.read(transport.site+'/version.json')
     marker=parse(marker_raw)
+    if marker.get('snapshot_id')!=sid:
+        raise ValueError('published_snapshot_changed')
     current=parse(transport.read(transport.private+'/current.json'))
     pending=parse(transport.read(transport.private+'/pending.json'))
     tx=identity(current.get('transaction'))
