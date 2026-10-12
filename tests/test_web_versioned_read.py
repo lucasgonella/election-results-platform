@@ -14,7 +14,7 @@ class VersionedReadTests(unittest.TestCase):
         app = APP.read_text(encoding="utf-8")
         composition = COMPOSITION.read_text(encoding="utf-8")
         for source in (app, composition):
-            self.assertIn('if (id == null) return "/data";', source)
+            self.assertIn('if (id == null) return ROUND_DATA_ROOT;', source)
             self.assertIn('/data/releases/', source)
             self.assertIn('^[a-f0-9]{32,64}$', source)
         self.assertIn("dataBaseForVersion(version)", app)
