@@ -61,16 +61,27 @@ def preflight(*, envelope, secret, current, pending, assembled, expected_base, b
 
 def main():
     parser = argparse.ArgumentParser()
-    for key in ("envelope", "secret", "current", "pending", "assembled", "expected-base"):
+    for key in ("envelope", "secret", "current", "pending", "assembled", "expected-base", "baseline"):
         parser.add_argument("--" + key, required=True)
     args = parser.parse_args()
     secret = regular_file(Path(args.secret))
     envelope = json.loads(regular_file(Path(args.envelope)))
     current = json.loads(regular_file(Path(args.current)))
     pending = json.loads(regular_file(Path(args.pending)))
+    baseline_root = Path(args.baseline)
+    if baseline_root.is_symlink() or not baseline_root.is_dir():
+        raise ValueError("invalid_trusted_baseline_directory")
+    baseline = {}
+    for name in set(targets()) | META:
+        path = baseline_root
+        for segment in name.split("/"):
+            path = path / segment
+            if path.is_symlink():
+                raise ValueError("symlink_not_allowed")
+        baseline[name] = regular_file(path)
     print(json.dumps(preflight(envelope=envelope, secret=secret, current=current,
                                pending=pending, assembled=args.assembled,
-                               expected_base=args.expected_base)))
+                               expected_base=args.expected_base, baseline_values=baseline)))
 
 
 if __name__ == "__main__":
