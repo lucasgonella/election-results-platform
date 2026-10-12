@@ -1829,6 +1829,23 @@ async function loadManifest(base = activeDataBase) {
     manifest =
         await response.json();
 
+    // Only announce a second-round dataset when it is actually present.
+    const guideTitle = document.getElementById("round-guide-title");
+    const guideDescription = document.getElementById("round-guide-description");
+    if (guideTitle && guideDescription) {
+        const results = Array.isArray(manifest?.results) ? manifest.results : [];
+        const rounds = new Set(results.map(item => Number(item.round)));
+        if (rounds.has(2)) {
+            guideTitle.textContent = "Dados do 2º turno disponíveis";
+            guideDescription.textContent =
+                "O conjunto publicado pelo TSE inclui resultados do segundo turno. Consulte a localidade e o cargo para acompanhar a apuração.";
+        } else {
+            guideTitle.textContent = "Preparado para o 2º turno";
+            guideDescription.textContent =
+                "O portal continuará acompanhando as publicações oficiais. Dados do segundo turno serão identificados quando disponíveis, sem projeções.";
+        }
+    }
+
     return manifest;
 }
 async function refreshIfChanged() {

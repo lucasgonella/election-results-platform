@@ -1440,3 +1440,19 @@ footer a:hover {
         text-align: left;
     }
 }
+
+/* Homepage discovery: direct access to transparency and round-aware guidance */
+.discovery-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px;margin:0 0 28px}
+.discovery-card{display:flex;flex-direction:column;align-items:flex-start;gap:13px;border-radius:19px;padding:25px;text-decoration:none;min-width:0;box-shadow:0 12px 35px rgba(13,33,62,.07)}
+.discovery-card-featured{background:linear-gradient(126deg,#14294a,#254c7d);color:#fff}
+.discovery-card-round{background:#fff;border:1px solid #dce3ee;color:#1b293c}
+.discovery-card strong{font-size:clamp(20px,2.5vw,29px);letter-spacing:-.025em;line-height:1.12}
+.discovery-card>span:not(.discovery-kicker):not(.discovery-cta){font-size:14px;line-height:1.6;opacity:.87}
+.discovery-kicker{font-size:11px;font-weight:800;letter-spacing:.11em}
+.discovery-card-featured .discovery-kicker{color:#b9d6ff}
+.discovery-card-round .discovery-kicker{color:#446f9e}
+.discovery-cta{display:inline-flex;gap:7px;align-items:center;margin-top:auto;font-weight:800;font-size:13px}
+.discovery-card-round .discovery-cta{color:#1859a0}
+.discovery-card-featured:hover,.discovery-card-featured:focus-visible{background:linear-gradient(126deg,#1d3c66,#3166a2)}
+.discovery-card a:focus-visible,.discovery-card:focus-visible{outline:3px solid #73aaf4;outline-offset:3px}
+@media(max-width:720px){.discovery-grid{grid-template-columns:1fr}.discovery-card{padding:22px}}
