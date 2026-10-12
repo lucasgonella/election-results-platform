@@ -118,3 +118,34 @@ def test_generation_regression_and_reopening_stay_blocked(release):
     with pytest.raises(ValueError,match='result_regression'):compare(before,after,reviews)
     v['snapshot']['generated_at']='2026-10-09T12:00:02+00:00';v['snapshot']['totalization_final']=False;after[name]=canonical(v)
     with pytest.raises(ValueError,match='totalization_reopened'):compare(before,after,reviews)
+
+
+def test_static_read_reconnects_after_timeout(monkeypatch):
+    from deploy import frontend as wire
+    attempts = []
+    sessions = [ElectionFTP(), ElectionFTP()]
+    def unreliable(self, path, *, optional=False):
+        attempts.append(self.ftp)
+        if len(attempts) == 1:
+            raise TimeoutError("interrupted RETR")
+        return b'verified bytes'
+    monkeypatch.setattr(wire.Transport, "read", unreliable)
+    monkeypatch.setattr("time.sleep", lambda seconds: None)
+    transport = Transport(sessions[0], "staging", reconnect=lambda: sessions[1])
+    path = transport.site + "/version.json"
+    assert transport.read(path) == b'verified bytes'
+    assert attempts == sessions
+
+
+def test_static_read_retry_is_bounded(monkeypatch):
+    from deploy import frontend as wire
+    calls = []
+    def always_timeout(self, path, *, optional=False):
+        calls.append(path)
+        raise TimeoutError("interrupted RETR")
+    monkeypatch.setattr(wire.Transport, "read", always_timeout)
+    monkeypatch.setattr("time.sleep", lambda seconds: None)
+    transport = Transport(ElectionFTP(), "staging", reconnect=ElectionFTP)
+    with pytest.raises(RuntimeError, match="ftp_read_failed.*attempts=3.*TimeoutError"):
+        transport.read(transport.site + "/version.json")
+    assert len(calls) == 3
