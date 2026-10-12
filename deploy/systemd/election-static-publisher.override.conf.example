@@ -1,0 +1,14 @@
+[Service]
+WorkingDirectory=/opt/election-results-platform/static-releases/APPROVED_COMMIT
+EnvironmentFile=/etc/election-results-platform/secrets/ftp.env
+Environment=ELECTION_STATIC_STATE_DIR=/var/lib/election-results-platform/static-ftp
+Environment=ELECTION_LEGACY_STATE_DIR=/var/lib/election-results-platform/live
+Environment=TSE_BASE_URL=https://resultados.tse.jus.br
+Environment=TSE_ENVIRONMENT=oficial
+Environment=TSE_CYCLE=ele2026
+Environment=TSE_ROUND=1
+Environment=PUBLISH_AFTER_COLLECT=false
+ExecStart=
+ExecStart=/opt/election-results-platform/.venv/bin/python -m collector.src.static_election_runner cycle
+UMask=0077
+TimeoutStartSec=15min

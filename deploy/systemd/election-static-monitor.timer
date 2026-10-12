@@ -1,0 +1,10 @@
+[Unit]
+Description=Alert when election publication or collection stops
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=5min
+Unit=election-static-monitor.service
+
+[Install]
+WantedBy=timers.target

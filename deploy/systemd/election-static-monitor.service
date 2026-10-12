@@ -1,0 +1,21 @@
+[Unit]
+Description=Check public election freshness and publication failures
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=electioncollector
+Group=electioncollector
+WorkingDirectory=/opt/election-results-platform
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/election-results-platform/.venv/bin/python -m collector.src.publication_health --static-health /var/lib/election-results-platform/static-ftp/health.json
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+TimeoutStartSec=2min
+
+[Install]
+WantedBy=multi-user.target
