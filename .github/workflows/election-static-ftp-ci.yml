@@ -24,3 +24,30 @@ jobs:
       - run: python -m compileall -q collector deploy
       - run: git diff --check
       - run: node --check web/public/eleicoes/app.js && node --check web/public/eleicoes/favorites.js && node --check web/public/eleicoes/composition.js
+  staging:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feat/static-election-ftp'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: election-static-ftp-staging
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Real synthetic FTP staging recovery and rollback (no production)
+        env:
+          LOCAWEB_FTP_HOST: ${{ secrets.LOCAWEB_FTP_HOST }}
+          LOCAWEB_FTP_USER: ${{ secrets.LOCAWEB_FTP_USER }}
+          LOCAWEB_FTP_PASSWORD: ${{ secrets.LOCAWEB_FTP_PASSWORD }}
+          LOCAWEB_FTP_PORT: '21'
+        run: python deploy/scripts/static-election-staging.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: static-election-staging-${{ github.sha }}
+          path: ${{ runner.temp }}/election-static-staging/staging-trial.json
+          if-no-files-found: error
+          retention-days: 30
