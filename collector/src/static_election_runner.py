@@ -114,10 +114,73 @@ def run_cycle(root, *, collect=None):
     finally:transport.ftp.close()
 
 
+
+# The previously deployed release uses a different snapshot-ID construction.
+# This is a strictly local, read-only-input preparation step. It does not
+# write the remote FTP namespace, activate any marker or adopt a checkpoint.
+LEGACY_PUBLIC_SNAPSHOT = 'fd062ecbbafbe78ddfc240658e70525b6bf9e0cf28a8e21d64e0fb4b55d985ba'
+LEGACY_CONTENT_SNAPSHOT = '3aaa6f6581f721f55e4940702f6d37bb194e1af52bde6c34de9c83656670773b'
+
+
+def prepare_legacy_bootstrap(root, baseline, marker_path, checkpoint):
+    from .election_release import STATE, validate_release
+    from .static_election_publish import identity
+    if (root/'current.json').exists() or (root/'bootstrap-legacy').exists():
+        raise ValueError('bootstrap_already_exists')
+    inputs=[baseline,marker_path,checkpoint]
+    if any(p.is_symlink() for p in inputs):
+        raise ValueError('bootstrap_symlink_input')
+    base=tree(baseline);state=tree(checkpoint)
+    marker=parse(marker_path.read_bytes())
+    if identity(marker.get('snapshot_id')) != LEGACY_PUBLIC_SNAPSHOT:
+        raise ValueError('unexpected_legacy_snapshot')
+    desc=descriptor(base)
+    content_id=digest(canonical(desc))
+    if content_id != LEGACY_CONTENT_SNAPSHOT:
+        raise ValueError('legacy_content_mismatch')
+    if marker.get('environment') != desc['environment'] or marker.get('generated_at') != desc['generated_at']:
+        raise ValueError('legacy_marker_mismatch')
+    if set(state) != STATE:
+        raise ValueError('incomplete_legacy_checkpoint')
+    baseline_rows=entries(parse(base['manifest.json']))
+    if entries(parse(state['manifest.json'])) != baseline_rows:
+        raise ValueError('legacy_manifest_mismatch')
+    # Legacy checkpoint metadata may have a later collector timestamp;
+    # manifest rows and target-state IDGs are the authoritative alignment.
+    # The cache must have exactly the public manifest targets and IDGs.
+    cache=parse(state['target-state.json'])
+    if set(value.get('path') for value in cache.values()) != set(targets()):
+        raise ValueError('legacy_cache_paths_mismatch')
+    indexed={row['path']:row for row in baseline_rows.values()}
+    if any(value.get('tse_idg') != indexed[value['path']]['tse_idg'] for value in cache.values()):
+        raise ValueError('legacy_cache_idg_mismatch')
+    # Never modify the existing live trees; retain marker and both identities.
+    destination=root/'bootstrap-legacy'
+    destination.mkdir(parents=True,exist_ok=False)
+    for name, raw in base.items():
+        path=destination/'candidate'/name
+        path.parent.mkdir(parents=True,exist_ok=True)
+        path.write_bytes(raw)
+    for name, raw in state.items():
+        path=destination/'checkpoint'/name
+        path.parent.mkdir(parents=True,exist_ok=True)
+        path.write_bytes(raw)
+    (destination/'marker.json').write_bytes(marker_path.read_bytes())
+    save(destination/'identity.json',{'legacy_snapshot_id':LEGACY_PUBLIC_SNAPSHOT,
+        'content_snapshot_id':content_id,'descriptor':desc,
+        'status':'prepared_locally_not_adopted'})
+    return {'status':'prepared_locally_not_adopted','files':len(base),
+            'legacy_snapshot_id':LEGACY_PUBLIC_SNAPSHOT,
+            'content_snapshot_id':content_id,'package':str(destination)}
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation',choices=['adopt','cycle','reconcile'])
+    parser.add_argument('operation',choices=['adopt','cycle','reconcile','prepare-legacy'])
     parser.add_argument('--package',type=Path)
+    parser.add_argument('--baseline',type=Path)
+    parser.add_argument('--marker',type=Path)
+    parser.add_argument('--checkpoint',type=Path)
     args=parser.parse_args()
     root=root_path();root.mkdir(parents=True,exist_ok=True)
     import fcntl
@@ -127,7 +190,11 @@ def main():
             job=root/'in-flight.json'
             if args.operation!='reconcile' and job.exists() and parse(job.read_bytes()).get('status')!='complete':
                 raise ValueError('interrupted_job_requires_reconciliation')
-            if args.operation=='adopt':
+            if args.operation=='prepare-legacy':
+                if not all((args.baseline,args.marker,args.checkpoint)):
+                    raise ValueError('missing_legacy_bootstrap_input')
+                result=prepare_legacy_bootstrap(root,args.baseline,args.marker,args.checkpoint)
+            elif args.operation=='adopt':
                 if (root/'current.json').exists():raise ValueError('static_state_already_adopted')
                 values=tree(args.package/'candidate');desc=descriptor(values);sid=digest(canonical(desc))
                 transport=connect('production')

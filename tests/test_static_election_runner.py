@@ -51,3 +51,41 @@ def test_interrupted_job_never_starts_another_collection(tmp_path):
     def forbidden(work):raise AssertionError('must not collect')
     with pytest.raises(ValueError,match='interrupted_job_requires_reconciliation'):
         runner.run_cycle(tmp_path,collect=forbidden)
+
+
+def test_legacy_bootstrap_is_local_only_and_keeps_two_identifiers(release,tmp_path,monkeypatch):
+    _,before,_,_,_=release
+    from collector.src.static_election_publish import descriptor
+    base=tmp_path/'historical';base.mkdir()
+    for name,raw in before.items():
+        target=base/name;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(raw)
+    marker=tmp_path/'marker.json'
+    historical_id='f'*64
+    marker.write_bytes(canonical(parse(before['version.json'])|{'snapshot_id':historical_id}))
+    state=tmp_path/'legacy-state'
+    checkpoint(state,before)
+    monkeypatch.setattr(runner,'LEGACY_PUBLIC_SNAPSHOT',historical_id)
+    monkeypatch.setattr(runner,'LEGACY_CONTENT_SNAPSHOT',digest(canonical(descriptor(before))))
+    root=tmp_path/'isolated';root.mkdir()
+    report=runner.prepare_legacy_bootstrap(root,base,marker,state)
+    assert report['status']=='prepared_locally_not_adopted'
+    assert report['legacy_snapshot_id']!=report['content_snapshot_id']
+    assert tree(root/'bootstrap-legacy'/'candidate')==before
+    assert tree(root/'bootstrap-legacy'/'checkpoint')==tree(state)
+    assert not (root/'current.json').exists()
+    assert not (root/'health.json').exists()
+    with pytest.raises(ValueError,match='bootstrap_already_exists'):
+        runner.prepare_legacy_bootstrap(root,base,marker,state)
+
+
+def test_legacy_bootstrap_rejects_unexpected_snapshot(release,tmp_path):
+    _,before,_,_,_=release
+    base=tmp_path/'baseline';base.mkdir()
+    for name,raw in before.items():
+        target=base/name;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(raw)
+    marker=tmp_path/'marker.json';marker.write_bytes(canonical(parse(before['version.json'])|{'snapshot_id':'0'*64}))
+    state=tmp_path/'checkpoint';checkpoint(state,before)
+    root=tmp_path/'new';root.mkdir()
+    with pytest.raises(ValueError,match='unexpected_legacy_snapshot'):
+        runner.prepare_legacy_bootstrap(root,base,marker,state)
+    assert not (root/'bootstrap-legacy').exists()
