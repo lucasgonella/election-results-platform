@@ -55,7 +55,8 @@ def run_cycle(root, *, collect=None):
         raise ValueError('unsafe_checkpoint_location')
     baseline=previous/'candidate';before=tree(baseline)
     desc=descriptor(before)
-    if desc!=current['descriptor'] or digest(canonical(desc))!=current['snapshot_id']:
+    expected_content=current.get('content_snapshot_id',current['snapshot_id'])
+    if desc!=current['descriptor'] or digest(canonical(desc))!=expected_content:
         raise ValueError('local_release_mismatch')
     cycle=root/'cycles'/(datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')+'-'+secrets.token_hex(4))
     cycle.mkdir(parents=True,exist_ok=False)
@@ -174,9 +175,101 @@ def prepare_legacy_bootstrap(root, baseline, marker_path, checkpoint):
             'content_snapshot_id':content_id,'package':str(destination)}
 
 
+
+def adopt_legacy_remote(root, *, transport=None):
+    """One-time adoption of a pinned, validated legacy snapshot.
+
+    No writes to /public_html/data. The marker is an existing historical ID,
+    while the current descriptor stores its separately verified content hash.
+    Any interrupted private-file creation can be retried only if bytes agree.
+    """
+    package=root/'bootstrap-legacy'
+    if (root/'current.json').exists():
+        raise ValueError('static_state_already_adopted')
+    if (root/'in-flight.json').exists():
+        raise ValueError('pending_local_job')
+    identity=parse((package/'identity.json').read_bytes())
+    candidate=tree(package/'candidate')
+    checkpoint=tree(package/'checkpoint')
+    marker_raw=(package/'marker.json').read_bytes()
+    marker=parse(marker_raw)
+    desc=descriptor(candidate)
+    content_id=digest(canonical(desc))
+    sid=LEGACY_PUBLIC_SNAPSHOT
+    if (identity.get('status')!='prepared_locally_not_adopted'
+            or identity.get('legacy_snapshot_id')!=sid
+            or identity.get('content_snapshot_id')!=content_id
+            or content_id!=LEGACY_CONTENT_SNAPSHOT
+            or identity.get('descriptor')!=desc or marker.get('snapshot_id')!=sid):
+        raise ValueError('legacy_bootstrap_identity_mismatch')
+    from .election_release import STATE
+    if set(checkpoint)!=STATE or entries(parse(checkpoint['manifest.json']))!=entries(parse(candidate['manifest.json'])):
+        raise ValueError('legacy_checkpoint_mismatch')
+    own=transport is None
+    t=transport or connect('production')
+    try:
+        if t.metadata(t.private+'/lock/') is not None:
+            raise ValueError('remote_transaction_lock_present')
+        if t.read(t.private+'/pending.json',optional=True) is not None:
+            raise ValueError('remote_pending_transaction')
+        if t.read(t.site+'/version.json')!=marker_raw:
+            raise ValueError('legacy_public_marker_changed')
+        receipt=verify_public(t,marker_raw,desc)
+        # Guard remote private adoption under exclusive FTP MKD. The existing
+        # public selection remains untouched throughout.
+        with t.lock():
+            if t.read(t.site+'/version.json')!=marker_raw:
+                raise ValueError('legacy_public_marker_changed')
+            current={
+                'schema_version':1,'snapshot_id':sid,
+                'content_snapshot_id':content_id,'descriptor':desc,
+                'published_at':marker['generated_at'],'adoption':'legacy'
+            }
+            watermarks={name:parse(candidate[name]) for name in targets()}
+            for name,raw in (
+                ('watermarks.json',canonical(watermarks)),
+                ('current.json',canonical(current)),
+            ):
+                path=t.private+'/'+name
+                existing=t.read(path,optional=True)
+                if existing is not None and existing!=raw:
+                    raise ValueError('remote_adoption_collision')
+                if existing is None:
+                    t.put(path,raw)
+            if t.read(t.site+'/version.json')!=marker_raw:
+                raise ValueError('legacy_public_marker_changed')
+            for name,raw in (
+                ('watermarks.json',canonical(watermarks)),
+                ('current.json',canonical(current)),
+            ):
+                if t.read(t.private+'/'+name)!=raw:
+                    raise RuntimeError('remote_adoption_verification_failed')
+        # Local adoption is last. If this fails, private files remain
+        # reconcilable by retrying exactly the same validated input.
+        destination=root/'generations'/sid
+        if not destination.exists():
+            destination.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copytree(package,destination)
+        elif tree(destination/'candidate')!=candidate or tree(destination/'checkpoint')!=checkpoint:
+            raise ValueError('local_legacy_generation_collision')
+        save(root/'current.json',{
+            'snapshot_id':sid,'content_snapshot_id':content_id,
+            'descriptor':desc,'package':str(destination),
+            'published_at':marker['generated_at']})
+        save(root/'health.json',{
+            'status':'adopted_legacy','snapshot_id':sid,
+            'published_at':marker['generated_at'],
+            'public_verified_at':receipt['verified_at'],
+            'collected_at':desc['generated_at'],'eligible_changes':0})
+        return {'status':'adopted_legacy','snapshot_id':sid,
+                'content_snapshot_id':content_id,'files':receipt['files']}
+    finally:
+        if own:t.ftp.close()
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation',choices=['adopt','cycle','reconcile','prepare-legacy'])
+    parser.add_argument('operation',choices=['adopt','cycle','reconcile','prepare-legacy','adopt-legacy'])
     parser.add_argument('--package',type=Path)
     parser.add_argument('--baseline',type=Path)
     parser.add_argument('--marker',type=Path)
@@ -194,6 +287,8 @@ def main():
                 if not all((args.baseline,args.marker,args.checkpoint)):
                     raise ValueError('missing_legacy_bootstrap_input')
                 result=prepare_legacy_bootstrap(root,args.baseline,args.marker,args.checkpoint)
+            elif args.operation=='adopt-legacy':
+                result=adopt_legacy_remote(root)
             elif args.operation=='adopt':
                 if (root/'current.json').exists():raise ValueError('static_state_already_adopted')
                 values=tree(args.package/'candidate');desc=descriptor(values);sid=digest(canonical(desc))
