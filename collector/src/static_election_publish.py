@@ -69,6 +69,8 @@ class Transport(wire.Transport):
                 return path
             if name.startswith(('before/', 'files/')) and name.split('/',1)[1] in set(targets()) | META:
                 return path
+        backup=re.fullmatch(r'backups/([a-f0-9]{64})/files/(.+)',relative)
+        if backup and backup[2] in set(targets())|META:return path
         raise ValueError('protected_election_destination')
 
     def put(self, path, raw, *, replace=False):
@@ -129,7 +131,7 @@ def read_release(transport, marker):
     return values, desc
 
 
-def verify_public(transport, marker_raw, desc, *, http=None, selected=True):
+def _verify_public(transport, marker_raw, desc, *, http=None, selected=True):
     if (desc.get('schema_version')!=1 or set(desc.get('files',{}))!=set(targets())|META
             or desc.get('environment') not in {'oficial','fixture'} or type(desc.get('round')) is not int or desc['round'] not in (1,2)):
         raise ValueError('invalid_election_inventory')
@@ -152,6 +154,17 @@ def verify_public(transport, marker_raw, desc, *, http=None, selected=True):
     if selected and http('version.json') != marker_raw:
         raise RuntimeError('public_selection_changed')
     return {'results':137, 'files':140, 'snapshot_id':sid, 'verified_at':instant()}
+
+
+def verify_public(transport, marker_raw, desc, *, http=None, selected=True):
+    # A full HTTPS audit can outlast the FTP server's idle timeout. The remote
+    # MKD lock and journal survive closing the control connection; reconnect
+    # before the next FTP command instead of using a stale socket.
+    if transport.reconnect is None:
+        return _verify_public(transport,marker_raw,desc,http=http,selected=selected)
+    transport.ftp.close()
+    try:return _verify_public(transport,marker_raw,desc,http=http,selected=selected)
+    finally:transport.ftp=transport.reconnect()
 
 
 def compare(before, after, reviews=None):
@@ -214,13 +227,15 @@ def activate(transport, values, *, reviews=None, http=None):
         raise ValueError('stale_release_generation')
     transaction=secrets.token_hex(32)
     journal_root = transport.private+'/transactions/'+transaction
+    backup_root=transport.private+'/backups/'+identity(old['snapshot_id'])+'/files'
     # Complete backup and exact marker are verified before any selected byte changes.
     for name, raw in before.items():
-        transport.put(journal_root+'/before/'+name, raw)
+        transport.put(backup_root+'/'+name, raw)
     transport.put(journal_root+'/before-marker.json', old_marker)
     transport.put(journal_root+'/before-descriptor.json', canonical(prior_desc))
     journal = {'schema_version':1, 'status':'prepared', 'snapshot_id':sid,
                'transaction':transaction,
+               'backup_snapshot_id':old['snapshot_id'],
                'before_marker':old, 'marker':parse(marker_raw), 'descriptor':desc,
                'previous_current':parse(transport.read(transport.private+'/current.json',optional=True) or b'{}')}
     transport.put(journal_root+'/journal.json', canonical(journal))
@@ -284,9 +299,10 @@ def recover(transport, *, http=None, expected_snapshot=None):
         if parse(old_marker)!=journal['before_marker']:
             raise ValueError('invalid_recovery_marker')
         desc=parse(transport.read(base+'/before-descriptor.json'))
+        backup_root=transport.private+'/backups/'+identity(journal['backup_snapshot_id'])+'/files'
         # Verify all backup bytes and the retained previous release before rollback.
         for name,entry in desc['files'].items():
-            wire.verify_bytes(transport.read(base+'/before/'+name),entry)
+            wire.verify_bytes(transport.read(backup_root+'/'+name),entry)
         verify_public(transport,old_marker,desc,http=http,selected=False)
         actual=transport.read(transport.site+'/version.json')
         if parse(actual) not in (journal['before_marker'],journal['marker']):

@@ -34,7 +34,7 @@ def observe():
             if value['snapshot_id'] not in (sid,after_id):raise ValueError('unexpected_fixture_marker')
             observations.append({'snapshot_id':value['snapshot_id']})
         except Exception as error:observations.append(error_report(error))
-        stop.wait(0.2)
+        stop.wait(1)
 observer=None
 try:
     if transport.metadata(transport.private+'/') is not None:

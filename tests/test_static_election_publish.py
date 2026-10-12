@@ -42,7 +42,8 @@ def test_complete_release_single_marker_then_rollback(release):
     assert result['status']=='published' and result['files']==140
     assert result['multinode_guarantee'] is False
     sid=result['snapshot_id'];root=transport.private+'/transactions/'+result['transaction']
-    assert all(transport.ftp.files[root+'/before/'+n]==raw for n,raw in before.items())
+    backup=transport.private+'/backups/'+'a'*64+'/files'
+    assert all(transport.ftp.files[backup+'/'+n]==raw for n,raw in before.items())
     events=transport.ftp.events
     promote=next(i for i,e in enumerate(events) if e==('rename_directory',transport.site+'/releases/'+sid))
     marker=next(i for i,e in enumerate(events) if e==('rename',transport.site+'/version.json'))
