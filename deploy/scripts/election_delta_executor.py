@@ -76,6 +76,13 @@ def execute(*, base, inbox, output, envelope_path, secret_path, expected_base, l
                    "base_snapshot_id": expected_base}, handle)
         handle.flush()
         os.fsync(handle.fileno())
+    # Persist both the receipt directory entry and release claim directory.
+    for directory in (claim, ledger):
+        fd = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
     return result | {"release_id": release, "base_snapshot_id": expected_base}
 
 
