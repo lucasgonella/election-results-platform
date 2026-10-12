@@ -20,3 +20,11 @@ The assembler checks every requested byte and the complete inventory, blocks sym
 5. Run isolated staging and compare duration against production baseline (~9 minutes), then deploy through CI/CD with rollback plan.
 
 Do not change the production systemd unit or use this experiment to publish public data.
+
+## Restricted executor (experimental)
+
+`deploy/scripts/election_delta_executor.py` checks an HMAC-SHA256 signed envelope with exactly five fields: `schema_version`, `base_snapshot_id`, `release_id`, `plan`, and `signature`. The signature covers the first four fields using compact sorted-key UTF-8 JSON. The 32+ byte secret is provided **out of band** in an owner-only file; never upload it via FTP or commit it. The trusted launcher pins `--expected-base` to the current validated snapshot and `--output` must end with the 64-character release identifier.
+
+This is **not yet** a live deploy endpoint. It has no listener, no SSH privileges, no marker update, no automatic transition of pending/lock/watermarks, and no authorization to modify public files. A restrictive runner must supply safe directory roots and enforce trusted current-snapshot checks, one-shot delivery IDs, filesystem confinement, and transactional promotion. Signing alone does not prevent replay against an unchanged baseline; the destination-exists guard only prevents repeating the same output path.
+
+Until end-to-end authenticated delivery, rollback, journal reconciliation, and staging tests are complete, do not run this against production and do not enable automatic activation.
