@@ -33,8 +33,10 @@ de diretórios usa CWD por componente e MKD do basename: no ensaio Locaweb, MKD
 com caminho absoluto longo não respondeu, mas o mesmo destino por basename
 foi criado em 0,04s. A sessão volta a `/` antes dos demais comandos. Credenciais existentes são
 reutilizadas sem cópia permanente: systemd `LoadCredential` lê o `ftp.env`
-protegido. FTP convencional, passivo, porta 21; curl STOR/RETR com netrc temporário
-0600, sem secrets em argv; HTTPS somente GET.
+protegido. FTP convencional, passivo, porta 21; os JSONs eleitorais pequenos reutilizam
+uma sessão PassiveFTP/Transport, como o escritor vigente do primeiro turno,
+sem secrets em argv. O transporte visual curl permanece inalterado. HTTPS
+somente GET. O adaptador curl isolado serve a ensaios e usa netrc temporário 0600.
 
 O journal local é substituído com fsync antes do lock MKD exclusivo. O flock
 local serializa ciclo, recuperação e operações manuais nesta app01. O lock remoto

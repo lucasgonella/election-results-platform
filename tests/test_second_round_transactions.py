@@ -382,7 +382,7 @@ def test_connection_timeout_port_passive_and_home_are_pinned(monkeypatch):
     assert calls==[('connect',21,15),('passive',True)]
 
 
-def test_native_ftp_uses_nocwd_without_credentials_in_argv(monkeypatch):
+def test_native_ftp_uses_multicwd_without_credentials_in_argv(monkeypatch):
     from collector.src.second_round_publish import native_transfer
     from types import SimpleNamespace
     calls=[]
@@ -397,7 +397,7 @@ def test_native_ftp_uses_nocwd_without_credentials_in_argv(monkeypatch):
     monkeypatch.setattr('subprocess.run',run)
     assert native_transfer(SITE+'/version.json')==b'bytes'
     command=calls[0]
-    assert command[command.index('--ftp-method')+1]=='nocwd'
+    assert command[command.index('--ftp-method')+1]=='multicwd'
     assert command[command.index('--proto')+1]=='=ftp'
     assert command[-1].startswith('ftp://example.invalid:21/')
 
@@ -416,3 +416,12 @@ def test_long_release_directory_uses_basename_mkd_and_restores_home():
     assert calls==['releases','a'*64]
     assert ftp.pwd()=='/'
     assert t.metadata(SITE+'/releases/'+'a'*64+'/')['type']=='dir'
+
+
+def test_production_data_transport_keeps_one_passive_session(monkeypatch):
+    from collector.src import second_round_publish as pub
+    ftp=FTP()
+    monkeypatch.setattr(pub,'ftp_connect',lambda:ftp)
+    t=pub.connect()
+    assert t.ftp is ftp and t.transfer is None
+    assert t.reconnect() is ftp

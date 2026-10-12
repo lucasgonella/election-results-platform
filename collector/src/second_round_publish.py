@@ -171,7 +171,7 @@ def native_transfer(path, raw=None):
         path_netrc.write_text('machine ' + host + ' login ' + token(os.environ['LOCAWEB_FTP_USER']) +
             ' password ' + token(os.environ['LOCAWEB_FTP_PASSWORD']) + '\n')
         command = ['curl', '--disable', '--silent', '--fail', '--proto', '=ftp', '--ftp-pasv',
-            '--ftp-method', 'nocwd', '--max-time', '45', '--connect-timeout', '15', '--max-filesize', str(wire.MAX_BYTES),
+            '--ftp-method', 'multicwd', '--max-time', '45', '--connect-timeout', '15', '--max-filesize', str(wire.MAX_BYTES),
             '--netrc-file', str(path_netrc), '--noproxy', '*']
         if raw is not None: command += ['--upload-file', '-']
         command += ['ftp://' + host + ':21/' + quote(path.lstrip('/'), safe='/')]
@@ -203,7 +203,8 @@ def ftp_connect():
 
 
 def connect():
-    return Transport(ftp_connect(), reconnect=ftp_connect, transfer=native_transfer)
+    # Small electoral JSONs share one passive control session, as round one does.
+    return Transport(ftp_connect(), reconnect=ftp_connect)
 
 
 def http_read(relative):
