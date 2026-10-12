@@ -234,7 +234,7 @@ def test_ftp_real_isolated_server(tmp_path):
         ftp.connect('127.0.0.1',server.socket.getsockname()[1],timeout=5)
         ftp.login('test','synthetic-only')
         transport=Transport(ftp)
-        path=PRIVATE+'/transactions/'+'a'*64+'/descriptor.json'
+        path=PRIVATE+'/transactions/'+'a'*24+'/descriptor.json'
         transport.put(path,b'isolated transfer')
         assert transport.read(path)==b'isolated transfer'
         transport.put(path,b'isolated rename replacement',replace=True)
@@ -341,3 +341,16 @@ def test_lost_mkd_response_reconciles_remote_directory_without_replay():
     t.directory(PRIVATE)
     assert attempts==[PRIVATE]
     assert t.metadata(PRIVATE+'/')['type']=='dir'
+
+
+def test_private_prefix_collision_fails_closed_without_overwrite():
+    from collector.src.second_round_publish import transaction_path
+    ftp=FTP();t=Transport(ftp)
+    first='a'*64;second='a'*24+'b'*40
+    path=transaction_path(first,'descriptor.json')
+    assert path==transaction_path(second,'descriptor.json')
+    original=canonical({'snapshot_id':first})
+    t.put(path,original)
+    with pytest.raises(RuntimeError,match='immutable_collision'):
+        t.put(transaction_path(second,'descriptor.json'),canonical({'snapshot_id':second}))
+    assert t.read(path)==original

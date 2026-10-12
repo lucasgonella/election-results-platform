@@ -72,6 +72,11 @@ def local_lock(state):
         yield
 
 
+def transaction_path(sid, name):
+    # Full identity stays in the verified descriptor; prefix collisions fail closed.
+    return PRIVATE + '/transactions/' + identity(sid)[:24] + '/' + name
+
+
 def result_name(name):
     return name in META or bool(re.fullmatch(r'(' + '|'.join(UFS + ['br', 'zz']) +
         r')/(president|governor)\.json', name))
@@ -109,7 +114,7 @@ class Transport(wire.Transport):
         sid, _, name = relative.partition('/')
         if re.fullmatch('[a-f0-9]{64}', sid) and result_name(name): return path
         if path == PRIVATE + '/lock/owner.json': return path
-        match = re.fullmatch(re.escape(PRIVATE) + r'/transactions/([a-f0-9]{64})/(descriptor|before-marker)\.json', path)
+        match = re.fullmatch(re.escape(PRIVATE) + r'/transactions/([a-f0-9]{24})/(descriptor|before-marker)\.json', path)
         if match: return path
         raise ValueError('protected_second_round_destination')
 
@@ -245,7 +250,7 @@ class Publisher:
     def release(self, marker, *, expected=None):
         item = parse(marker)
         sid = identity(item['snapshot_id'])
-        desc = parse(self.t.read(PRIVATE + '/transactions/' + sid + '/descriptor.json'))
+        desc = parse(self.t.read(transaction_path(sid, 'descriptor.json')))
         validate_descriptor(desc, sid)
         if expected is not None and expected != desc: raise ValueError('remote_descriptor_conflict')
         values = {}
@@ -347,7 +352,7 @@ class Publisher:
                     self.t.ftp.delete(path + '.upload')
             if self.t.read(path, optional=True) is None: self.t.put(path, raw)
             self.fault('after_file')
-        self.t.put(PRIVATE + '/transactions/' + job['snapshot_id'] + '/descriptor.json', canonical(job['descriptor']))
+        self.t.put(transaction_path(job['snapshot_id'], 'descriptor.json'), canonical(job['descriptor']))
         self.release(new, expected=job['descriptor'])
         job['phase'] = 'verified'
         save(self.job_path, job)
@@ -412,5 +417,5 @@ class Publisher:
         self.remote_lock(job)
         self.fault('after_lock')
         if before:
-            self.t.put(PRIVATE + '/transactions/' + job['snapshot_id'] + '/before-marker.json', before)
+            self.t.put(transaction_path(job['snapshot_id'], 'before-marker.json'), before)
         return self.recover()

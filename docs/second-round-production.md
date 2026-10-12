@@ -26,7 +26,9 @@ protegem integridade de transporte, não autenticam um administrador comprometid
 Todos os destinos públicos são `/public_html/data/turnos/2/releases/<sha256>` e
 `/public_html/data/turnos/2/version.json`. Nenhuma operação escreve o marcador
 `/data/version.json`, o Raio-X ou estudos. Metadados privados de transporte ficam
-em `/election-round2-deploy`, fora de `public_html`. Credenciais existentes são
+em `/election-round2-deploy`, fora de `public_html`. Diretórios privados usam
+um prefixo de 24 caracteres do ID; o descritor conserva e valida o ID completo.
+Colisão de prefixo com bytes diferentes bloqueia sem sobrescrever. Credenciais existentes são
 reutilizadas sem cópia permanente: systemd `LoadCredential` lê o `ftp.env`
 protegido. FTP convencional, passivo, porta 21; curl STOR/RETR com netrc temporário
 0600, sem secrets em argv; HTTPS somente GET.
