@@ -1,23 +1,22 @@
-const VERSION_URL =
-    "/data/version.json";
+const SELECTED_ROUND = new URLSearchParams(window.location.search).get("turno") === "2" ? 2 : 1;
+const ROUND_DATA_ROOT = SELECTED_ROUND === 2 ? "/data/turnos/2" : "/data";
+const VERSION_URL = ROUND_DATA_ROOT + "/version.json";
 
-const MANIFEST_URL =
-    "/data/manifest.json";
+const MANIFEST_URL = ROUND_DATA_ROOT + "/manifest.json";
 
-const ALERTS_URL =
-    "/data/alerts.json";
+const ALERTS_URL = ROUND_DATA_ROOT + "/alerts.json";
 
 const REFRESH_MS = 5000;
 
 // Legacy /data remains the default until version.json advertises a verified release.
-let activeDataBase = "/data";
+let activeDataBase = ROUND_DATA_ROOT;
 function dataBaseForVersion(version) {
     const id = version?.snapshot_id;
-    if (id == null) return "/data";
+    if (id == null) return ROUND_DATA_ROOT;
     if (typeof id !== "string" || !/^[a-f0-9]{32,64}$/.test(id)) {
         throw new Error("Invalid snapshot_id");
     }
-    return `/data/releases/${id}`;
+    return `${ROUND_DATA_ROOT}/releases/${id}`;
 }
 
 
@@ -562,6 +561,7 @@ function updateUrl() {
             window.location.href
         );
 
+    url.searchParams.set("turno", String(SELECTED_ROUND));
     url.searchParams.set(
         "scope",
         selectedScope
@@ -1896,6 +1896,30 @@ async function refreshIfChanged() {
     }
 }
 async function initialize() {
+    document.getElementById("round-first")?.setAttribute("aria-current", SELECTED_ROUND === 1 ? "page" : "false");
+    document.getElementById("round-second")?.setAttribute("aria-current", SELECTED_ROUND === 2 ? "page" : "false");
+
+    if (SELECTED_ROUND === 2) {
+        // Never fall back to /data (round one). Round two has a separate,
+        // explicitly published pointer and must advertise round=2 itself.
+        try {
+            const candidateVersion = await loadVersion();
+            const candidateBase = dataBaseForVersion(candidateVersion);
+            const candidateResponse = await fetch(candidateBase + "/manifest.json", {cache:"no-store"});
+            if (!candidateResponse.ok) throw new Error("second_round_manifest_unavailable");
+            const candidateManifest = await candidateResponse.json();
+            if (!Array.isArray(candidateManifest.results)
+                || !candidateManifest.results.length
+                || candidateManifest.results.some(row => Number(row.round) !== 2)
+                || candidateManifest.environment !== "oficial") {
+                throw new Error("second_round_not_official");
+            }
+        } catch (error) {
+            document.body.classList.add("round-two-unavailable");
+            document.getElementById("round-unavailable").hidden = false;
+            return;
+        }
+    }
 
     const version =
         await loadVersion();
