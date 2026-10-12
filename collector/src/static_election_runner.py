@@ -46,6 +46,9 @@ def accept_checkpoint(root, package, receipt):
 
 
 def run_cycle(root, *, collect=None):
+    job=root/'in-flight.json'
+    if job.exists() and parse(job.read_bytes()).get('status')!='complete':
+        raise ValueError('interrupted_job_requires_reconciliation')
     current=parse((root/'current.json').read_bytes())
     previous=Path(current['package'])
     if not previous.resolve().is_relative_to((root/'generations').resolve()):

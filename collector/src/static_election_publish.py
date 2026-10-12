@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 import json
 import re
+import secrets
 from pathlib import Path, PurePosixPath
 from urllib.request import Request, build_opener
 
@@ -211,13 +212,15 @@ def activate(transport, values, *, reviews=None, http=None):
         return {'status':'unchanged', **verify_public(transport, marker_raw, desc, http=http), 'published_at':current['published_at']}
     if stamp(desc['generated_at']) <= stamp(old['generated_at']):
         raise ValueError('stale_release_generation')
-    journal_root = transport.private+'/transactions/'+sid
+    transaction=secrets.token_hex(32)
+    journal_root = transport.private+'/transactions/'+transaction
     # Complete backup and exact marker are verified before any selected byte changes.
     for name, raw in before.items():
         transport.put(journal_root+'/before/'+name, raw)
     transport.put(journal_root+'/before-marker.json', old_marker)
     transport.put(journal_root+'/before-descriptor.json', canonical(prior_desc))
     journal = {'schema_version':1, 'status':'prepared', 'snapshot_id':sid,
+               'transaction':transaction,
                'before_marker':old, 'marker':parse(marker_raw), 'descriptor':desc,
                'previous_current':parse(transport.read(transport.private+'/current.json',optional=True) or b'{}')}
     transport.put(journal_root+'/journal.json', canonical(journal))
@@ -242,7 +245,7 @@ def activate(transport, values, *, reviews=None, http=None):
     result = verify_public(transport, marker_raw, desc, http=http)
     journal.update(status='published', published_at=result['verified_at'])
     current = {'schema_version':1, 'snapshot_id':sid, 'descriptor':desc,
-               'previous_snapshot_id':old['snapshot_id'], 'transaction':sid,
+               'previous_snapshot_id':old['snapshot_id'], 'transaction':transaction,
                'published_at':result['verified_at']}
     for name in targets():
         watermarks[name] = parse(values[name])
@@ -251,6 +254,7 @@ def activate(transport, values, *, reviews=None, http=None):
     transport.put(journal_root+'/journal.json', canonical(journal), replace=True)
     transport.put(transport.private+'/pending.json', canonical({'status':'complete','snapshot_id':sid}), replace=True)
     return {'status':'published', **result, 'published_at':result['verified_at'],
+            'transaction':transaction,
             'activation':'verified_release_then_single_marker_rename', 'multinode_guarantee':False,
             'physical_durability_guarantee':False, 'transport_authenticated_by_hmac':False}
 
@@ -271,10 +275,11 @@ def recover(transport, *, http=None, expected_snapshot=None):
     journal = parse(pending)
     if journal.get('status') == 'complete':
         marker_raw=transport.read(transport.site+'/version.json')
-        _, desc=read_release(transport, parse(marker_raw))
+        before, desc=read_release(transport, parse(marker_raw))
+        validate_watermarks(transport,before,parse(marker_raw)['snapshot_id'])
         result=verify_public(transport,marker_raw,desc,http=http)
     elif journal.get('status') == 'prepared':
-        sid=identity(journal['snapshot_id']); base=transport.private+'/transactions/'+sid
+        sid=identity(journal['transaction']); base=transport.private+'/transactions/'+sid
         old_marker=transport.read(base+'/before-marker.json')
         if parse(old_marker)!=journal['before_marker']:
             raise ValueError('invalid_recovery_marker')

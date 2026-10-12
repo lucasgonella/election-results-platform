@@ -9,6 +9,7 @@ from test_frontend_deploy import FakeFTP
 
 
 class ElectionFTP(FakeFTP):
+    def close(self): pass
     def rename(self, old, new):
         if old in self.dirs:
             self.events.append(('rename_directory',new))
@@ -40,12 +41,16 @@ def test_complete_release_single_marker_then_rollback(release):
     with transport.lock(): result=activate(transport,after,reviews={n:digest(after[n]) for n in targets() if n.startswith('am/')},http=http)
     assert result['status']=='published' and result['files']==140
     assert result['multinode_guarantee'] is False
-    sid=result['snapshot_id'];root=transport.private+'/transactions/'+sid
+    sid=result['snapshot_id'];root=transport.private+'/transactions/'+result['transaction']
     assert all(transport.ftp.files[root+'/before/'+n]==raw for n,raw in before.items())
     events=transport.ftp.events
     promote=next(i for i,e in enumerate(events) if e==('rename_directory',transport.site+'/releases/'+sid))
     marker=next(i for i,e in enumerate(events) if e==('rename',transport.site+'/version.json'))
     assert marker>promote
+    previous_events=len(events)
+    with transport.lock():again=activate(transport,after,http=http)
+    assert again['status']=='unchanged' and again['published_at']==result['published_at']
+    assert not any(e[0]=='upload' for e in transport.ftp.events[previous_events:])
     with transport.lock(): rollback(transport,http=http)
     assert transport.ftp.files[transport.site+'/version.json']==old
     assert transport.metadata(transport.private+'/lock/') is None

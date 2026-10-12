@@ -5,7 +5,7 @@ import pytest
 
 from collector.src.election_release import canonical
 from collector.src.election_release import parse, tree
-from collector.src.publication_health import assess, get_public, inspect, main, origin, write_report
+from collector.src.publication_health import assess, get_public, inspect, main, origin, write_report, static_status
 from static_election_fixtures import bundle
 
 
@@ -154,3 +154,15 @@ def test_supplied_local_root_cannot_silently_lose_state(public, tmp_path):
     live = tmp_path/'live'; live.mkdir()
     with pytest.raises(ValueError, match='local_state_missing'):
         inspect('https://fixture.invalid', live_root=live, read=read, now=now)
+
+
+def test_fresh_unchanged_cycle_preserves_true_publication_date(public):
+    values,marker,expected,read,now=public
+    late=now+timedelta(days=3)
+    report=inspect('https://fixture.invalid',read=read,now=late)
+    health={'status':'unchanged','snapshot_id':marker['snapshot_id'],'eligible_changes':0,
+            'published_at':marker['generated_at'],'collected_at':late.isoformat(),'public_verified_at':late.isoformat()}
+    assert static_status(report,health,late,900)['status']=='ok'
+    assert report['last_successful_publication_at']==marker['generated_at']
+    health['status']='failed'
+    assert 'static_publication_failed' in static_status(report,health,late,900)['alerts']

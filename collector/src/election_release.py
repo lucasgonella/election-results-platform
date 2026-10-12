@@ -297,4 +297,3 @@ def prepare(baseline: Path, marker: Path, stage: Path, state: Path, pending: Pat
                 stream.write(raw)
     (output/'recovery-plan.json').write_bytes(canonical(plan))
     return plan
-
