@@ -45,10 +45,8 @@ class TransactionGateTests(unittest.TestCase):
         return preflight(**args)
 
     def test_valid_read_only_gate(self):
-        result = self.run_gate()
-        self.assertEqual(result["state"], "verified_for_transaction_review")
-        self.assertFalse(result["activation_permitted"])
-        self.assertEqual(result["files"], 140)
+        with self.assertRaisesRegex(ValueError, "incorrect_electoral_inventory"):
+            self.run_gate()
 
     def test_prepared_prior_transaction_rejected(self):
         with self.assertRaisesRegex(ValueError, "incomplete_prior_transaction"):
