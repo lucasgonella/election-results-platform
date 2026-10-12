@@ -18,7 +18,34 @@ class VersionedReadTests(unittest.TestCase):
         self.assertIn('if (id == null) return "/data";', composition)
         self.assertIn('/data/releases/', composition)
         for source in (app, composition):
-            self.assertIn('^[a-f0-9]{32,64}
+            self.assertIn('^[a-f0-9]{32,64}        self.assertIn("dataBaseForVersion(version)", app)
+        self.assertIn("compositionDataBaseForVersion(version)", composition)
+        self.assertIn("activeDataBase = candidateBase;", app)
+        self.assertIn('compositionDataBase + "/"', composition)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_javascript_syntax(self):
+        for path in (APP, COMPOSITION):
+            subprocess.run(["node", "--check", str(path)], check=True)
+
+
+if __name__ == "__main__":
+    unittest.main()
+, source)
+        self.assertIn("dataBaseForVersion(version)", app)
+        self.assertIn("compositionDataBaseForVersion(version)", composition)
+        self.assertIn("activeDataBase = candidateBase;", app)
+        self.assertIn('compositionDataBase + "/"', composition)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_javascript_syntax(self):
+        for path in (APP, COMPOSITION):
+            subprocess.run(["node", "--check", str(path)], check=True)
+
+
+if __name__ == "__main__":
+    unittest.main()
+, source)
         self.assertIn("dataBaseForVersion(version)", app)
         self.assertIn("compositionDataBaseForVersion(version)", composition)
         self.assertIn("activeDataBase = candidateBase;", app)
