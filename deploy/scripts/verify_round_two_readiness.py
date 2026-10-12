@@ -22,17 +22,20 @@ def get(url):
 
 
 def probe(base):
+    from urllib.parse import urlsplit
+    parsed = urlsplit(base)
+    root = parsed.scheme + "://" + parsed.netloc
     homepage_status, homepage = get(base + "/")
     html = homepage.decode("utf-8", "replace")
     ui = homepage_status == 200 and 'id="round-first"' in html and 'id="round-second"' in html
-    first_status, first_raw = get(base + "/data/version.json")
+    first_status, first_raw = get(root + "/data/version.json")
     first_valid = False
     if first_status == 200:
         try:
             first_valid = isinstance(json.loads(first_raw).get("snapshot_id"), str)
         except (ValueError, AttributeError):
             pass
-    second_status, second_raw = get(base + "/data/turnos/2/version.json")
+    second_status, second_raw = get(root + "/data/turnos/2/version.json")
     second_state = "awaiting_official_release"
     if second_status == 200:
         try:
@@ -41,7 +44,7 @@ def probe(base):
             if not isinstance(sid, str) or not re.fullmatch(r"[a-f0-9]{64}", sid):
                 second_state = "invalid_second_round_marker"
             else:
-                status, raw = get(base + "/data/turnos/2/releases/" + sid + "/manifest.json")
+                status, raw = get(root + "/data/turnos/2/releases/" + sid + "/manifest.json")
                 manifest = json.loads(raw) if status == 200 else {}
                 rows = manifest.get("results")
                 if (manifest.get("environment") == "oficial" and isinstance(rows, list)
