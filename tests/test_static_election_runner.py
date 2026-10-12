@@ -89,3 +89,56 @@ def test_legacy_bootstrap_rejects_unexpected_snapshot(release,tmp_path):
     with pytest.raises(ValueError,match='unexpected_legacy_snapshot'):
         runner.prepare_legacy_bootstrap(root,base,marker,state)
     assert not (root/'bootstrap-legacy').exists()
+
+
+def test_remote_legacy_adoption_preserves_public_marker(release,tmp_path,monkeypatch):
+    transport,before,_,_,http=release
+    historical='f'*64
+    content=digest(canonical(pub.descriptor(before)))
+    monkeypatch.setattr(runner,'LEGACY_PUBLIC_SNAPSHOT',historical)
+    monkeypatch.setattr(runner,'LEGACY_CONTENT_SNAPSHOT',content)
+    marker=canonical(parse(before['version.json'])|{'snapshot_id':historical})
+    transport.ftp.files[transport.site+'/version.json']=marker
+    transport.ftp.dirs.add(transport.site+'/releases/'+historical)
+    for name,raw in before.items():
+        transport.ftp.files[transport.site+'/releases/'+historical+'/'+name]=raw
+    root=tmp_path/'static';root.mkdir()
+    base=tmp_path/'base';base.mkdir()
+    for name,raw in before.items():
+        path=base/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
+    marker_path=tmp_path/'marker.json';marker_path.write_bytes(marker)
+    legacy_state=tmp_path/'state'
+    checkpoint(legacy_state,before)
+    runner.prepare_legacy_bootstrap(root,base,marker_path,legacy_state)
+    monkeypatch.setattr(pub,'http_read',lambda environment,path: (
+        marker if path=='version.json' else transport.ftp.files[
+            transport.site+'/releases/'+historical+'/'+path.removeprefix('releases/'+historical+'/')]
+    ))
+    report=runner.adopt_legacy_remote(root,transport=transport)
+    assert report['status']=='adopted_legacy'
+    assert transport.ftp.files[transport.site+'/version.json']==marker
+    current=parse(transport.ftp.files[transport.private+'/current.json'])
+    assert current['snapshot_id']==historical and current['content_snapshot_id']==content
+    assert len(parse(transport.ftp.files[transport.private+'/watermarks.json']))==137
+    assert parse((root/'current.json').read_bytes())['snapshot_id']==historical
+    with pytest.raises(ValueError,match='static_state_already_adopted'):
+        runner.adopt_legacy_remote(root,transport=transport)
+
+
+def test_remote_legacy_adoption_refuses_changed_public_marker(release,tmp_path,monkeypatch):
+    transport,before,_,_,_=release
+    historical='f'*64
+    monkeypatch.setattr(runner,'LEGACY_PUBLIC_SNAPSHOT',historical)
+    monkeypatch.setattr(runner,'LEGACY_CONTENT_SNAPSHOT',digest(canonical(pub.descriptor(before))))
+    base=tmp_path/'base';base.mkdir()
+    for name,raw in before.items():
+        path=base/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
+    marker=tmp_path/'marker.json'
+    marker.write_bytes(canonical(parse(before['version.json'])|{'snapshot_id':historical}))
+    state=tmp_path/'state';checkpoint(state,before)
+    root=tmp_path/'static';root.mkdir()
+    runner.prepare_legacy_bootstrap(root,base,marker,state)
+    with pytest.raises(ValueError,match='legacy_public_marker_changed'):
+        runner.adopt_legacy_remote(root,transport=transport)
+    assert transport.private+'/current.json' not in transport.ftp.files
+    assert not (root/'current.json').exists()
