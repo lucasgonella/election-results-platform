@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import secrets
 import socket
 import shutil
 import subprocess
@@ -433,7 +434,15 @@ class Transport:
             if old != raw:
                 raise RuntimeError('immutable_collision')
             return
+        # An interrupted process may leave a versioned asset temporary behind.
+        # A new attempt never adopts, overwrites or deletes that unknown file.
+        # Final paths remain immutable; only this call's fresh temporary can be
+        # reconciled after a lost response. Stable entrypoints/private metadata
+        # retain their existing collision gate and journal recovery protocol.
         temporary = path+'.upload'
+        if '/frontend-releases/' in path:
+            asset = PurePosixPath(path)
+            temporary = str(asset.with_name(asset.stem+'.'+secrets.token_hex(16)+asset.suffix))+'.upload'
         if self.metadata(temporary) is not None:
             raise RuntimeError('temporary_collision')
         self.directory(str(PurePosixPath(path).parent))
