@@ -48,3 +48,9 @@ Before production use, the controller must validate the full electoral release s
 ## Mandatory TSE gate
 
 The transaction preflight CLI now requires `--baseline`, a trusted complete directory of the previous electoral release. `compare()` is mandatory and blocks candidate changes requiring specific approval; it is never omitted for absent baseline input. The current CLI does not load approval records, and so it intentionally rejects those sensitive changes. An authenticated controller must supply narrowly scoped verified approvals and pin them to the source digest before production activation. The CLI never changes the public marker.
+
+## Optional existing-journal activation bridge (not enabled)
+
+`collector.src.static_election_publish.activate(..., preassembled=True)` adds an explicit opt-in path for a **fully preassembled immutable release** already present at the expected release-ID location. Inside the existing FTP lock and journal, the old release is revalidated, electoral transition and quarantine approvals are enforced, backups and transaction records are prepared, and all 140 remote release bytes are verified before the existing HTTPS audit and final marker switch. Missing or mismatching bytes fail closed. This mode does not upload or rename a staged release; the default `preassembled=False` preserves existing behavior.
+
+**Not a rollout:** The production runner does not pass this flag; there is no automatically authenticated FTP-to-local-assembler handshake, trusted cron runner, secure promotion of the offline output to the immutable release directory, or end-to-end replay/rollback exercise on staging. The private assembler must never write directly to the marker. A failed opt-in activation can leave a prepared transaction requiring the existing controlled recovery procedure; do not retry blindly.
