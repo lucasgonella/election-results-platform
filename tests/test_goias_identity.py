@@ -54,6 +54,24 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(d['identity_audit']['masked_or_missing_document_records'], 2)
         self.assertNotIn('***456789**', json.dumps(d))
 
+    def test_empty_account_declaration_never_becomes_financial_edge(self):
+        d = export(income_rows=['101;-1;0,00;-1;;;-1;;8', '102;11;10,00;' + CPF_A + ';Nome Civil;01/10/2026;-1;;7'])
+        self.assertEqual(len(d['transfers']), 1)
+        self.assertEqual(candidate(d)['revenue'], 0)
+        self.assertEqual(d['identity_audit']['empty_revenue_declarations_excluded_from_graph'], 1)
+        self.assertNotIn('beneficiary', person(d)['roles'])
+        self.assertEqual(d['identity_audit']['donor_records_examined'], 1)
+
+    def test_account_identifier_cannot_replace_transaction_sequence(self):
+        with self.assertRaisesRegex(ValueError, 'official receipt sequence'):
+            export(income_rows=['102;-1;10,00;' + CPF_A + ';Nome Civil;01/10/2026;-1;;7'])
+
+    def test_zero_value_with_official_receipt_is_preserved(self):
+        d = export(income_rows=['102;11;0,00;' + CPF_A + ';Nome Civil;01/10/2026;-1;;7'])
+        self.assertEqual(len(d['transfers']), 1)
+        self.assertEqual(d['transfers'][0]['amount'], 0)
+        self.assertEqual(d['identity_audit']['empty_revenue_declarations_excluded_from_graph'], 0)
+
     def test_missing_cpf_preserves_anonymous_transaction(self):
         d = export(income_rows=['102;11;10,00;;Nome Civil;01/10/2026;-1;;'])
         self.assertEqual(len(d['transfers']), 1)
