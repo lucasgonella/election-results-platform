@@ -239,8 +239,7 @@
       const group = svgElement('g', {'class': 'graph-node', 'data-node': node.id, 'data-kind': node.kind, role: 'button', tabindex: 0, transform: `translate(${point.x},${point.y})`, 'aria-label': `${node.name}, ${kindLabel(node)}, volume ${money(node.volume)}`}, nodesGroup);
       svgElement('circle', {r: Math.max(radius, isCompact() ? 56 : 22), 'class': 'node-hit'}, group);
       svgElement('circle', {r: radius}, group);
-      if (node.kind === 'organization') svgElement('rect', {x: -radius - 5, y: -radius - 5, width: 2 * (radius + 5), height: 2 * (radius + 5), rx: 4, 'class': 'node-outline'}, group);
-      else if (!candidateRole(node) || node.roles?.includes('donor') || node.roles?.includes('campaign_financier')) svgElement('circle', {r: radius + 4, 'class': 'node-outline'}, group);
+      if (node.kind === 'organization' || !candidateRole(node) || node.roles?.includes('donor') || node.roles?.includes('campaign_financier')) svgElement('circle', {r: radius + 4, 'class': 'node-outline'}, group);
       if (node.id === state.selected) { const initial = svgElement('text', {y: 4, 'text-anchor': 'middle', 'class': 'node-initial'}, group); initial.textContent = node.name.trim().split(/\s+/).slice(0, 2).map(value => value[0]).join(''); }
       const label = svgElement('text', {y: radius + 19, 'text-anchor': 'middle', 'class': 'node-label', 'data-rank': i, 'data-radius': radius, 'aria-hidden': 'true'}, group);
       const maxLength = isCompact() ? 19 : 25;

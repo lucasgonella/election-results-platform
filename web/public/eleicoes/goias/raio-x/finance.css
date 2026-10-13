@@ -10,7 +10,11 @@
 .identity-summary{padding:14px 18px;border:1px solid var(--line);background:var(--surface);font-size:12px;line-height:1.7;color:var(--muted);margin:0 0 24px;border-radius:8px}
 .role-badges{display:flex;flex-wrap:wrap;gap:6px}.role-badge{font-size:10px;padding:6px 8px;background:var(--teal-soft);color:var(--teal-text);border-radius:4px;line-height:1.4}
 .identity-evidence{font-size:11px;line-height:1.7;overflow-wrap:anywhere}.identity-evidence a{color:var(--teal-text)}
+#graph .graph-node .node-outline{fill:none!important;stroke:var(--muted);stroke-width:1.3px;stroke-dasharray:3 3;pointer-events:none}
+#graph .graph-node[data-kind=donor] .node-outline{stroke:var(--gold)}
+#graph .graph-node[data-kind=candidate-donor] .node-outline{stroke:var(--identity-purple)}
 #graph .graph-node[data-kind=candidate-donor] circle{fill:var(--identity-purple)}
+#graph .graph-node[data-kind=candidate-campaign] circle{fill:var(--teal)}
 #graph .graph-node[data-kind=candidate-campaign] .node-outline{stroke:var(--gold);stroke-dasharray:4 2;stroke-width:3px}
 #graph .graph-node[data-kind=donor] circle,#graph .graph-node[data-kind=organization] circle,#graph .graph-node[data-kind=unknown] circle{fill:var(--gold)}
 #graph .graph-node[data-kind=unknown] .node-outline{stroke-dasharray:2 5}
@@ -19,7 +23,7 @@
 :root{--organization-blue:#476b9e}:root[data-theme=dark]{--organization-blue:#99bce7}
 #graph .graph-node[data-kind=organization] circle{fill:var(--organization-blue)}
 #graph .graph-node[data-kind=organization] .node-outline{stroke:var(--organization-blue);stroke-dasharray:none}
-.organization-symbol{border-radius:3px;background:var(--organization-blue)}
+.organization-symbol{border-radius:50%;background:var(--organization-blue);border:2px solid var(--paper);outline:1px solid var(--organization-blue)}
 
 /* Exploration controls preserve the existing editorial visual system. */
 .exploration-navigation{padding:0 20px 14px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:10px;align-items:center}.navigation-controls{display:flex;gap:6px;align-items:center}.navigation-controls button{min-height:40px;min-width:40px;padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font:inherit;font-size:11px;cursor:pointer}.navigation-controls #overview-button{color:var(--teal-text);font-weight:700}.navigation-trail{display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-width:0}.navigation-trail button{max-width:165px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;min-height:36px;background:none;border:0;color:var(--muted);font:inherit;font-size:10px;cursor:pointer}.navigation-trail button[aria-current]{color:var(--ink);font-weight:700;opacity:1}.navigation-trail>span{color:var(--muted);font-size:11px}
