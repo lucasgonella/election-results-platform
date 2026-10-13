@@ -77,3 +77,21 @@ branch `main`, componente `raio-x`. Não usar o receptor eleitoral ou um segundo
 workflow para copiar HTMLs/JSONs deste módulo.
 
 Procedimento central: [CI/CD visual da Locaweb](../../../../../docs/frontend-ftp-deployment.md).
+
+## Exploração visual premium
+
+O módulo usa assets independentes `finance-core.js`, `finance-app.js` e
+`finance.css`, com filtros compartilhados pela URL, claro/escuro, grafo SVG
+navegável, tabela paginada e painel de evidências. O fetch usa o caminho estável
+`/eleicoes/goias/raio-x/data/go-2026.json`, compatível também com o HTML imutável
+das releases. O arquivo financeiro continua sob responsabilidade exclusiva do ETL.
+
+IDs de candidatura e de contraparte não são unidos por nome. Tipos de
+contrapartes ausentes são indicados explicitamente. Caminhos seguem transferências
+reais em seu sentido declarado; relações indiretas não são apresentadas como
+repasses diretos. Valores ausentes permanecem distintos de zero. O grafo é
+limitado e a tabela preserva o conjunto completo do contexto.
+
+Arquitetura, método, limites e evidências locais:
+[Redesign do leitor financeiro](../../../../../docs/premium-finance-redesign.md).
+Testes sintéticos: `python -m unittest tests.test_premium_finance_graph -v`.

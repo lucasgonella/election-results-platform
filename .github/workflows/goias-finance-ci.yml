@@ -16,29 +16,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Validate frontend contract and safe empty state
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("web/public/eleicoes/goias/raio-x/index.html")
-          html = p.read_text()
-          assert '<!doctype html>' in html.lower()
-          assert 'go-2026.json' in html
-          assert 'data.scope!=="GO"' in html
-          assert 'data.year!==2026' in html
-          assert 'Não exibimos candidatos nem valores fictícios' in html
-          assert 'source_url' in html
-          assert 'deputado federal' in html and 'deputado estadual' in html
-          print("GO FINANCE FRONTEND: VALIDATED")
-          PY
+          python3 -m unittest tests.test_premium_finance_graph -v
       - name: JavaScript syntax check (Node.js)
         run: |
           python3 - <<'PY'
-          from pathlib import Path
-          import re
-          html=Path("web/public/eleicoes/goias/raio-x/index.html").read_text()
-          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',html,re.S)
-          assert len(scripts)==1
-          Path("/tmp/go-finance.js").write_text(scripts[0])
+          from pathlib import Path, PurePosixPath
+          from html.parser import HTMLParser
+          import subprocess
+          root = Path("web/public/eleicoes/goias/raio-x")
+          class Scripts(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.sources = []
+              def handle_starttag(self, tag, attrs):
+                  if tag == "script":
+                      source = dict(attrs).get("src")
+                      assert source, "Inline JavaScript must be explicitly validated"
+                      self.sources.append(PurePosixPath(source.split("?", 1)[0]).as_posix())
+          parser = Scripts()
+          parser.feed((root / "index.html").read_text())
+          assert sorted(parser.sources) == ["finance-app.js", "finance-core.js"]
+          for name in parser.sources:
+              subprocess.run(["node", "--check", str(root / name)], check=True)
           PY
-          node --check /tmp/go-finance.js
