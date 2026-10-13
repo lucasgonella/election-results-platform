@@ -100,7 +100,7 @@ alegação sobre a compressão efetivamente configurada na hospedagem:
 
 | Asset | Bytes | Gzip local |
 | --- | ---: | ---: |
-| `design-system.css` | 14.437 | 3.788 |
+| `design-system.css` | 14.450 | 3.789 |
 | `design-system.js` | 10.364 | 2.903 |
 | `styles.css` | 37.163 | 6.268 |
 | `composition.css` | 10.732 | 2.376 |

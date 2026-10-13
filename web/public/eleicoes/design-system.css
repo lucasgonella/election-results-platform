@@ -180,7 +180,7 @@ dialog { width: min(calc(100% - 32px), 640px); max-height: calc(100% - 64px); pa
 dialog::backdrop { background: rgb(5 20 31 / 55%); }
 .source-footer, footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 18px 40px; margin-top: 48px; padding: 28px 0 36px; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--text-xs); line-height: 1.7; }
 footer p { margin: 0; }
-footer a { color: inherit; }
+footer a { color: var(--accent-strong); }
 .footer-credits { max-width: 48ch; }
 
 @media (max-width: 1080px) {
