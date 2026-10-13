@@ -3,11 +3,12 @@ import ftplib
 import json
 from pathlib import Path
 import tempfile
+import threading
 import unittest
 
 import requests
-from collector.src.election_release import canonical,parse
-from collector.src.municipal_collection import HTTP,Unavailable,Throttled,election,inventory,result,UF_CODES
+from collector.src.election_release import canonical,parse,digest
+from collector.src.municipal_collection import HTTP,Unavailable,Throttled,election,inventory,result,UF_CODES,collect,source_url,CONFIG
 from collector.src.municipal_release import assemble,verify
 from collector.src.municipal_publish import Transport,Publisher,SITE,PRIVATE
 from tests.municipal_fixtures import ELECTION,ea20,make_dataset,make_geometry
@@ -73,6 +74,54 @@ class MunicipalDataTests(unittest.TestCase):
             with self.assertRaises(Unavailable):client.get(url)
             with self.assertRaises(Unavailable):client.get(url)
             self.assertEqual(len(session.responses),0)
+
+    def collection_client(self,directory,*,mismatch=False,partial=False,waiting=False,round_number=1):
+        dataset=make_dataset(round_number)
+        config={'f':'o','pl':[{'c':'ele2026','cd':'fixture','e':[{'cd':'9001','t':str(round_number),'abr':[{'cp':[{'cd':'1'}]}]}]}],
+                'arq':[{'tp':kind,'dir':'<base>/<ambiente>/<ciclo>/<cd_eleicao>/'+('config' if kind=='cm' else 'dados/<uf>')} for kind in ['cm','ab','u']]}
+        selected={**ELECTION,'round':round_number}
+        url=lambda kind,uf,name:source_url(config,selected,kind,uf,name)
+        inv={'f':'o','abr':[{'cd':uf,'mu':[{'cd':r['tse_code'],'cdi':r['ibge_code'],'nm':r['name']} for r in dataset['municipalities'] if r['uf']==uf]} for uf in UF_CODES]}
+        go=next(r for r in dataset['municipalities'] if r['uf']=='go')
+        municipal=ea20(go['tse_code'],round_number,partial=partial,waiting=waiting)
+        national={**ea20('br',round_number,waiting=waiting),'tpabr':'br'}
+        state={**ea20('go',round_number,partial=partial,tie=mismatch,waiting=waiting),'tpabr':'uf'}
+        tracking={'f':'o','ele':'9001','t':str(round_number),'abr':[{'tpabr':'mun','cdabr':go['tse_code'],'s':municipal['s']},{'tpabr':'uf','cdabr':'go','s':state['s']}]}
+        values={CONFIG:config,url('cm','br','mun-e009001-cm.json'):inv,
+                url('ab','br','br-e009001-ab.json'):{'f':'o','ele':'9001','t':str(round_number),'abr':[{'tpabr':'uf','cdabr':uf} for uf in UF_CODES]},
+                url('u','br','br-c0001-e009001-u.json'):national,url('ab','go','go-e009001-ab.json'):tracking,
+                url('u','go',f"go{go['tse_code']}-c0001-e009001-u.json"):municipal,url('u','go','go-c0001-e009001-u.json'):state}
+        class Client:
+            downloads=reused=not_modified=0
+            stop=threading.Event()
+            def __init__(self):self.directory=Path(directory);self.calls=[]
+            def get(self,path,**kwargs):
+                self.calls.append(path);raw=values[path]
+                return {'url':path,'sha256':digest(canonical(raw)),'captured_at':'2026-10-04T23:00:00+00:00'},copy.deepcopy(raw)
+        return Client()
+
+    def test_collection_reconciles_final_uf_and_resumes_its_checkpoint(self):
+        with tempfile.TemporaryDirectory() as temp:
+            client=self.collection_client(temp)
+            first=collect(client,1,{'go'});second=collect(client,1,{'go'})
+            self.assertEqual(first,second);self.assertEqual(first['coverage']['go']['reconciliation'],'equal')
+            self.assertEqual(len(first['municipalities']),1);self.assertTrue((Path(temp)/'go-tracking.json').exists())
+
+    def test_final_divergence_fails_closed_but_partial_coverage_explains_it(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with self.assertRaisesRegex(ValueError,'municipal_final_uf_reconciliation_failed'):
+                collect(self.collection_client(temp,mismatch=True),1,{'go'})
+            self.assertEqual(parse((Path(temp)/'go-tracking.json').read_bytes()),{})
+            data=collect(self.collection_client(temp,mismatch=True,partial=True),1,{'go'})
+            self.assertEqual(data['coverage']['go']['reconciliation'],'partial_cdn_timestamps_differ')
+            self.assertFalse(data['coverage']['go']['all_final'])
+
+    def test_unstarted_second_round_does_not_request_municipal_files(self):
+        with tempfile.TemporaryDirectory() as temp:
+            client=self.collection_client(temp,round_number=2,waiting=True)
+            with self.assertRaisesRegex(Unavailable,'municipal_second_round_not_started'):collect(client,2,{'go'})
+            self.assertEqual(len(client.calls),4)
+            self.assertFalse((Path(temp)/'go-tracking.json').exists())
 
 
 class FTP(FakeFTP):
