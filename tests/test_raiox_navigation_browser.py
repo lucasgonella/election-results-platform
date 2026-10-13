@@ -272,6 +272,38 @@ class RaioxBrowserTests(unittest.TestCase):
         self.page.locator('#overview-button').click()
         self.assertIsNone(self.selected())
 
+    def test_node_contours_never_cover_role_colors_with_default_black_fill(self):
+        fixture = navigation_fixture()
+        fixture['entities'][0]['roles'].append('campaign_financier')
+        fixture['entities'].append(dict(id='organization:fixture', name='Organização sintética',
+                                        kind='organization', roles=['organization'],
+                                        candidate_ids=[], aliases=[]))
+        fixture['transfers'].append({**fixture['transfers'][0], 'id':'transaction:organization',
+                                     'from_id':'organization:fixture', 'from_role':'organization',
+                                     'from_name':'Organização sintética', 'amount':150})
+        FixtureHandler.fixture = fixture
+        self.open('?selected=person%3Acharles')
+        for width in [1440, 390]:
+            for theme in ['light', 'dark']:
+                with self.subTest(width=width, theme=theme):
+                    self.page.set_viewport_size({'width':width, 'height':900})
+                    self.page.evaluate('(t)=>document.documentElement.dataset.theme=t', theme)
+                    # resize redraws the SVG; inspect after the browser has
+                    # delivered resize and painted, rather than a detached node.
+                    self.page.evaluate('()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+                    # Measure painted SVG styles: an outline must be transparent,
+                    # even when more specific role rules assign a circle's fill.
+                    fills = self.page.locator('.graph-node .node-outline').evaluate_all('(ns)=>ns.map(n=>getComputedStyle(n).fill)')
+                    self.assertTrue(fills)
+                    self.assertEqual(set(fills), {'none'})
+                    self.assertEqual(self.page.locator('.graph-node rect').count(), 0)
+                    for kind, token in [('organization','--organization-blue'), ('candidate-campaign','--teal'), ('donor','--gold')]:
+                        colors = self.page.evaluate('([kind,token])=>{const n=document.querySelector(`.graph-node[data-kind="${kind}"] > circle:not([class])`);const probe=document.createElement("span");probe.style.color=getComputedStyle(document.documentElement).getPropertyValue(token);document.body.appendChild(probe);const result={actual:getComputedStyle(n).fill,expected:getComputedStyle(probe).color};probe.remove();return result}', [kind, token])
+                        self.assertEqual(colors['actual'], colors['expected'])
+                        self.assertNotEqual(colors['actual'], 'rgb(0, 0, 0)')
+        self.assertEqual(self.selected(), 'person:charles')
+        self.assertEqual(self.page.locator('#transfer-table [data-record]').count(), 3)
+
     def test_touch_pinch_and_mobile_accessibility_in_both_themes(self):
         axe = os.environ.get('RAIOX_AXE_PATH')
         if os.environ.get('RAIOX_BROWSER_REQUIRED') == '1' and not axe:
