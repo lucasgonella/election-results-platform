@@ -92,6 +92,19 @@ class MunicipalBrowserTests(unittest.TestCase):
         }""")
         self.assertEqual(result,{'builds':1,'loaded':True,'pending':0})
 
+    def test_slow_previous_uf_cannot_replace_latest_user_choice(self):
+        self.open()
+        result=self.page.evaluate("""async()=>{
+            const map=ElectoralMap.view.municipal,geometry=map.reader.geometry.bind(map.reader);
+            map.reader.geometry=async(...args)=>{
+                if(args[1]==='ac'&&args[2]==='detail')await new Promise(resolve=>setTimeout(resolve,100));
+                return geometry(...args);
+            };
+            await Promise.all([map.setUF('ac'),map.setUF('go')]);
+            return {map:map.uf,portal:fixtureContext.scope,control:document.getElementById('mmap-uf').value,url:new URL(location.href).searchParams.get('muf')};
+        }""")
+        self.assertEqual(result,{'map':'go','portal':'go','control':'go','url':'go'})
+
     def test_mobile_dark_mode_accessibility_and_bounded_table(self):
         axe=os.environ.get('MUNICIPAL_AXE_PATH')
         if os.environ.get('MUNICIPAL_BROWSER_REQUIRED')=='1' and not axe:self.fail('Required accessibility audit missing axe')
