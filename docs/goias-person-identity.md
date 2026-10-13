@@ -94,20 +94,24 @@ sem atribuir a Luana o papel de doadora pessoal com base nesses repasses.
 ## Auditoria da extração de 13/10/2026
 
 A auditoria é recalculada em cada exportação e publicada em `identity_audit`.
-Nesta extração: 860 candidaturas; 5.899 receitas examinadas; 3.055 entidades de
+Nesta extração: 860 candidaturas; 5.791 receitas documentadas examinadas; 2.947 entidades de
 origem; 245 pessoas/candidaturas também doadoras por CPF; 42 titulares com
 campanhas financiadoras; 245 nós de pessoa duplicados eliminados; 42 nós de
-campanha projetáveis; 2.768 entidades de doadores sem correspondência confirmada
+campanha projetáveis; 2.660 entidades de doadores sem correspondência confirmada
 com candidaturas deste escopo; zero conflitos de identidade.
 
 “Inconclusivo” não significa suspeita: inclui pessoas e organizações que não
-correspondem a uma candidatura deste recorte. Os 108 registros sem documento
-ficam separados, cada um com âncora de transação; não são unidos por máscara.
+correspondem a uma candidatura deste recorte. Os 108 cadastros contábeis zerados, sem sequência de receita, data ou doador,
+não são transferências e não geram arestas. Receitas verdadeiras sem documento
+do doador, quando houver SQ de receita, permanecem separadas por registro;
+CPFs mascarados não são usados como chave.
 
 Todas as 5.791 relações da versão anterior foram preservadas, com os mesmos
-valores, datas, categorias e destinatários. As 108 receitas sem documento já
-integravam os totais anteriores, mas eram omitidas da rede; agora são exibidas
-explicitamente como identidades não confirmadas. Receitas por candidatura e
+IDs de transação, valores, datas, categorias e destinatários. As 108 declarações
+contábeis zeradas continuam disponíveis na fonte e no contador de declarações
+excluídas do grafo, mas não são interpretadas como doações. Zero com SQ de receita
+é preservado; ausência de SQ em uma receita real interrompe a exportação, sem
+substituí-lo pelo identificador da conta. Receitas por candidatura e
 soma geral R$ 180.033.060,32, despesas por candidatura e soma geral
 R$ 113.099.375,03 permaneceram iguais. O resolvedor não recontabiliza etapas.
 
@@ -115,7 +119,8 @@ R$ 113.099.375,03 permaneceram iguais. O resolvedor não recontabiliza etapas.
 
 `tests/test_goias_identity.py` usa exclusivamente fixtures sintéticas para CPF
 igual/diferente/mascarado/ausente/inválido, nomes distintos, múltiplas candidaturas,
-CNPJ e conflitos, doações múltiplas, duplicatas, totais, idempotência, doador
+CNPJ e conflitos, doações múltiplas, duplicatas, totais, idempotência, declarações
+zeradas, zero com sequência verdadeira, ausência de ID de transação, doador
 originário e proteção de CPF em JSON/URLs. O leitor tem testes de projeção,
 papéis, identidade inexistente, filtros, valores e URL, além dos testes legados.
 

@@ -96,6 +96,7 @@ def build(candidates_zip: Path, finance_zip: Path):
     seen = set()
     matched = {"revenue": 0, "expense": 0}
     duplicate_rows = 0
+    empty_revenue_declarations = 0
     source_rows = defaultdict(int)
     for row, filename in read_csv_zip(finance_zip, lambda n: n.endswith(("receitas_candidatos_2026_go.csv", "despesas_contratadas_candidatos_2026_go.csv"))):
         source_rows[filename] += 1
@@ -120,6 +121,15 @@ def build(candidates_zip: Path, finance_zip: Path):
         amount = money(raw_amount)
         if amount is None or amount < 0:
             continue
+        # TSE emits zero-valued account declarations without a receipt, donor
+        # or date. These prove account availability, not a financial transfer.
+        if kind == "revenue" and amount == 0 and all(field(row, column) is None for column in
+                ("SQ_RECEITA", "NR_CPF_CNPJ_DOADOR", "NM_DOADOR", "NM_DOADOR_RFB", "DT_RECEITA", "DS_ORIGEM_RECEITA")):
+            empty_revenue_declarations += 1
+            incomes.setdefault(cid, Decimal(0))
+            continue
+        if kind == "revenue" and field(row, "SQ_RECEITA") is None:
+            raise ValueError("Revenue transaction lacks its official receipt sequence")
         # Each TSE file type represents an accounting stage. Never sum multiple
         # files of the same type without a distinct transaction identifier.
         record_id = field(row, "SQ_RECEITA" if kind == "revenue" else "SQ_DESPESA",
@@ -156,6 +166,7 @@ def build(candidates_zip: Path, finance_zip: Path):
         entry["revenue"] = float(incomes[cid]) if cid in incomes else 0
         entry["expenses"] = float(expenses[cid]) if cid in expenses else 0
     entities, transfers, audit = resolve(candidates, private_candidates, transfers, campaign_owners)
+    audit["empty_revenue_declarations_excluded_from_graph"] = empty_revenue_declarations
     audit["existing_accounting_duplicates_skipped"] = duplicate_rows
     audit["revenue_records_preserved"] = matched["revenue"]
     audit["expense_records_preserved"] = matched["expense"]

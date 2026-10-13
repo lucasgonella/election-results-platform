@@ -65,7 +65,7 @@ def resolve(candidates, private_candidates, records, campaign_owners):
         candidate['source_url'] = CAND_SOURCE
         candidate['campaign_ids'] = []
         node = entities.setdefault(pid, {'id': pid, 'kind': 'person', 'name': candidate['name'],
-            'civil_name': candidate['civil_name'], 'aliases': [], 'roles': ['candidate', 'beneficiary'],
+            'civil_name': candidate['civil_name'], 'aliases': [], 'roles': ['candidate'],
             'candidate_ids': [], 'campaign_ids': [], 'evidence': []})
         node['candidate_ids'].append(cid)
         for name in [candidate['name'], candidate['civil_name']]:
@@ -147,6 +147,9 @@ def resolve(candidates, private_candidates, records, campaign_owners):
             if target_campaign is None:
                 possible = [c for c in campaigns.values() if record['candidate_id'] in c['candidate_ids']]
                 target_campaign = possible[0] if len(possible) == 1 else None
+            recipient = entities[person_for[record['candidate_id']]]
+            if 'beneficiary' not in recipient['roles']:
+                recipient['roles'].append('beneficiary')
             transfer = {k: record[k] for k in ['id', 'from_name', 'to_name', 'amount', 'date', 'type', 'source_url', 'source_record_id', 'source_file', 'source_row', 'candidate_id']}
             transfer.update({'from_id': origin['id'], 'to_id': person_for[record['candidate_id']],
                 'from_role': 'campaign' if campaign else 'person' if kind == 'cpf' else origin['kind'],
