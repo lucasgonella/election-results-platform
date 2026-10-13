@@ -132,7 +132,17 @@ mas o cliente não apaga um lock sem plano verificável.
 
 Erros de transferência podem invalidar a conexão de controle. O relatório conserva
 tipos/códigos numéricos da falha original e da recuperação, sem mensagens do servidor
-ou credenciais. Se a compensação falhar, `recover` abre uma nova conexão e usa o
+ou credenciais. A abertura/reabertura de controle usa no máximo três conexões
+novas, com timeout de 20 segundos por operação e pausas de 5 e 15 segundos após
+falhas transitórias de conexão. Autenticação recusada, porta divergente e PWD
+incorreto falham imediatamente. Não há repetição automática de STOR/RETR.
+O recibo informa `ftp_control_retries`; falhas identificam apenas a operação
+fixa (`connect`, `login`, `pwd`, `metadata`, `stor`, `retr`, `rename`), sem caminhos
+ou respostas do servidor. Uma reconexão falha depois de um envio concluído não
+autoriza reenviar o arquivo nem dispensar a conferência dos bytes. Os testes
+sintéticos incluem esse caso e exigem exatamente um STOR.
+
+Se a compensação falhar, `recover` abre uma nova conexão e usa o
 journal verificado; não repetir upload sobre temporário preexistente. A primeira
 execução automática foi interrompida antes da ativação dos HTMLs e recuperada,
 preservando a versão anterior. Temporários de tentativas falhas não são versões

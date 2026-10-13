@@ -606,5 +606,109 @@ class FrontendTest(unittest.TestCase):
         self.assertNotIn('fixture-secret', json.dumps(f.error_report(error.exception)))
 
 
+class FrontendControlReconnectTests(unittest.TestCase):
+    credentials = {'LOCAWEB_FTP_HOST': 'ftp.example.test', 'LOCAWEB_FTP_USER': 'fixture-user',
+                   'LOCAWEB_FTP_PASSWORD': 'fixture-secret', 'LOCAWEB_FTP_PORT': '21'}
+
+    def client(self, *, connect_error=None, login_error=None, home='/'):
+        client = Mock()
+        client.connect.side_effect = connect_error
+        client.login.side_effect = login_error
+        client.pwd.return_value = home
+        return client
+
+    def test_fresh_connections_retry_reset_and_timeout_with_bounded_backoff(self):
+        first = self.client(connect_error=TimeoutError('fixture-secret'))
+        second = self.client(login_error=ConnectionResetError(104, 'fixture-secret'))
+        final = self.client()
+        with patch.dict(f.os.environ, self.credentials), patch.object(f, 'CONTROL_RETRIES', 0), \
+             patch.object(f, 'PassiveFTP', side_effect=[first, second, final]), \
+             patch.object(f.time, 'sleep') as sleep, patch.object(f, 'curl_transfer') as transfer:
+            self.assertIs(f.connect(), final)
+            self.assertEqual(f.CONTROL_RETRIES, 2)
+            self.assertEqual([call.args for call in sleep.call_args_list], [(5,), (15,)])
+            transfer.assert_not_called()
+        for client in [first, second, final]:
+            client.connect.assert_called_once_with('ftp.example.test', 21, timeout=20)
+        first.close.assert_called_once()
+        second.close.assert_called_once()
+        final.set_pasv.assert_called_once_with(True)
+        final.close.assert_not_called()
+
+    def test_exhausted_control_connections_fail_closed_and_do_not_expose_replies(self):
+        clients = [self.client(connect_error=TimeoutError('fixture-secret')) for _ in range(3)]
+        with patch.dict(f.os.environ, self.credentials), patch.object(f, 'CONTROL_RETRIES', 0), \
+             patch.object(f, 'PassiveFTP', side_effect=clients) as factory, patch.object(f.time, 'sleep') as sleep:
+            with self.assertRaises(TimeoutError) as error:
+                f.connect()
+            self.assertEqual(factory.call_count, 3)
+            self.assertEqual(sleep.call_count, 2)
+            self.assertEqual(f.error_report(error.exception), {'error_type': 'TimeoutError', 'ftp_operation': 'connect'})
+        for client in clients:
+            client.close.assert_called_once()
+
+    def test_authentication_and_wrong_home_are_never_retried(self):
+        for client, exception in [(self.client(login_error=ftplib.error_perm('530 fixture-secret')), ftplib.error_perm),
+                                  (self.client(home='/another-home'), RuntimeError)]:
+            with self.subTest(exception=exception), patch.dict(f.os.environ, self.credentials), \
+                 patch.object(f, 'PassiveFTP', return_value=client) as factory, patch.object(f.time, 'sleep') as sleep:
+                with self.assertRaises(exception) as error:
+                    f.connect()
+                factory.assert_called_once()
+                sleep.assert_not_called()
+                client.close.assert_called_once()
+                self.assertNotIn('fixture-secret', json.dumps(f.error_report(error.exception)))
+
+    def test_port_policy_precedes_any_connection(self):
+        with patch.dict(f.os.environ, {**self.credentials, 'LOCAWEB_FTP_PORT': '990'}), \
+             patch.object(f, 'PassiveFTP') as factory:
+            with self.assertRaisesRegex(ValueError, 'ftp_port_must_be_21'):
+                f.connect()
+            factory.assert_not_called()
+
+    def test_successful_native_upload_is_not_repeated_after_control_handshake_reset(self):
+        ftp = FakeFTP()
+        ftp.close = Mock()
+        ftp.connect = Mock()
+        ftp.login = Mock()
+        ftp.set_pasv = Mock()
+        ftp.pwd = Mock(return_value='/')
+        failed = self.client(connect_error=ConnectionResetError(104, 'fixture-secret'))
+        native = []
+        def transfer(path, raw=None):
+            native.append(('stor' if raw is not None else 'retr', path))
+            if raw is not None:
+                ftp.files[path] = raw
+                return b''
+            return ftp.files[path]
+        path = '/public_html/eleicoes/frontend-releases/'+'a'*40+'/composition.css'
+        with patch.dict(f.os.environ, self.credentials), patch.object(f, 'CONTROL_RETRIES', 0), \
+             patch.object(f, 'PassiveFTP', side_effect=[failed, ftp, ftp, ftp]), patch.object(f.time, 'sleep'):
+            transport = f.Transport(ftp, reconnect=f.connect, transfer=transfer)
+            transport.put(path, b'fixture stylesheet')
+            self.assertEqual(ftp.files[path], b'fixture stylesheet')
+            self.assertEqual(sum(operation == 'stor' for operation, _ in native), 1)
+            self.assertEqual(sum(operation == 'rename' for operation, _ in ftp.events), 1)
+            self.assertEqual(f.CONTROL_RETRIES, 1)
+            self.assertEqual(transport.reconciled_transfers, 0)
+
+    def test_operation_diagnostics_keep_destination_guards_and_omit_secrets(self):
+        ftp = Mock()
+        ftp.sendcmd.side_effect = TimeoutError('fixture-secret')
+        transport = f.Transport(ftp)
+        with self.assertRaises(TimeoutError) as error:
+            transport.metadata('/frontend-deploy/portal/current.json')
+        self.assertEqual(f.error_report(error.exception)['ftp_operation'], 'metadata')
+        with self.assertRaises(ValueError):
+            transport._rename('/public_html/eleicoes/a.upload', '/public_html/eleicoes/unsafe.php')
+        ftp.rename.assert_not_called()
+        ftp.rename.side_effect = TimeoutError('fixture-secret')
+        with self.assertRaises(TimeoutError) as error:
+            transport._rename('/public_html/eleicoes/index.html.upload', '/public_html/eleicoes/index.html')
+        result = f.error_report(error.exception)
+        self.assertEqual(result['ftp_operation'], 'rename')
+        self.assertNotIn('fixture-secret', json.dumps(result))
+
+
 if __name__ == '__main__':
     unittest.main()

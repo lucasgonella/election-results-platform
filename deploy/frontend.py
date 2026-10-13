@@ -30,6 +30,15 @@ SUFFIXES = {'.html', '.css', '.js', '.svg', '.png', '.ico', '.jpg', '.jpeg', '.w
 MAX_BYTES = 16 * 1024 * 1024
 PRIVATE = '/frontend-deploy'
 PACK_FORMAT = 1
+CONTROL_RETRIES = 0
+CONTROL_OPERATIONS = {'connect', 'login', 'pwd', 'metadata', 'stor', 'retr', 'rename'}
+
+
+def control_failure(error, operation):
+    """Attach a fixed operation label, never paths, replies or credentials."""
+    if operation in CONTROL_OPERATIONS and not getattr(error, 'frontend_operation', None):
+        error.frontend_operation = operation
+    return error
 
 
 class PassiveFTP(ftplib.FTP):
@@ -46,6 +55,9 @@ class PassiveFTP(ftplib.FTP):
 def error_report(error):
     """Only controlled codes, numeric errno and types; no server messages/credentials."""
     result = {'error_type': type(error).__name__}
+    operation = getattr(error, 'frontend_operation', None)
+    if isinstance(operation, str) and operation in CONTROL_OPERATIONS:
+        result['ftp_operation'] = operation
     if type(error) in {ValueError, RuntimeError} and re.fullmatch('[a-z][a-z0-9_]{0,100}', str(error)):
         result['error_code'] = str(error)
     if isinstance(error, OSError) and isinstance(error.errno, int):
@@ -338,6 +350,7 @@ class Transport:
         try:
             result = self.transfer(self.allowed(path), raw)
         except Exception as original:
+            control_failure(original, 'stor' if raw is not None else 'retr')
             try:
                 self.ftp = self.reconnect()
             except Exception as reconnect_error:
@@ -361,6 +374,10 @@ class Transport:
         except ftplib.error_perm as error:
             if str(error).startswith('550'):
                 return None
+            control_failure(error, 'metadata')
+            raise
+        except Exception as error:
+            control_failure(error, 'metadata')
             raise
         rows = [line.strip().split(' ', 1)[0] for line in reply.splitlines() if 'type=' in line.lower()]
         if len(rows) != 1:
@@ -453,7 +470,7 @@ class Transport:
                 self.ftp.storbinary('STOR '+temporary, io.BytesIO(raw))
             if self.read(temporary) != raw:
                 raise RuntimeError('transfer_integrity_error')
-            self.ftp.rename(temporary, path)
+            self._rename(temporary, path)
             if self.read(path) != raw:
                 raise RuntimeError('rename_integrity_error')
         except Exception as original:
@@ -474,7 +491,7 @@ class Transport:
                             raise RuntimeError('transfer_integrity_error')
                         if current != old:
                             raise RuntimeError('external_writer_detected')
-                        self.ftp.rename(temporary, path)
+                        self._rename(temporary, path)
                         if self.read(path) != raw:
                             raise RuntimeError('rename_integrity_error')
                     self.reconciled_transfers += 1
@@ -488,6 +505,15 @@ class Transport:
             except Exception as cleanup_error:
                 raise ExceptionGroup('upload_cleanup_failed', [original, cleanup_error]) from None
             raise original
+
+    def _rename(self, temporary, destination):
+        self.allowed(temporary)
+        self.writable(destination)
+        try:
+            return self.ftp.rename(temporary, destination)
+        except Exception as error:
+            control_failure(error, 'rename')
+            raise
 
     @contextmanager
     def lock(self, component):
@@ -701,16 +727,34 @@ def status(transport, component, *, http=http_read):
 
 
 def connect():
+    global CONTROL_RETRIES
     if os.environ.get('LOCAWEB_FTP_PORT', '21') != '21':
         raise ValueError('ftp_port_must_be_21')
-    ftp = PassiveFTP()
-    ftp.connect(os.environ['LOCAWEB_FTP_HOST'], 21, timeout=90)
-    ftp.login(os.environ['LOCAWEB_FTP_USER'], os.environ['LOCAWEB_FTP_PASSWORD'])
-    ftp.set_pasv(True)
-    if ftp.pwd() != '/':
-        ftp.close()
-        raise RuntimeError('ftp_home_mismatch')
-    return ftp
+    # A native STOR/RETR can succeed while the next control handshake fails.
+    # Retry only establishing that connection; never replay a data transfer.
+    for attempt in range(3):
+        ftp = PassiveFTP()
+        operation = 'connect'
+        try:
+            ftp.connect(os.environ['LOCAWEB_FTP_HOST'], 21, timeout=20)
+            operation = 'login'
+            ftp.login(os.environ['LOCAWEB_FTP_USER'], os.environ['LOCAWEB_FTP_PASSWORD'])
+            ftp.set_pasv(True)
+            operation = 'pwd'
+            if ftp.pwd() != '/':
+                raise RuntimeError('ftp_home_mismatch')
+            return ftp
+        except Exception as error:
+            control_failure(error, operation)
+            try:
+                ftp.close()
+            except OSError:
+                pass
+            transient = isinstance(error, (ConnectionError, TimeoutError, EOFError, ftplib.error_temp))
+            if not transient or attempt == 2:
+                raise
+            CONTROL_RETRIES += 1
+            time.sleep((5, 15)[attempt])
 
 
 def execute(args):
@@ -736,6 +780,7 @@ def execute(args):
                     else:
                         result = rollback(transport, args.component, args.version, args.transaction)
             result['ftp_reconciliations'] = transport.reconciled_transfers
+            result['ftp_control_retries'] = CONTROL_RETRIES
         finally:
             transport.ftp.close()
     return result
