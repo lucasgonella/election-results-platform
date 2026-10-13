@@ -79,6 +79,19 @@ class MunicipalBrowserTests(unittest.TestCase):
         self.page.wait_for_function("document.getElementById('mmap-status').textContent.includes('Aguardando dados municipais oficiais deste turno')")
         self.assertNotIn('80',self.page.locator('#mmap-detail').inner_text());self.assertEqual(self.page.evaluate('ElectoralMap.view.municipal.paths.size'),0)
 
+    def test_repeated_zoom_requests_prepare_each_geometry_once(self):
+        self.open()
+        result=self.page.evaluate("""async()=>{
+            const map=ElectoralMap.view.municipal;
+            let builds=0;const prepare=map.prepareGeometry.bind(map);
+            map.prepareGeometry=async(...args)=>{builds++;return prepare(...args);};
+            // Rapid zoom updates may request the same detailed UF while its
+            // polygons are still being prepared. They must share that work.
+            await Promise.all(Array.from({length:30},()=>map.loadGeometry('go','detail')));
+            return {builds,loaded:map.geometryLoaded.has('go-detail'),pending:map.geometryRequests.size};
+        }""")
+        self.assertEqual(result,{'builds':1,'loaded':True,'pending':0})
+
     def test_mobile_dark_mode_accessibility_and_bounded_table(self):
         axe=os.environ.get('MUNICIPAL_AXE_PATH')
         if os.environ.get('MUNICIPAL_BROWSER_REQUIRED')=='1' and not axe:self.fail('Required accessibility audit missing axe')

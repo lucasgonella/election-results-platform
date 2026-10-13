@@ -124,7 +124,8 @@
                 if(this.uf)await this.parent.portal.selectScope(this.uf,1);
             }catch(error){if(sequence!==this.sequence||error.name==='AbortError')return;this.loading=false;this.waiting=error instanceof Waiting;this.error=error;this.context=null;this.rows=[];this.paths.clear();this.render();}
         }
-        async loadGeometry(uf,level,sequence=this.sequence){
+        loadGeometry(uf,level,sequence=this.sequence){this.geometryRequests??=new Map();const key=sequence+'|'+uf+'|'+level;if(this.geometryRequests.has(key))return this.geometryRequests.get(key);const request=this.prepareGeometry(uf,level,sequence);this.geometryRequests.set(key,request);request.then(()=>this.geometryRequests.delete(key),()=>this.geometryRequests.delete(key));return request;}
+        async prepareGeometry(uf,level,sequence=this.sequence){
             const key=uf+'-'+level;if(this.geometryLoaded.has(key)||!this.context)return;
             const context=this.context, data=await this.reader.geometry(context,uf,level,this.controller.signal);
             if(sequence!==this.sequence||context!==this.context)return;
