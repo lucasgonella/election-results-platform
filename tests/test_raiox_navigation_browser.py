@@ -288,6 +288,9 @@ class RaioxBrowserTests(unittest.TestCase):
                 with self.subTest(width=width, theme=theme):
                     self.page.set_viewport_size({'width':width, 'height':900})
                     self.page.evaluate('(t)=>document.documentElement.dataset.theme=t', theme)
+                    # resize redraws the SVG; inspect after the browser has
+                    # delivered resize and painted, rather than a detached node.
+                    self.page.evaluate('()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
                     # Measure painted SVG styles: an outline must be transparent,
                     # even when more specific role rules assign a circle's fill.
                     fills = self.page.locator('.graph-node .node-outline').evaluate_all('(ns)=>ns.map(n=>getComputedStyle(n).fill)')
@@ -295,8 +298,7 @@ class RaioxBrowserTests(unittest.TestCase):
                     self.assertEqual(set(fills), {'none'})
                     self.assertEqual(self.page.locator('.graph-node rect').count(), 0)
                     for kind, token in [('organization','--organization-blue'), ('candidate-campaign','--teal'), ('donor','--gold')]:
-                        node = self.page.locator(f'.graph-node[data-kind="{kind}"] > circle:not([class])').first
-                        colors = node.evaluate('(n,token)=>{const probe=document.createElement("span");probe.style.color=getComputedStyle(document.documentElement).getPropertyValue(token);document.body.appendChild(probe);const result={actual:getComputedStyle(n).fill,expected:getComputedStyle(probe).color};probe.remove();return result}', token)
+                        colors = self.page.evaluate('([kind,token])=>{const n=document.querySelector(`.graph-node[data-kind="${kind}"] > circle:not([class])`);const probe=document.createElement("span");probe.style.color=getComputedStyle(document.documentElement).getPropertyValue(token);document.body.appendChild(probe);const result={actual:getComputedStyle(n).fill,expected:getComputedStyle(probe).color};probe.remove();return result}', [kind, token])
                         self.assertEqual(colors['actual'], colors['expected'])
                         self.assertNotEqual(colors['actual'], 'rgb(0, 0, 0)')
         self.assertEqual(self.selected(), 'person:charles')
