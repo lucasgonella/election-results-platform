@@ -9,10 +9,10 @@ ou alteração de serviços neste componente.
 
 A auditoria do exportador (`collector/src/static_site_builder.py`) confirma o
 contrato atual: Presidência no Brasil, nas 27 UFs e no Exterior. Não existem
-resultados municipais neste inventário. O controle **Municípios — Em espera**
-fica desabilitado, acompanhado de uma explicação visível. A implementação não
-consulta endpoints municipais, não cria associações TSE/IBGE por semelhança de
-nome e não distribui votos estaduais entre municípios.
+resultados municipais neste inventário estadual. O modo **Municípios** usa o
+[pipeline municipal isolado](municipal-presidential-map.md), com coleta EA12/EA15/EA20,
+malha IBGE de 2025 e publicação própria. Não associa códigos por semelhança de
+nome nem distribui votos estaduais entre municípios.
 
 As geometrias foram obtidas em 12/10/2026 diretamente da
 [API oficial de malhas do IBGE](https://servicodados.ibge.gov.br/api/docs/malhas?versao=3):

@@ -1,0 +1,148 @@
+name: Official municipal presidential data
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'collector/src/municipal*'
+      - 'tools/municipal*'
+      - 'deploy/scripts/wait-municipal-ci.py'
+      - '.github/workflows/municipal-presidential-data.yml'
+  schedule:
+    - cron: '8,38 * * * *'
+    - cron: '18,48 * * * *'
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [run, status, recover]
+        default: run
+      round:
+        type: choice
+        options: ['1', '2']
+        default: '1'
+permissions:
+  contents: read
+  actions: read
+  checks: read
+jobs:
+  collect:
+    if: github.ref == 'refs/heads/main' && (github.event.inputs.operation == '' || github.event.inputs.operation == 'run')
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    concurrency:
+      group: municipal-collection-${{ github.event.inputs.round || (github.event.schedule == '18,48 * * * *' && '2' || '1') }}
+      cancel-in-progress: false
+    outputs:
+      ready: ${{ steps.package.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r collector/requirements.txt -r tools/municipal-geometry-requirements.txt
+      - name: Require approved main CI
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python deploy/scripts/wait-municipal-ci.py --commit "$GITHUB_SHA"
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/municipal-state
+          key: municipal-state-${{ github.event.inputs.round || (github.event.schedule == '18,48 * * * *' && '2' || '1') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: municipal-state-${{ github.event.inputs.round || (github.event.schedule == '18,48 * * * *' && '2' || '1') }}-
+      - name: Collect validated official municipality coverage
+        run: python -m collector.src.municipal_runner --round "${{ github.event.inputs.round || (github.event.schedule == '18,48 * * * *' && '2' || '1') }}" --state "$RUNNER_TEMP/municipal-state" --output "$RUNNER_TEMP/municipal-package"
+      - name: Publish only a complete newly built package
+        id: package
+        run: |
+          if test -f "$RUNNER_TEMP/municipal-package/package.json"; then
+            python - <<'PY'
+          import os
+          from pathlib import Path
+          from collector.src.municipal_release import verify
+          package,files=verify(Path(os.environ['RUNNER_TEMP'])/'municipal-package')
+          print('Validated municipalities:',package['marker']['municipalities'])
+          print('Public files:',len(files))
+          PY
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: steps.package.outputs.ready == 'true'
+        with:
+          name: municipal-package-${{ github.run_id }}
+          path: ${{ runner.temp }}/municipal-package
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ${{ runner.temp }}/municipal-state
+          key: municipal-state-${{ github.event.inputs.round || (github.event.schedule == '18,48 * * * *' && '2' || '1') }}-${{ github.run_id }}-${{ github.run_attempt }}
+  publish:
+    needs: collect
+    if: github.ref == 'refs/heads/main' && needs.collect.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: locaweb-frontend-production
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install -r collector/requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: municipal-package-${{ github.run_id }}
+          path: ${{ runner.temp }}/municipal-package
+      - name: Require approved effective source commit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python deploy/scripts/wait-municipal-ci.py --commit "$GITHUB_SHA"
+      - name: Inspect journals locks and previous public version
+        env: &ftp-env
+          LOCAWEB_FTP_HOST: ${{ secrets.LOCAWEB_FTP_HOST }}
+          LOCAWEB_FTP_USER: ${{ secrets.LOCAWEB_FTP_USER }}
+          LOCAWEB_FTP_PASSWORD: ${{ secrets.LOCAWEB_FTP_PASSWORD }}
+          LOCAWEB_FTP_PORT: '21'
+        run: python -m collector.src.municipal_publish status --round "${{ github.event.inputs.round || (github.event.schedule == '18,48 * * * *' && '2' || '1') }}"
+      - name: Recover only a documented interrupted municipal transaction
+        env: *ftp-env
+        run: |
+          python -m collector.src.municipal_publish status --round "${{ github.event.inputs.round || (github.event.schedule == '18,48 * * * *' && '2' || '1') }}" > "$RUNNER_TEMP/municipal-status.json"
+          if python -c 'import json,os,sys;sys.exit(0 if json.load(open(os.environ["RUNNER_TEMP"]+"/municipal-status.json"))["pending"] else 1)'; then
+            python -m collector.src.municipal_publish recover --round "${{ github.event.inputs.round || (github.event.schedule == '18,48 * * * *' && '2' || '1') }}"
+          fi
+      - name: Publish municipality release through bounded FTP21 transport
+        env: *ftp-env
+        run: python -m collector.src.municipal_publish publish --round "${{ github.event.inputs.round || (github.event.schedule == '18,48 * * * *' && '2' || '1') }}" --package "$RUNNER_TEMP/municipal-package"
+      - name: Verify effective public version by FTP and HTTPS
+        env: *ftp-env
+        run: python -m collector.src.municipal_publish status --round "${{ github.event.inputs.round || (github.event.schedule == '18,48 * * * *' && '2' || '1') }}"
+  operation:
+    if: github.ref == 'refs/heads/main' && (github.event.inputs.operation == 'status' || github.event.inputs.operation == 'recover')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: locaweb-frontend-production
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install -r collector/requirements.txt
+      - name: Require approved operation source
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python deploy/scripts/wait-municipal-ci.py --commit "$GITHUB_SHA"
+      - name: Official municipality status or journal recovery
+        env: *ftp-env
+        run: python -m collector.src.municipal_publish "${{ github.event.inputs.operation }}" --round "${{ github.event.inputs.round }}"
