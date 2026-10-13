@@ -552,6 +552,8 @@ class FrontendTest(unittest.TestCase):
             ftp.files = first.files
             ftp.dirs = first.dirs
             ftp.events = first.events
+        for ftp in (first, second, third):
+            ftp.close = lambda: None
         attempts = {'count': 0}
         original_rename = FakeFTP.rename
 
