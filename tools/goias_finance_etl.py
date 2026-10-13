@@ -147,6 +147,7 @@ def build(candidates_zip: Path, finance_zip: Path):
                 "source_url": TSE_DATA, "source_record_id": record_id,
                 "source_file": filename, "source_row": source_rows[filename] + 1,
                 "candidate_id": cid, "donor_document": origin,
+                "recipient_campaign_document": campaign_cnpj,
                 "donor_candidate_id": field(row, "SQ_CANDIDATO_DOADOR"),
             })
     if matched["revenue"] == 0 or matched["expense"] == 0:

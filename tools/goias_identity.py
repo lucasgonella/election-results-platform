@@ -84,7 +84,7 @@ def resolve(candidates, private_candidates, records, campaign_owners):
         cid = next(iter(owners))
         if cid not in candidates:
             continue
-        campaign_id = opaque('campaign', 'candidate:' + cid + ':' + min(owners[cid]))
+        campaign_id = opaque('campaign', 'candidate:' + cid + ':campaign-cnpj:' + cnpj)
         campaign = {'id': campaign_id, 'kind': 'campaign', 'name': 'Campanha de ' + candidates[cid]['name'],
             'cnpj': cnpj, 'owner_person_id': person_for[cid], 'candidate_ids': [cid],
             'roles': ['campaign'], 'aliases': [], 'evidence': [{'method': 'official_campaign_ownership',
@@ -143,8 +143,10 @@ def resolve(candidates, private_candidates, records, campaign_owners):
             name = record['from_name']
             if name and name != origin['name'] and name not in origin['aliases']:
                 origin['aliases'].append(name)
-            target_campaign = next((campaigns[cnpj] for cnpj, owners in campaign_owners.items()
-                if record['candidate_id'] in owners and cnpj in campaigns), None)
+            target_campaign = campaigns.get(record.get('recipient_campaign_document'))
+            if target_campaign is None:
+                possible = [c for c in campaigns.values() if record['candidate_id'] in c['candidate_ids']]
+                target_campaign = possible[0] if len(possible) == 1 else None
             transfer = {k: record[k] for k in ['id', 'from_name', 'to_name', 'amount', 'date', 'type', 'source_url', 'source_record_id', 'source_file', 'source_row', 'candidate_id']}
             transfer.update({'from_id': origin['id'], 'to_id': person_for[record['candidate_id']],
                 'from_role': 'campaign' if campaign else 'person' if kind == 'cpf' else origin['kind'],

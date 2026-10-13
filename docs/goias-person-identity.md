@@ -28,7 +28,7 @@ impedem o vínculo correspondente e são contabilizados. Nomes servem à pesquis
 às variantes de exibição, jamais à comprovação.
 
 Os IDs públicos são UUIDs com namespace, calculados de âncoras **não pessoais**:
-sequências oficiais de candidatura, prestador de contas e registro financeiro.
+sequências oficiais de candidatura, CNPJ público de campanha e registro financeiro.
 Não são hashes de CPF, não exigem uma chave pública ou privada para pseudonimizar
 um domínio enumerável de documentos e não permitem calcular CPF a partir do ID.
 O agrupamento por documento permanece somente na memória do importador. Não se

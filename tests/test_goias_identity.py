@@ -70,6 +70,19 @@ class IdentityTests(unittest.TestCase):
         self.assertNotIn('donor', person(d)['roles'])
         self.assertIn('campaign_financier', person(d)['roles'])
 
+    def test_distinct_campaign_documents_of_same_candidate_never_collide(self):
+        other = '11222333000181'
+        d = export(income_rows=['101;10;200,00;' + CPF_B + ';Outra Pessoa;01/10/2026;-1;' + CNPJ + ';8', '101;12;100,00;' + CPF_B + ';Outra Pessoa;02/10/2026;-1;' + other + ';8', '102;11;50,00;' + CNPJ + ';Nome Civil;02/10/2026;101;;', '102;13;25,00;' + other + ';Nome Civil;03/10/2026;101;;'])
+        campaigns = [e for e in d['entities'] if e['kind'] == 'campaign' and e['owner_person_id'] == person(d)['id']]
+        self.assertEqual(len(campaigns), 2)
+        self.assertEqual(len({e['id'] for e in campaigns}), 2)
+        self.assertEqual({e['cnpj'] for e in campaigns}, {CNPJ, other})
+        by_id = {e['id']: e for e in campaigns}
+        by_record = {t['source_record_id']: t for t in d['transfers']}
+        self.assertEqual(by_id[by_record['10']['to_campaign_id']]['cnpj'], CNPJ)
+        self.assertEqual(by_id[by_record['12']['to_campaign_id']]['cnpj'], other)
+        self.assertEqual(len({t['from_campaign_id'] for t in d['transfers'] if t['from_role'] == 'campaign'}), 2)
+
     def test_campaign_cnpj_conflicting_owners_not_unified(self):
         d = export(income_rows=['101;10;200,00;' + CPF_B + ';Outra Pessoa;01/10/2026;-1;' + CNPJ + ';8', '102;11;50,00;' + CNPJ + ';Nome Civil;02/10/2026;101;' + CNPJ + ';9'])
         row = next(t for t in d['transfers'] if t['source_record_id'] == '11')
