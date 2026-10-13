@@ -544,6 +544,34 @@ class FrontendTest(unittest.TestCase):
         self.assertEqual(sum(event == 'rename' for event, _ in first.events), 1)
         self.assertEqual(transport.reconciled_transfers, 1)
 
+    def test_rename_timeout_twice_then_reconciles_without_second_upload(self):
+        first = FakeFTP()
+        second = FakeFTP()
+        third = FakeFTP()
+        for ftp in (second, third):
+            ftp.files = first.files
+            ftp.dirs = first.dirs
+            ftp.events = first.events
+        attempts = {'count': 0}
+        original_rename = FakeFTP.rename
+
+        def flaky_rename(ftp, old, new):
+            attempts['count'] += 1
+            if attempts['count'] <= 2:
+                raise TimeoutError('ftp rename response timeout')
+            return original_rename(ftp, old, new)
+
+        first.rename = lambda old, new: flaky_rename(first, old, new)
+        second.rename = lambda old, new: flaky_rename(second, old, new)
+        third.rename = lambda old, new: flaky_rename(third, old, new)
+        transport = f.Transport(first, reconnect=iter([second, third]).__next__)
+        path = '/frontend-deploy/portal/current.json'
+        transport.put(path, b'valid bytes')
+        self.assertEqual(first.files[path], b'valid bytes')
+        self.assertEqual(attempts['count'], 3)
+        self.assertEqual(sum(event == 'upload' for event, _ in first.events), 1)
+        self.assertEqual(transport.reconciled_transfers, 1)
+
     def test_interrupted_corrupt_upload_is_never_renamed(self):
         first, transport = self.interrupted_transport(corrupt=True)
         path = '/frontend-deploy/portal/current.json'
