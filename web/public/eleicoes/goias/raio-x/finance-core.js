@@ -9,6 +9,15 @@
   const normalize = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR').trim();
   const validAmount = value => typeof value === 'number' && Number.isFinite(value);
   const textID = value => typeof value === 'string' && value.trim().length > 0;
+  // A public name search must never become a CPF lookup or serialize a CPF.
+  // This deliberately rejects document-shaped input without validating/looking
+  // up a personal document. Campaign CNPJs already in the public contract differ.
+  function personalDocumentInput(value) {
+    const text = String(value ?? '');
+    return /(?:^|\D)\d{3}[.\s]\d{3}[.\s]\d{3}[-\s]\d{2}(?:\D|$)/.test(text) || /(?:^|\D)\d{11}(?:\D|$)/.test(text);
+  }
+  const safeSearch = value => personalDocumentInput(value) ? '' : String(value ?? '').slice(0, 160);
+  const nameMatches = (text, query) => normalize(query).split(/\s+/).filter(Boolean).every(token => text.includes(token));
   const safeSource = value => {
     try {
       const url = new URL(value);
@@ -57,13 +66,18 @@
   function buildIndex(data) {
     validateData(data);
     const nodes = new Map(), outgoing = new Map(), incoming = new Map(), aliases = new Map();
+    const allEntities = new Map((data.entities || []).map(entity => [entity.id, entity]));
     if (data.identity_schema === 1) {
-      const entities = new Map(data.entities.map(entity => [entity.id, entity]));
+      const entities = allEntities, byPerson = new Map();
+      for (const candidate of data.candidates) {
+        if (!byPerson.has(candidate.person_id)) byPerson.set(candidate.person_id, []);
+        byPerson.get(candidate.person_id).push(candidate);
+      }
       for (const entity of data.entities) {
         if (entity.kind === 'campaign') { aliases.set(entity.id, entity.owner_person_id); continue; }
-        const candidacies = data.candidates.filter(candidate => candidate.person_id === entity.id);
+        const candidacies = byPerson.get(entity.id) || [];
         const roleKind = entity.roles.includes('candidate') ? entity.roles.includes('donor') ? 'candidate-donor' : entity.roles.includes('campaign_financier') ? 'candidate-campaign' : 'candidate' : entity.kind === 'person' ? 'donor' : entity.kind;
-        const node = {...(candidacies[0] || {}), ...entity, kind: roleKind, candidacies, campaigns: (entity.campaign_ids || []).map(id => entities.get(id)).filter(Boolean)};
+        const node = {...(candidacies[0] || {}), ...entity, aliases: [...entity.aliases], kind: roleKind, candidacies, campaigns: (entity.campaign_ids || []).map(id => entities.get(id)).filter(Boolean)};
         if (candidacies.length) for (const key of ['revenue', 'expenses', 'votes']) node[key] = sumKnown(candidacies, key).total;
         nodes.set(entity.id, node);
         for (const candidate of candidacies) aliases.set(candidate.id, entity.id);
@@ -86,19 +100,55 @@
       outgoing.get(transfer.from_id).push(transfer);
       incoming.get(transfer.to_id).push(transfer);
     }
-    return {data, nodes, outgoing, incoming, aliases};
+    const searchOrder = [...nodes.values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR') || a.id.localeCompare(b.id));
+    const searchText = new Map(searchOrder.map(node => [node.id, normalize([
+      node.name, node.civil_name, ...node.aliases, node.party, node.number,
+      ...(node.candidacies || []).flatMap(c => [c.ballot_name, c.civil_name, c.party, c.number]),
+      ...(node.campaigns || []).flatMap(c => [c.name, ...c.aliases, c.cnpj, String(c.cnpj || '').replace(/\D/g, '')])
+    ].join(' '))]));
+    return {data, nodes, outgoing, incoming, aliases, entities: allEntities, searchOrder, searchText};
+  }
+  function matchesKind(node, kind) {
+    return !kind || node.kind === kind || kind === 'candidate' && node.roles.includes('candidate') ||
+      kind === 'multi' && node.roles.includes('candidate') && (node.roles.includes('donor') || node.roles.includes('campaign_financier'));
+  }
+  function searchEntities(index, filters = {}, options = {}) {
+    const query = safeSearch(filters.q), tokens = normalize(query);
+    // Document-shaped input must have zero results, rather than become an empty
+    // query that accidentally returns/chooses the first identity.
+    if (personalDocumentInput(filters.q)) return {items: [], total: 0, offset: 0};
+    const candidates = new Set(filterCandidates(index, {...filters, q: ''}).map(c => c.id));
+    const narrowed = !!(filters.office || filters.party);
+    const hits = index.searchOrder.filter(node => {
+      if (!matchesKind(node, filters.kind)) return false;
+      if (narrowed && !candidates.has(node.id)) {
+        const connected = [...(index.incoming.get(node.id) || []), ...(index.outgoing.get(node.id) || [])];
+        if (!connected.some(row => candidates.has(row.from_id) || candidates.has(row.to_id))) return false;
+      }
+      const text = index.searchText.get(node.id);
+      const campaignQuery = tokens.replace(/[.\/-]/g, '');
+      return nameMatches(text, tokens) || /^\d{14}$/.test(campaignQuery) && text.includes(campaignQuery);
+    });
+    const limit = Math.min(50, Math.max(1, options.limit || 20));
+    const offset = Math.min(Math.max(0, Number(options.offset) || 0), Math.max(0, Math.floor((hits.length - 1) / limit) * limit));
+    return {items: hits.slice(offset, offset + limit), total: hits.length, offset};
+  }
+  function resolveSelection(index, requested) {
+    const id = index.aliases.get(requested) || requested;
+    return typeof id === 'string' && index.nodes.has(id) ? id : '';
   }
   function filterCandidates(index, filters = {}) {
     const q = normalize(filters.q);
     return index.data.candidates.filter(candidate => (candidate.candidacies || [candidate]).some(record => (!filters.office || record.office === filters.office) && (!filters.party || record.party === filters.party)) && (!q || normalize([candidate.name, candidate.civil_name, ...(candidate.aliases || []), candidate.party, candidate.number].join(' ')).includes(q)));
   }
-  function filterTransfers(index, filters = {}) {
+  function filterTransfers(index, filters = {}, records = index.data.transfers) {
+    if (['q', 'from', 'to'].some(key => personalDocumentInput(filters[key]))) return [];
     const candidateIDs = new Set(filterCandidates(index, {...filters, q: ''}).map(row => row.id));
     const narrowCandidates = !!(filters.office || filters.party);
     const q = normalize(filters.q), from = normalize(filters.from), to = normalize(filters.to);
     const hasMin = filters.min !== '' && filters.min != null && Number.isFinite(Number(filters.min));
     const hasMax = filters.max !== '' && filters.max != null && Number.isFinite(Number(filters.max));
-    return index.data.transfers.filter(row => {
+    return records.filter(row => {
       const origin = index.nodes.get(row.from_id), target = index.nodes.get(row.to_id);
       if (narrowCandidates && !candidateIDs.has(row.from_id) && !candidateIDs.has(row.to_id)) return false;
       if (filters.kind && ![origin, target].some(node => node.kind === filters.kind || (filters.kind === 'candidate' && node.roles?.includes('candidate')) || (filters.kind === 'multi' && node.roles?.includes('candidate') && (node.roles.includes('donor') || node.roles.includes('campaign_financier'))))) return false;
@@ -109,9 +159,11 @@
         if (filters.direction === 'campaign' && (row.from_id !== filters.selected || row.from_role !== 'campaign')) return false;
       }
       if (filters.type && (row.type || 'Categoria não informada') !== filters.type) return false;
-      if (q && !normalize([origin.name, target.name, origin.civil_name, target.civil_name, ...origin.aliases, ...target.aliases, origin.party, target.party, origin.number, target.number].join(' ')).includes(q)) return false;
-      if (from && !normalize([origin.name, ...origin.aliases].join(' ')).includes(from)) return false;
-      if (to && !normalize([target.name, ...target.aliases].join(' ')).includes(to)) return false;
+      const campaignQuery = q.replace(/[.\/-]/g, '');
+      const relationQuery = /^\d{14}$/.test(campaignQuery) ? campaignQuery : q;
+      if (q && !nameMatches((index.searchText.get(origin.id) || '') + ' ' + (index.searchText.get(target.id) || ''), relationQuery)) return false;
+      if (from && !nameMatches(index.searchText.get(origin.id) || '', from)) return false;
+      if (to && !nameMatches(index.searchText.get(target.id) || '', to)) return false;
       if (hasMin && (!validAmount(row.amount) || row.amount < Number(filters.min))) return false;
       if (hasMax && (!validAmount(row.amount) || row.amount > Number(filters.max))) return false;
       const date = dateKey(row.date);
@@ -120,6 +172,32 @@
       if (filters.end && date > filters.end) return false;
       return true;
     });
+  }
+  const EXPLICIT_FINANCE_FILTERS = ['office', 'party', 'kind', 'type', 'from', 'to', 'min', 'max', 'start', 'end', 'direction'];
+  function explicitFinanceFilters(state = {}) {
+    // q locates identities in the search list. It is NOT a financial filter and
+    // must not restrict a donor to the candidate from whose graph she arrived.
+    return Object.fromEntries(EXPLICIT_FINANCE_FILTERS.map(key => [key, state[key] ?? '']));
+  }
+  function getCompleteDirectConnections(index, requested, explicitFilters = {}) {
+    const entityId = resolveSelection(index, requested);
+    if (!entityId) return {entityId: '', records: [], available: 0, excludedByFilters: 0};
+    // The sole source is the GLOBAL adjacency index, never graphData/contextRows
+    // or a rendered node list. A self-transfer appears in both adjacency lists,
+    // so deduplicate by original row ID, not amount, date, name or source SQ.
+    const byID = new Map();
+    for (const row of [...(index.incoming.get(entityId) || []), ...(index.outgoing.get(entityId) || [])]) byID.set(row.id, row);
+    const complete = [...byID.values()].sort((a, b) => a.id.localeCompare(b.id));
+    const records = filterTransfers(index, {...explicitFinanceFilters(explicitFilters), selected: entityId}, complete);
+    return {entityId, records, available: complete.length, excludedByFilters: complete.length - records.length};
+  }
+  function getExplorationConnections(index, requested, explicitFilters = {}, depth = 1) {
+    const direct = getCompleteDirectConnections(index, requested, explicitFilters);
+    if (!direct.entityId || depth <= 1) return direct;
+    const complete = filterTransfers(index, {...explicitFinanceFilters(explicitFilters), selected: direct.entityId});
+    const neighborhoodIDs = neighborhood(complete, direct.entityId, depth).ids;
+    const records = complete.filter(row => neighborhoodIDs.has(row.from_id) && neighborhoodIDs.has(row.to_id));
+    return {...direct, records, directRecords: direct.records};
   }
   function aggregate(rows) {
     const groups = new Map();
@@ -142,7 +220,7 @@
     }
     const seen = new Set(selected ? [selected] : []), distance = new Map(selected ? [[selected, 0]] : []);
     let frontier = selected ? [selected] : [];
-    for (let hop = 1; hop <= Math.min(2, Math.max(1, depth)); hop++) {
+    for (let hop = 1; hop <= Math.min(3, Math.max(1, depth)); hop++) {
       const next = [];
       for (const id of frontier) for (const other of adjacency.get(id) || []) if (!seen.has(other)) { seen.add(other); distance.set(other, hop); next.push(other); }
       frontier = next;
@@ -193,19 +271,95 @@
     }
     return {status: 'missing', rows: [], visited: depth.size};
   }
+  // Camera coordinates are SVG user units, after inverting the SVG's screen
+  // CTM in the DOM reader. p = t + s*q; t' = p - (p-t)*(s'/s).
+  function zoomAt(camera, factor, point, limits = {}) {
+    const min = limits.min || .35, max = limits.max || 8;
+    const scale = Math.min(max, Math.max(min, camera.scale * factor));
+    const ratio = scale / camera.scale;
+    return {scale, x: point.x - (point.x - camera.x) * ratio, y: point.y - (point.y - camera.y) * ratio};
+  }
+  function fitCamera(bounds, width = 900, height = 620, padding = 55) {
+    if (!bounds || !Number.isFinite(bounds.x) || !bounds.width || !bounds.height) return {scale: 1, x: 0, y: 0};
+    const scale = Math.min(2.5, Math.max(.35, Math.min((width - padding * 2) / bounds.width, (height - padding * 2) / bounds.height)));
+    return {scale, x: width / 2 - (bounds.x + bounds.width / 2) * scale, y: height / 2 - (bounds.y + bounds.height / 2) * scale};
+  }
+  function centerCamera(camera, point, width = 900, height = 620) {
+    return {...camera, x: width / 2 - point.x * camera.scale, y: height / 2 - point.y * camera.scale};
+  }
+  function layoutBounds(points, nodes, radius = 26) {
+    if (!nodes.length) return null;
+    const xs = nodes.map(node => points.get(node.id)?.x).filter(Number.isFinite);
+    const ys = nodes.map(node => points.get(node.id)?.y).filter(Number.isFinite);
+    if (!xs.length || !ys.length) return null;
+    const x = Math.min(...xs) - radius, y = Math.min(...ys) - radius;
+    return {x, y, width: Math.max(...xs) - x + radius, height: Math.max(...ys) - y + radius};
+  }
+  function stableLayout(nodes, edges, options = {}) {
+    // Bounded deterministic force layout. Positions are visual geometry only:
+    // financial identities and edges are neither grouped nor changed here.
+    const sorted = [...nodes].sort((a, b) => a.id.localeCompare(b.id));
+    const previous = options.previous || new Map(), positions = new Map(), velocity = new Map();
+    const columns = Math.max(1, Math.ceil(Math.sqrt(sorted.length * 1.45))), rows = Math.ceil(sorted.length / columns);
+    for (const [i, node] of sorted.entries()) {
+      const cached = previous.get(node.id);
+      positions.set(node.id, cached ? {...cached} : {x: 70 + (i % columns + .5) * 760 / columns, y: 60 + (Math.floor(i / columns) + .5) * 500 / Math.max(1, rows)});
+      velocity.set(node.id, {x: 0, y: 0});
+    }
+    // Preserve the selected point in world coordinates while the new network
+    // settles. The reader centers the camera explicitly after navigation.
+    if (options.selected && positions.has(options.selected) && !previous.has(options.selected)) positions.set(options.selected, {x: 450, y: 310});
+    const pinned = options.selected && positions.has(options.selected) ? options.selected : null;
+    for (let step = 0; step < 100; step++) {
+      const forces = new Map(sorted.map(node => [node.id, {x: 0, y: 0}]));
+      for (let i = 0; i < sorted.length; i++) {
+        for (let j = i + 1; j < sorted.length; j++) {
+          const a = positions.get(sorted[i].id), b = positions.get(sorted[j].id);
+          let dx = a.x - b.x, dy = a.y - b.y, length = Math.hypot(dx, dy);
+          if (length < .001) { dx = .8; dy = .6; length = 1; }
+          const minimum = (options.compact ? 38 : 27) + (options.radius?.(sorted[i]) || 18) + (options.radius?.(sorted[j]) || 18);
+          const push = Math.min(14, 1550 / (length * length) + Math.max(0, minimum - length) * .25);
+          const fx = dx / length * push, fy = dy / length * push;
+          const fa = forces.get(sorted[i].id), fb = forces.get(sorted[j].id);
+          fa.x += fx; fa.y += fy; fb.x -= fx; fb.y -= fy;
+        }
+      }
+      for (const edge of edges) {
+        const a = positions.get(edge.from_id), b = positions.get(edge.to_id);
+        if (!a || !b || edge.from_id === edge.to_id) continue;
+        const dx = b.x - a.x, dy = b.y - a.y, length = Math.max(1, Math.hypot(dx, dy));
+        const pull = Math.max(0, length - 125) * .018;
+        const fa = forces.get(edge.from_id), fb = forces.get(edge.to_id);
+        fa.x += dx / length * pull; fa.y += dy / length * pull;
+        fb.x -= dx / length * pull; fb.y -= dy / length * pull;
+      }
+      const cooling = 1 - step / 125;
+      for (const node of sorted) {
+        if (node.id === pinned) continue;
+        const p = positions.get(node.id), f = forces.get(node.id), v = velocity.get(node.id);
+        v.x = (v.x + f.x + (450 - p.x) * .003) * .62;
+        v.y = (v.y + f.y + (310 - p.y) * .003) * .62;
+        p.x = Math.min(855, Math.max(45, p.x + Math.max(-12, Math.min(12, v.x)) * cooling));
+        p.y = Math.min(562, Math.max(58, p.y + Math.max(-12, Math.min(12, v.y)) * cooling));
+      }
+    }
+    return positions;
+  }
   const QUERY_FIELDS = ['q', 'office', 'party', 'kind', 'type', 'from', 'to', 'min', 'max', 'start', 'end', 'selected', 'view', 'depth', 'direction'];
+  const opaqueEntityID = value => /^(?:person|donor|campaign|organization|unknown):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value));
   function toQuery(state) {
     const query = new URLSearchParams();
-    for (const key of QUERY_FIELDS) if (state[key] != null && String(state[key]) !== '' && !(key === 'view' && state[key] === 'graph') && !(key === 'depth' && Number(state[key]) === 1)) query.set(key, String(state[key]));
+    for (const key of QUERY_FIELDS) if (state[key] != null && String(state[key]) !== '' && (key === 'selected' && opaqueEntityID(state[key]) || !personalDocumentInput(state[key])) && !(key === 'view' && state[key] === 'graph') && !(key === 'depth' && Number(state[key]) === 1)) query.set(key, String(state[key]));
     return query.toString();
   }
   function fromQuery(value) {
     const query = new URLSearchParams(value), state = {};
     for (const key of QUERY_FIELDS) state[key] = query.get(key) || '';
-    state.view = state.view === 'table' ? 'table' : 'graph'; state.depth = state.depth === '2' ? 2 : 1;
+    for (const key of ['q', 'from', 'to', 'office', 'party', 'kind', 'type', 'direction']) state[key] = safeSearch(state[key]);
+    state.view = state.view === 'table' ? 'table' : 'graph'; state.depth = ['2', '3'].includes(state.depth) ? Number(state.depth) : 1;
     for (const key of ['min', 'max']) if (state[key] && (!Number.isFinite(Number(state[key])) || Number(state[key]) < 0)) state[key] = '';
     for (const key of ['start', 'end']) if (state[key] && dateKey(state[key]) !== state[key]) state[key] = '';
     return state;
   }
-  return {normalize, validAmount, safeSource, dateKey, validateData, sumKnown, buildIndex, filterCandidates, filterTransfers, aggregate, neighborhood, graphView, findPath, toQuery, fromQuery};
+  return {normalize, validAmount, safeSource, dateKey, personalDocumentInput, safeSearch, validateData, sumKnown, buildIndex, filterCandidates, searchEntities, resolveSelection, matchesKind, filterTransfers, explicitFinanceFilters, getCompleteDirectConnections, getExplorationConnections, aggregate, neighborhood, graphView, findPath, zoomAt, fitCamera, centerCamera, stableLayout, layoutBounds, toQuery, fromQuery};
 });

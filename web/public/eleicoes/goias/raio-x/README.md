@@ -102,3 +102,44 @@ O leitor aceita `identity_schema: 1`, com pessoas e campanhas associadas por
 evidências oficiais, sem CPFs públicos. Repasses de campanha permanecem distintos
 de doações pessoais. O ETL é o único responsável pela resolução e pelo JSON.
 Método, auditoria e investigação de Luana: [identidade no Raio-X](../../../../../docs/goias-person-identity.md).
+
+## Navegação pelo índice completo
+
+A página sem seleção explícita abre em **Visão geral**. `selected` válido é
+resolvido ao ID canônico; ID indisponível retorna ao geral com aviso. Não há
+persistência de seleção em storage, escolha automática ou ordenação por receita
+para definir a pessoa inicial.
+
+`getCompleteDirectConnections(index, entityId, explicitFilters)` usa somente os
+índices globais `incoming`/`outgoing` do pacote validado. `q` localiza nomes e
+campanhas; não restringe transações. Cargo, partido, categoria, origem, destino,
+intervalos e papel são filtros explícitos, preservados entre entidades. Clique,
+busca, URL e histórico abrem o mesmo conjunto direto para o mesmo ID/filtros.
+Repasses próprios encontrados nas duas adjacências são contados uma vez pelo ID
+da linha. Registros de mesmo valor/data não são deduplicados.
+
+O clique centra o novo nó e conserva a escala; voltar/avançar restaura câmera e
+filtros. Hover, pan e zoom não selecionam. Ctrl/Meta + scroll utiliza a inversa da
+matriz SVG para preservar o ponto sob o cursor: `t' = p - (p - t) * (s' / s)`.
+O modo touch aceita pinch e arrasto. Ajustar à tela calcula limites reais dos nós;
+o zoom é limitado a 35–800%. Limpar filtros retorna ao geral. Clique no fundo ou
+Visão geral mantém os filtros e a câmera.
+
+O desenho usa layout determinístico e mostra até 70 nós/140 vínculos (36/65 em
+mobile), com rótulos graduais e contagem explícita do que não foi desenhado. A
+busca consulta todas as identidades, 20 por página; a tabela inclui todos os
+registros do contexto, 30 por página. Segundo/terceiro graus são expansões
+limitadas de relações documentadas. Cada nova pessoa começa em conexões diretas;
+proximidade geométrica não cria relações. Campanhas são projetadas junto ao
+titular comprovado, preservando o tipo e os endpoints legais em cada registro.
+
+Aceite bloqueante com fixture inventada Charles → Izaura (sem simular dados
+públicos): `python -m unittest tests.test_raiox_navigation -v`. Chromium real:
+instalar `tests/raiox-browser-requirements.txt` e executar
+`python -m unittest tests.test_raiox_navigation_browser -v`. O CI de Goiás exige
+Playwright e axe-core; a ausência dessas dependências não pode aprovar esse job.
+A avaliação jurídico-técnica em [pesquisa e privacidade](../../../../../docs/raiox-navigation-privacy.md)
+mantém busca por CPF bloqueada; não foi criado índice, campo ou endpoint.
+
+Causa, câmera, critérios de equivalência e medidas locais:
+[navegação completa](../../../../../docs/raiox-complete-navigation.md).

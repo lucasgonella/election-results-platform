@@ -4,11 +4,17 @@ on:
     paths:
       - 'web/public/eleicoes/goias/raio-x/**'
       - '.github/workflows/goias-finance-ci.yml'
+      - 'tests/test_raiox_navigation*.py'
+      - 'tests/raiox_navigation_fixtures.py'
+      - 'tests/raiox-browser-requirements.txt'
   push:
     branches: [main]
     paths:
       - 'web/public/eleicoes/goias/raio-x/**'
       - '.github/workflows/goias-finance-ci.yml'
+      - 'tests/test_raiox_navigation*.py'
+      - 'tests/raiox_navigation_fixtures.py'
+      - 'tests/raiox-browser-requirements.txt'
 permissions:
   contents: read
 jobs:
@@ -19,9 +25,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Validate frontend contract and safe empty state
         run: |
-          python3 -m unittest tests.test_premium_finance_graph -v
+          python3 -m unittest tests.test_premium_finance_graph tests.test_raiox_navigation -v
+      - name: Install real-browser test dependencies
+        run: |
+          python3 -m pip install -r tests/raiox-browser-requirements.txt
+          python3 -m playwright install --with-deps chromium
+          npm install --prefix "$RUNNER_TEMP/raiox-qa" --no-package-lock --no-save axe-core@4.14.0
+      - name: Required global-adjacency, interaction and accessibility acceptance
+        env:
+          RAIOX_BROWSER_REQUIRED: '1'
+          RAIOX_AXE_PATH: ${{ runner.temp }}/raiox-qa/node_modules/axe-core/axe.min.js
+        run: python3 -m unittest tests.test_raiox_navigation_browser -v
       - name: JavaScript syntax check (Node.js)
         run: |
           python3 - <<'PY'
