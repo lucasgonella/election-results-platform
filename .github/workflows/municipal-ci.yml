@@ -1,0 +1,31 @@
+name: Validate municipal presidential pipeline and map
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: Municipal pipeline and browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r collector/requirements.txt -r tests/raiox-browser-requirements.txt pytest
+      - run: python -m unittest tests.test_municipal_pipeline -v
+      - run: python -m pytest -q tests/test_municipal_map.py
+      - run: python -m playwright install --with-deps chromium
+      - run: npm install --prefix "$RUNNER_TEMP/municipal-qa" --no-package-lock --no-save axe-core@4.14.0
+      - name: Municipal navigation mobile accessibility and round isolation
+        env:
+          MUNICIPAL_BROWSER_REQUIRED: '1'
+          MUNICIPAL_AXE_PATH: ${{ runner.temp }}/municipal-qa/node_modules/axe-core/axe.min.js
+        run: python -m unittest tests.test_municipal_browser -v
+      - run: node --check web/public/eleicoes/municipal-map.js
