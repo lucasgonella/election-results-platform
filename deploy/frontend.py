@@ -478,26 +478,33 @@ class Transport:
             # Reconnect once, verify actual bytes, and never replay STOR blindly.
             if self.reconnect and (isinstance(original, (OSError, EOFError)) or
                                    isinstance(original, RuntimeError) and str(original).startswith('native_ftp_error_')):
-                try:
-                    self.ftp.close()
-                    self.ftp = self.reconnect()
-                    current = self.read(path, optional=True)
-                    pending = self.read(temporary, optional=True)
-                    if pending is None:
-                        if current != raw:
-                            raise RuntimeError('transfer_not_reconciled')
-                    else:
+                # An FTP RNTO timeout may have committed the rename. Probe
+                # destination on a fresh control channel before trying RNTO
+                # again. Retry only bounded transport failures; never repeat STOR.
+                for attempt in range(3):
+                    try:
+                        self.ftp.close()
+                        self.ftp = self.reconnect()
+                        current = self.read(path, optional=True)
+                        if current == raw:
+                            self.reconciled_transfers += 1
+                            return
+                        pending = self.read(temporary, optional=True)
                         if pending != raw:
-                            raise RuntimeError('transfer_integrity_error')
+                            raise RuntimeError('transfer_not_reconciled' if pending is None else 'transfer_integrity_error')
                         if current != old:
                             raise RuntimeError('external_writer_detected')
                         self._rename(temporary, path)
                         if self.read(path) != raw:
                             raise RuntimeError('rename_integrity_error')
-                    self.reconciled_transfers += 1
-                    return
-                except Exception as reconciliation_error:
-                    original = ExceptionGroup('transfer_reconciliation_failed', [original, reconciliation_error])
+                        self.reconciled_transfers += 1
+                        return
+                    except (OSError, EOFError) as reconciliation_error:
+                        if attempt == 2:
+                            original = ExceptionGroup('transfer_reconciliation_failed', [original, reconciliation_error])
+                    except Exception as reconciliation_error:
+                        original = ExceptionGroup('transfer_reconciliation_failed', [original, reconciliation_error])
+                        break
             # Remove only the temporary file created here, never a collision.
             try:
                 if self.metadata(temporary) is not None:
