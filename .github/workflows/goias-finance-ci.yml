@@ -59,7 +59,12 @@ jobs:
                       self.sources.append(PurePosixPath(source.split("?", 1)[0]).as_posix())
           parser = Scripts()
           parser.feed((root / "index.html").read_text())
-          assert sorted(parser.sources) == ["finance-app.js", "finance-core.js"]
+          assert sorted(parser.sources) == [
+              "analytics.js", "finance-app.js", "finance-core.js",
+              "https:/www.googletagmanager.com/gtag/js",
+          ]
           for name in parser.sources:
+              if name.startswith("https:/www.googletagmanager.com/gtag/js"):
+                  continue  # Third-party loader is not a local JavaScript asset.
               subprocess.run(["node", "--check", str(root / name)], check=True)
           PY
