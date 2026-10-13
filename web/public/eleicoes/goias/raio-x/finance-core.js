@@ -63,6 +63,33 @@
     for (const row of rows) if (validAmount(row[field])) { total += row[field]; known += 1; }
     return {total: known ? total : null, known, missing: rows.length - known, count: rows.length};
   }
+  function preferDocumentedDonorName(node, entity, records) {
+    // Choose a display label only within an already resolved official identity.
+    // Candidacy names, campaign projections and other identities are untouched.
+    if (entity?.kind !== 'person' || !entity.roles.includes('donor') || entity.roles.includes('candidate')) return;
+    const nameKey = value => String(value ?? '').normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('pt-BR');
+    const allowed = new Set([entity.name, ...entity.aliases].map(nameKey));
+    const names = new Map();
+    for (const row of new Set(records)) for (const side of ['from', 'to']) {
+      if ((row[`original_${side}_id`] || row[`${side}_id`]) !== entity.id) continue;
+      const name = row[`${side}_name`], key = nameKey(name);
+      if (typeof name !== 'string' || !key || !allowed.has(key)) continue;
+      if (!names.has(key)) names.set(key, {count: 0, variants: new Map()});
+      const group = names.get(key), variant = name.trim();
+      group.count += 1; group.variants.set(variant, (group.variants.get(variant) || 0) + 1);
+    }
+    if (!names.size) return;
+    const count = Math.max(...[...names.values()].map(group => group.count));
+    const leaders = [...names].filter(([, group]) => group.count === count);
+    // A tie provides no reason to replace the source's principal label.
+    if (leaders.length !== 1 || leaders[0][0] === nameKey(node.name)) return;
+    const group = leaders[0][1];
+    const [name] = [...group.variants].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))[0];
+    node.name_selection = {method: 'documented_name_frequency', source_name: node.name, occurrences: count, total: [...names.values()].reduce((sum, item) => sum + item.count, 0)};
+    if (!node.aliases.includes(node.name)) node.aliases.push(node.name);
+    node.aliases = node.aliases.filter(alias => alias !== name);
+    node.name = name;
+  }
   function buildIndex(data) {
     validateData(data);
     const nodes = new Map(), outgoing = new Map(), incoming = new Map(), aliases = new Map();
@@ -100,6 +127,7 @@
       outgoing.get(transfer.from_id).push(transfer);
       incoming.get(transfer.to_id).push(transfer);
     }
+    for (const node of nodes.values()) preferDocumentedDonorName(node, allEntities.get(node.id), [...(outgoing.get(node.id) || []), ...(incoming.get(node.id) || [])]);
     const searchOrder = [...nodes.values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR') || a.id.localeCompare(b.id));
     const searchText = new Map(searchOrder.map(node => [node.id, normalize([
       node.name, node.civil_name, ...node.aliases, node.party, node.number,

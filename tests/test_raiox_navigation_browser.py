@@ -151,6 +151,31 @@ class RaioxBrowserTests(unittest.TestCase):
         self.assertEqual(self.page.locator('#min-value').input_value(), '')
         self.assertEqual(self.page.locator('#search').input_value(), '')
 
+    def test_donor_spelling_is_consistent_in_search_click_and_shared_url(self):
+        fixture=FixtureHandler.fixture
+        donor=next(e for e in fixture['entities'] if e['id']=='person:izaura')
+        donor['name']='IRAURA CRISTINA EXEMPLO'
+        donor['aliases']=['IZAURA CRISTINA PERES','Izaura Cristina Peres']
+        rows=[r for r in fixture['transfers'] if r['from_id']==donor['id']]
+        for i,row in enumerate(rows):
+            row['from_name']=donor['name'] if i==0 else 'Izaura Cristina Peres' if i==1 else 'IZAURA CRISTINA PERES'
+        self.open('?selected=person%3Acharles')
+        self.click_node(donor['id'])
+        self.assertEqual(self.page.locator('#detail-title').inner_text(),'IZAURA CRISTINA PERES')
+        self.page.locator('.official-names summary').click()
+        self.assertIn('3 de 4 ocorrências',self.page.locator('.official-names').inner_text())
+        self.assertIn(donor['name'],self.page.locator('.official-names').inner_text())
+        signature=self.snapshot()
+        self.assertEqual(len(signature['records']),4)
+        self.assertTrue(any(donor['name'] in row['text'] for row in signature['evidence']))
+        self.select_search(donor['id'],'IRAURA')
+        self.assertEqual(self.page.locator('#detail-title').inner_text(),'IZAURA CRISTINA PERES')
+        self.assertEqual(self.snapshot(),signature)
+        self.open('?selected=person%3Aizaura')
+        self.assertEqual(self.page.locator('#detail-title').inner_text(),'IZAURA CRISTINA PERES')
+        self.assertEqual(self.snapshot(),signature)
+        self.assertEqual(self.page.locator('.graph-node.is-selected .node-label').text_content(),'IZAURA CRISTINA PERES')
+
     def test_filters_do_not_inherit_search_or_silently_hide_direct_records(self):
         self.open('?selected=person%3Acharles&office=deputado+estadual')
         self.assertEqual(self.selected(), 'person:charles')

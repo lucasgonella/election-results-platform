@@ -21,6 +21,60 @@ class RaioxNavigationTests(unittest.TestCase):
                                 capture_output=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_donor_label_uses_global_documented_frequency_without_changing_identity(self):
+        self.run_node("""
+const donor=raw.entities.find(e=>e.id==='person:izaura');
+donor.name='IRAURA CRISTINA EXEMPLO';
+donor.aliases=['IZAURA CRISTINA PERES','Izaura Cristina Peres'];
+const rows=raw.transfers.filter(r=>r.from_id===donor.id);
+rows.forEach((r,i)=>r.from_name=i===0?donor.name:i===1?'Izaura Cristina Peres':'IZAURA CRISTINA PERES');
+const before=JSON.stringify(raw), index=F.buildIndex(raw), node=index.nodes.get(donor.id);
+assert.equal(node.name,'IZAURA CRISTINA PERES');
+assert.deepEqual(node.name_selection,{method:'documented_name_frequency',source_name:donor.name,occurrences:3,total:4});
+assert.ok(node.aliases.includes(donor.name));
+assert.equal(F.searchEntities(index,{q:'IRAURA'}).items[0].id,donor.id);
+assert.equal(F.searchEntities(index,{q:'IZAURA CRISTINA PERES'}).total,2); // keep the homonym separate
+const direct=F.getCompleteDirectConnections(index,donor.id);
+assert.equal(direct.records.length,4);
+assert.equal(F.sumKnown(direct.records).total,800);
+const signature=rs=>rs.map(r=>[r.id,r.from_name,r.amount,r.source_record_id,r.source_url]).sort((a,b)=>a[0].localeCompare(b[0]));
+assert.deepEqual(signature(direct.records),signature(rows));
+F.getCompleteDirectConnections(index,donor.id,{min:250});
+assert.equal(node.name,'IZAURA CRISTINA PERES'); // explicit filters never choose the label
+assert.equal(JSON.stringify(raw),before);
+assert.equal(F.buildIndex(raw).nodes.get(donor.id).name,node.name);
+raw.transfers.reverse(); raw.entities.reverse();
+assert.equal(F.buildIndex(raw).nodes.get(donor.id).name,node.name);
+""")
+
+    def test_ambiguous_or_unlisted_names_do_not_replace_source_label(self):
+        self.run_node("""
+const donor=raw.entities.find(e=>e.id==='person:izaura'), original=donor.name;
+donor.aliases=['OUTRA GRAFIA DOCUMENTADA'];
+const rows=raw.transfers.filter(r=>r.from_id===donor.id);
+rows.forEach((r,i)=>r.from_name=i<2?original:donor.aliases[0]);
+assert.equal(F.buildIndex(raw).nodes.get(donor.id).name,original); // tied counts
+rows.forEach(r=>r.from_name='NOME NÃO DECLARADO NAS VARIAÇÕES DA IDENTIDADE');
+assert.equal(F.buildIndex(raw).nodes.get(donor.id).name,original);
+rows.forEach(r=>delete r.from_name);
+assert.equal(F.buildIndex(raw).nodes.get(donor.id).name,original);
+raw.transfers=raw.transfers.filter(r=>r.from_id!==donor.id);
+assert.equal(F.buildIndex(raw).nodes.get(donor.id).name,original); // no records
+""")
+
+    def test_candidate_ballot_names_are_not_replaced_by_donor_names(self):
+        self.run_node("""
+const person=raw.entities.find(e=>e.id==='person:charles');
+person.roles.push('donor'); person.aliases=['NOME CIVIL EXEMPLO'];
+for(let i=0;i<5;i++) raw.transfers.push({...raw.transfers[0],id:'transaction:own-'+i,
+ from_id:person.id,from_name:person.aliases[0],to_id:'person:bia',to_campaign_id:'campaign:bia'});
+const index=F.buildIndex(raw);
+assert.equal(index.nodes.get(person.id).name,'CHARLES BENTO');
+assert.equal(index.nodes.get(person.id).kind,'candidate-donor');
+assert.equal(index.nodes.get('person:homonym').name,'IZAURA CRISTINA PERES');
+assert.equal(index.nodes.size,raw.entities.filter(e=>e.kind!=='campaign').length);
+""")
+
     def test_charles_to_izaura_uses_global_adjacency_at_every_hop(self):
         self.run_node("""
 const index=F.buildIndex(raw), snapshot=JSON.stringify(raw);

@@ -98,6 +98,15 @@ Testes sintéticos: `python -m unittest tests.test_premium_finance_graph -v`.
 
 ## Identidades comprovadas e campanhas
 
+Para pessoas exclusivamente doadoras, o nome exibido usa a grafia mais frequente
+nas transferências do mesmo ID, considerando apenas nomes e variações já
+publicados para essa identidade. Maiúsculas/minúsculas e espaços equivalentes
+contam juntos; empates e ausência de evidências mantêm o nome principal da fonte.
+O critério é global, independente dos filtros e da ordem das linhas, e aparece
+nas variações do painel. Nomes de candidatura não são substituídos. Nomes
+originais, IDs, valores, evidências e JSON financeiro permanecem intactos.
+Essa escolha de rótulo não confirma nome civil nem associa pessoas pelo nome.
+
 O leitor aceita `identity_schema: 1`, com pessoas e campanhas associadas por
 evidências oficiais, sem CPFs públicos. Repasses de campanha permanecem distintos
 de doações pessoais. O ETL é o único responsável pela resolução e pelo JSON.
