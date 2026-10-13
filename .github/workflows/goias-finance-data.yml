@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - 'tools/goias_finance_etl.py'
+      - 'tools/goias_identity.py'
       - '.github/workflows/goias-finance-data.yml'
   workflow_dispatch:
   schedule:
@@ -22,7 +23,7 @@ jobs:
         with:
           persist-credentials: true
       - name: Unit test financial importer
-        run: python3 -m unittest discover -s tests -p 'test_goias_finance_etl.py' -v
+        run: python3 -m unittest discover -s tests -p 'test_goias*py' -v
       - name: Download official TSE datasets
         run: |
           set -euo pipefail
