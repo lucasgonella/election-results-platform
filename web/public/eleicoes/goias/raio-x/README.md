@@ -95,3 +95,10 @@ limitado e a tabela preserva o conjunto completo do contexto.
 Arquitetura, método, limites e evidências locais:
 [Redesign do leitor financeiro](../../../../../docs/premium-finance-redesign.md).
 Testes sintéticos: `python -m unittest tests.test_premium_finance_graph -v`.
+
+## Identidades comprovadas e campanhas
+
+O leitor aceita `identity_schema: 1`, com pessoas e campanhas associadas por
+evidências oficiais, sem CPFs públicos. Repasses de campanha permanecem distintos
+de doações pessoais. O ETL é o único responsável pela resolução e pelo JSON.
+Método, auditoria e investigação de Luana: [identidade no Raio-X](../../../../../docs/goias-person-identity.md).

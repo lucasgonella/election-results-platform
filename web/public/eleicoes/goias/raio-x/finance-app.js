@@ -9,7 +9,10 @@
   const shortMoney = value => F.validAmount(value) ? new Intl.NumberFormat('pt-BR', {style: 'currency', currency: 'BRL', notation: 'compact', maximumFractionDigits: 1}).format(value) : 'Não informado';
   const date = value => { const key = F.dateKey(value); return key ? key.split('-').reverse().join('/') : 'Data não informada'; };
   const sourceLink = value => { const url = F.safeSource(value); return url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Consultar registro / conjunto do TSE ↗</a>` : '<span class="source-warning">Fonte oficial verificável não informada</span>'; };
-  const FIELD_IDS = {q: 'search', office: 'office', party: 'party', kind: 'entity-kind', type: 'connection-type', from: 'financier', to: 'recipient', min: 'min-value', max: 'max-value', start: 'start-date', end: 'end-date'};
+  const candidateRole = node => node.roles?.includes('candidate') || node.kind === 'candidate';
+  const kindLabel = node => ({'candidate': 'Candidata/o', 'candidate-donor': 'Candidata/o + doadora/or', 'candidate-campaign': 'Candidata/o + campanha financiadora', 'donor': 'Pessoa doadora', 'organization': 'Organização', 'unknown': 'Identidade não confirmada', 'counterparty': 'Contraparte · tipo não informado'}[node.kind] || 'Campanha');
+  const rolesHTML = node => (node.roles || []).filter(role => ['candidate', 'donor', 'campaign_financier'].includes(role)).map(role => `<span class="role-badge">${esc({candidate: 'Candidata/o', donor: 'Doadora/or por CPF confirmado', campaign_financier: 'Campanha financiadora'}[role])}</span>`).join('');
+  const FIELD_IDS = {q: 'search', office: 'office', party: 'party', kind: 'entity-kind', type: 'connection-type', from: 'financier', to: 'recipient', min: 'min-value', max: 'max-value', start: 'start-date', end: 'end-date', direction: 'identity-direction'};
   let state = F.fromQuery(location.search), index = null, rows = [], contextRows = [], graphData = null, candidatePage = 0, tablePage = 0, detailPage = 0, selectedEdge = null;
   let transform = {scale: 1, x: 0, y: 0}, pointer = null, toastTimer = null, scheduledRender = null;
   const PAGE_SIZE = 20, TABLE_SIZE = 30, DETAIL_SIZE = 15, SVG_NS = 'http://www.w3.org/2000/svg';
@@ -51,7 +54,9 @@
   }
   function selectNode(id, options = {}) {
     if (!index || !index.nodes.has(id)) return;
+    id = index.aliases.get(id) || id;
     state.selected = id; selectedEdge = null; detailPage = 0; tablePage = 0;
+    state.direction = ''; $('identity-direction').value = '';
     $('path-search').value = ''; $('path-options').textContent = ''; $('path-result').textContent = '';
     if (options.candidate) state.depth = 1;
     const returnToGraph = options.candidate && isCompact();
@@ -78,7 +83,7 @@
     context(); renderCandidates(); drawGraph(); renderTable(); renderDetail(); updateFilterCount(); renderView();
   }
   function recordHTML(row) {
-    return `<div class="record"><strong>${esc(row.from_name || index.nodes.get(row.from_id).name)} → ${esc(row.to_name || index.nodes.get(row.to_id).name)}</strong><p>${money(row.amount)} · ${date(row.date)}</p><p>${esc(row.type || 'Categoria não informada')}</p><code>ID ${esc(row.id)}</code>${sourceLink(row.source_url)}</div>`;
+    return `<div class="record"><strong>${esc(row.from_name || index.nodes.get(row.from_id).name)} → ${esc(row.to_name || index.nodes.get(row.to_id).name)}</strong><p>${money(row.amount)} · ${date(row.date)}</p><p>${esc(row.type || 'Categoria não informada')}</p><p>${row.from_role === 'campaign' ? 'Origem: campanha eleitoral; exibida junto da titularidade comprovada. Não é uma doação pessoal.' : row.from_role === 'person' ? 'Origem: pessoa física identificada na fonte.' : 'Origem: identidade pessoal não confirmada.'}</p><code>ID ${esc(row.source_record_id || row.id)} · ${esc(row.source_file || 'Fonte publicada')}${row.source_row ? ' · linha ' + esc(row.source_row) : ''}</code>${sourceLink(row.source_url)}</div>`;
   }
   function recordListHTML(records) {
     const pages = Math.max(1, Math.ceil(records.length / DETAIL_SIZE)); detailPage = Math.min(detailPage, pages - 1);
@@ -102,12 +107,13 @@
     }
     const incoming = rows.filter(row => row.to_id === node.id), outgoing = rows.filter(row => row.from_id === node.id);
     const inbound = F.sumKnown(incoming), outbound = F.sumKnown(outgoing), peers = new Set([...incoming.map(row => row.from_id), ...outgoing.map(row => row.to_id)]);
-    const candidates = node.kind === 'candidate';
+    const candidates = candidateRole(node);
     $('detail-title').textContent = node.name;
+    const roleMetrics = `<div class="profile-metric"><small>Repasses realizados nos filtros</small><strong>${money(outbound.total)}</strong></div><div class="profile-metric"><small>Recebido nos filtros</small><strong>${money(inbound.total)}</strong></div><div class="profile-metric"><small>Campanhas beneficiadas nos filtros</small><strong>${number(new Set(outgoing.map(row => row.to_campaign_id || row.candidate_id || row.to_id)).size)}</strong></div>`;
     const metrics = candidates ? `<div class="profile-metric"><small>Receita total declarada</small><strong>${money(node.revenue)}</strong></div><div class="profile-metric"><small>Despesa total declarada</small><strong>${money(node.expenses)}</strong></div><div class="profile-metric"><small>Votos publicados nesta base</small><strong>${number(node.votes)}</strong></div><div class="profile-metric"><small>Contrapartes nos filtros</small><strong>${number(peers.size)}</strong></div>` : `<div class="profile-metric"><small>Recebido nos filtros${inbound.missing ? ' · subtotal' : ''}</small><strong>${money(inbound.total)}</strong></div><div class="profile-metric"><small>Enviado nos filtros${outbound.missing ? ' · subtotal' : ''}</small><strong>${money(outbound.total)}</strong></div>`;
     const direct = [...incoming, ...outgoing.filter(row => row.from_id !== row.to_id)].sort((a, b) => (b.amount ?? -1) - (a.amount ?? -1));
     const topGroups = F.aggregate(incoming).sort((a, b) => (b.total ?? -1) - (a.total ?? -1)).slice(0, 5);
-    $('detail-content').innerHTML = `<span class="entity-label">${candidates ? 'CANDIDATURA IDENTIFICADA' : 'CONTRAPARTE · TIPO NÃO INFORMADO'}</span><p class="profile-meta">${candidates ? `${esc(node.office)} · ${esc(node.party || 'Partido não informado')} · ${esc(node.number || 'Número não informado')}<br>${esc(node.status || 'Situação não informada')}` : 'O tipo jurídico desta entidade não está declarado no contrato da base.'}</p><p class="entity-id">ID da fonte: ${esc(node.id)}</p>${node.aliases.length ? `<p class="filter-help">Outros nomes neste mesmo ID: ${node.aliases.map(esc).join(' · ')}. Os nomes originais são preservados em cada registro.</p>` : ''}<div class="profile-metrics">${metrics}</div>${candidates ? '<p class="filter-help">Receitas e despesas são totais da candidatura na base, independentes dos filtros da rede. Votos ausentes não são zero.</p>' : ''}${inbound.missing || outbound.missing ? '<p class="subtotal-note">Há valores não informados neste contexto. Somas incluem apenas os registros com valor.</p>' : ''}${topGroups.length ? `<h4>Principais origens nos filtros</h4><div>${topGroups.map(group => `<div class="record"><button type="button" data-node="${esc(group.from_id)}">${esc(index.nodes.get(group.from_id).name)} →</button><p>${money(group.total)} · ${number(group.rows.length)} registro(s)</p></div>`).join('')}</div>` : ''}<h4>${number(direct.length)} registros diretos nos filtros</h4>${direct.length ? recordListHTML(direct) : '<p class="muted">Nenhuma transferência documentada neste contexto. Isso não equivale a ausência de atividade financeira.</p>'}`;
+    $('detail-content').innerHTML = `<span class="entity-label">${esc(kindLabel(node).toLocaleUpperCase('pt-BR'))}</span>${node.candidacies?.length > 1 ? `<p class="profile-meta">${node.candidacies.map(c => `${esc(c.ballot_name || c.name)} · ${esc(c.office)} · ${esc(c.party)} · TSE ${esc(c.id)}`).join('<br>')}</p>` : ''}<p class="profile-meta">${candidates ? `${esc(node.office)} · ${esc(node.party || 'Partido não informado')} · ${esc(node.number || 'Número não informado')}<br>${esc(node.status || 'Situação não informada')}` : esc(kindLabel(node))}</p><p class="entity-id">ID interno: ${esc(node.id)}${node.candidate_ids?.length ? ' · candidatura TSE: ' + node.candidate_ids.map(esc).join(', ') : ''}</p>${node.aliases.length ? `<p class="filter-help">Outros nomes neste mesmo ID: ${node.aliases.map(esc).join(' · ')}. Os nomes originais são preservados em cada registro.</p>` : ''}<div class="role-badges">${rolesHTML(node)}</div>${node.civil_name ? `<p class="profile-meta">Nome civil: <strong>${esc(node.civil_name)}</strong></p>` : ''}${node.evidence?.length ? `<details class="identity-evidence"><summary>Campanhas e evidências da associação</summary>${node.candidate_ids?.length ? `<p>Registro oficial de candidatura: ${node.candidate_ids.map(esc).join(', ')}</p>${sourceLink(node.source_url)}` : ''}${(node.campaigns || []).map(campaign => `<p>${esc(campaign.name)}<br>CNPJ de campanha: ${esc(campaign.cnpj)}<br>Candidatura: ${campaign.candidate_ids.map(esc).join(', ')}</p>${sourceLink(campaign.evidence[0]?.source_url)}`).join('')}${node.roles.includes('donor') ? '<p>Identidade pessoal confirmada por igualdade de CPF completo nos arquivos oficiais, sem publicar o documento.</p>' : '<p>Repasses de campanha não são classificados como doações pessoais.</p>'}</details>` : ''}<div class="profile-metrics">${metrics}${roleMetrics}</div>${candidates ? '<p class="filter-help">Receitas e despesas são totais da candidatura na base, independentes dos filtros da rede. Votos ausentes não são zero.</p>' : ''}${inbound.missing || outbound.missing ? '<p class="subtotal-note">Há valores não informados neste contexto. Somas incluem apenas os registros com valor.</p>' : ''}${topGroups.length ? `<h4>Principais origens nos filtros</h4><div>${topGroups.map(group => `<div class="record"><button type="button" data-node="${esc(group.from_id)}">${esc(index.nodes.get(group.from_id).name)} →</button><p>${money(group.total)} · ${number(group.rows.length)} registro(s)</p></div>`).join('')}</div>` : ''}<h4>${number(direct.length)} registros diretos nos filtros</h4>${direct.length ? recordListHTML(direct) : '<p class="muted">Nenhuma transferência documentada neste contexto. Isso não equivale a ausência de atividade financeira.</p>'}`;
   }
   function renderTable() {
     const records = contextRows.slice().sort((a, b) => (b.amount ?? -1) - (a.amount ?? -1));
@@ -185,13 +191,13 @@
     nodes.forEach((node, i) => {
       const point = positioned.get(node.id); if (!point) return;
       const radius = radiusFor(node);
-      const group = svgElement('g', {'class': 'graph-node', 'data-node': node.id, 'data-kind': node.kind, role: 'button', tabindex: 0, transform: `translate(${point.x},${point.y})`, 'aria-label': `${node.name}, ${node.kind === 'candidate' ? 'candidatura' : 'contraparte, tipo não informado'}, volume ${money(node.volume)}`}, nodesGroup);
+      const group = svgElement('g', {'class': 'graph-node', 'data-node': node.id, 'data-kind': node.kind, role: 'button', tabindex: 0, transform: `translate(${point.x},${point.y})`, 'aria-label': `${node.name}, ${kindLabel(node)}, volume ${money(node.volume)}`}, nodesGroup);
       svgElement('circle', {r: Math.max(radius, isCompact() ? 56 : 22), 'class': 'node-hit'}, group);
       svgElement('circle', {r: radius}, group);
-      if (node.kind === 'counterparty') svgElement('circle', {r: radius + 4, 'class': 'node-outline'}, group);
+      if (!candidateRole(node) || node.roles?.includes('donor') || node.roles?.includes('campaign_financier')) svgElement('circle', {r: radius + 4, 'class': 'node-outline'}, group);
       if (node.id === state.selected) { const initial = svgElement('text', {y: 4, 'text-anchor': 'middle', 'class': 'node-initial'}, group); initial.textContent = node.name.trim().split(/\s+/).slice(0, 2).map(value => value[0]).join(''); }
       if (i < (isCompact() ? 9 : 19) || node.id === state.selected) { const label = svgElement('text', {y: radius + (isCompact() ? 32 : 19), 'text-anchor': 'middle'}, group); const maxLength = isCompact() ? 17 : 23; label.textContent = node.name.length > maxLength ? node.name.slice(0, maxLength - 2) + '…' : node.name; }
-      svgElement('title', {}, group).textContent = `${node.name}\nID: ${node.id}\n${node.kind === 'candidate' ? node.office : 'Tipo de entidade não declarado'}\nVolume documentado neste contexto: ${money(node.volume)}`;
+      svgElement('title', {}, group).textContent = `${node.name}\nID: ${node.id}\n${kindLabel(node)}\nVolume documentado neste contexto: ${money(node.volume)}`;
     });
     transform = {scale: 1, x: 0, y: 0}; applyTransform(); highlightSelection();
   }
@@ -225,7 +231,7 @@
     svg.querySelectorAll('.node-hit').forEach(node => node.remove());
     svg.querySelectorAll('[tabindex]').forEach(node => { node.removeAttribute('tabindex'); node.removeAttribute('role'); });
     const style = svgElement('style', {}, svg);
-    style.textContent = `text{font-family:Arial,sans-serif;font-size:11px;fill:${colors.getPropertyValue('--ink')};paint-order:stroke;stroke:${colors.getPropertyValue('--paper')};stroke-width:3px}.graph-node circle{fill:${colors.getPropertyValue('--teal')};stroke:${colors.getPropertyValue('--paper')};stroke-width:3px}.graph-node[data-kind=counterparty] circle{fill:${colors.getPropertyValue('--gold')}}.node-outline{fill:none!important;stroke-dasharray:3 3}.edge-line{fill:none;stroke:${colors.getPropertyValue('--muted')};stroke-opacity:.6}.edge-hit{display:none}.node-initial{fill:${colors.getPropertyValue('--surface')};stroke:none;font-weight:bold}`;
+    style.textContent = `text{font-family:Arial,sans-serif;font-size:11px;fill:${colors.getPropertyValue('--ink')};paint-order:stroke;stroke:${colors.getPropertyValue('--paper')};stroke-width:3px}.graph-node circle{fill:${colors.getPropertyValue('--teal')};stroke:${colors.getPropertyValue('--paper')};stroke-width:3px}.graph-node[data-kind=counterparty] circle{fill:${colors.getPropertyValue('--gold')}}.graph-node[data-kind=candidate-donor] circle{fill:${colors.getPropertyValue('--identity-purple')}}.graph-node[data-kind=candidate-campaign] circle{fill:${colors.getPropertyValue('--teal')}}.node-outline{fill:none!important;stroke-dasharray:3 3}.edge-line{fill:none;stroke:${colors.getPropertyValue('--muted')};stroke-opacity:.6}.edge-hit{display:none}.node-initial{fill:${colors.getPropertyValue('--surface')};stroke:none;font-weight:bold}`;
     const bg = svgElement('rect', {width: 900, height: 645, fill: colors.getPropertyValue('--paper')}); svg.insertBefore(bg, svg.firstChild);
     const footer = svgElement('text', {x: 15, y: 632, 'font-size': 9}, svg); footer.textContent = `AFGNET · Goiás 2026 · Base ${date(index.data.generated_at)} · ${graphData.edges.length} vínculos / ${contextRows.length} registros · relação financeira não demonstra irregularidade`;
     const blob = new Blob([new XMLSerializer().serializeToString(svg)], {type: 'image/svg+xml;charset=utf-8'}), url = URL.createObjectURL(blob), link = document.createElement('a');
@@ -234,15 +240,15 @@
   function renderPathOptions() {
     const q = F.normalize($('path-search').value);
     if (!index || !q) { $('path-options').textContent = ''; $('path-search').setAttribute('aria-expanded', 'false'); return; }
-    const found = Array.from(index.nodes.values()).filter(node => node.id !== state.selected && F.normalize(node.name).includes(q)).slice(0, 8);
-    $('path-options').innerHTML = found.length ? found.map(node => `<button type="button" class="path-option" role="option" aria-selected="false" data-path-target="${esc(node.id)}">${esc(node.name)}<small>${node.kind === 'candidate' ? 'Candidatura' : 'Contraparte · tipo não informado'} · ID ${esc(node.id)}</small></button>`).join('') : '<p class="filter-help">Nenhuma entidade encontrada.</p>';
+    const found = Array.from(index.nodes.values()).filter(node => node.id !== state.selected && F.normalize([node.name, node.civil_name, ...node.aliases].join(' ')).includes(q)).slice(0, 8);
+    $('path-options').innerHTML = found.length ? found.map(node => `<button type="button" class="path-option" role="option" aria-selected="false" data-path-target="${esc(node.id)}">${esc(node.name)}<small>${esc(kindLabel(node))} · ID ${esc(node.id)}</small></button>`).join('') : '<p class="filter-help">Nenhuma entidade encontrada.</p>';
     $('path-search').setAttribute('aria-expanded', String(found.length > 0));
   }
   function inspectPath(targetID) {
     const target = index.nodes.get(targetID); if (!target) return;
     $('path-search').value = target.name; $('path-options').textContent = ''; $('path-search').setAttribute('aria-expanded', 'false');
     const result = F.findPath(rows, state.selected, targetID);
-    if (result.status !== 'found') { $('path-result').innerHTML = `<p>${result.status === 'limit' ? 'A busca atingiu o limite de 5.000 entidades. Refine os filtros.' : 'Nenhum caminho direcionado documentado foi encontrado em até 4 etapas neste contexto.'}</p><p class="filter-help">Um nome em comum não comprova identidade. A base atual separa IDs de candidaturas e contrapartes; não inferimos vínculos entre esses namespaces.</p>`; return; }
+    if (result.status !== 'found') { $('path-result').innerHTML = `<p>${result.status === 'limit' ? 'A busca atingiu o limite de 5.000 entidades. Refine os filtros.' : 'Nenhum caminho direcionado documentado foi encontrado em até 4 etapas neste contexto.'}</p><p class="filter-help">Um nome em comum não comprova identidade. Somente identificadores oficiais completos podem confirmar uma pessoa; campanhas permanecem documentadas separadamente.</p>`; return; }
     $('path-result').innerHTML = `<p>${result.rows.length} etapa(s) documentada(s). ${result.rows.length > 1 ? 'Esta é uma relação indireta; não há transferência direta presumida entre os extremos. Valores não são somados como se fossem um único repasse, e o caminho não comprova circulação do mesmo recurso.' : 'Há um registro direto entre as entidades.'}</p>${result.rows.map((row, i) => `<div class="path-hop"><strong>${i + 1}. ${esc(row.from_name || index.nodes.get(row.from_id).name)} → ${esc(row.to_name || index.nodes.get(row.to_id).name)}</strong><p>${money(row.amount)} · ${date(row.date)}<br>${esc(row.type || 'Categoria não informada')}</p><code>ID ${esc(row.id)}</code><br>${sourceLink(row.source_url)}</div>`).join('')}`;
   }
   async function load() {
@@ -252,11 +258,12 @@
       const response = await fetch('/eleicoes/goias/raio-x/data/go-2026.json', {cache: 'no-store'});
       if (!response.ok) throw new Error('A base não pôde ser consultada.');
       const data = F.validateData(await response.json()); index = F.buildIndex(data);
-      if (!index.nodes.has(state.selected)) state.selected = '';
+      state.selected = index.aliases.get(state.selected) || state.selected;
+      if (!index.nodes.has(state.selected)) { state.selected = ''; state.direction = ''; }
       for (const [id, values] of [['party', new Set(data.candidates.map(row => row.party).filter(Boolean))], ['connection-type', new Set(data.transfers.map(row => row.type || 'Categoria não informada'))]]) {
         const select = $(id); Array.from(values).sort((a, b) => a.localeCompare(b, 'pt-BR')).forEach(value => { const option = document.createElement('option'); option.value = value; option.textContent = value; select.appendChild(option); });
       }
-      for (const [key, id] of Object.entries(FIELD_IDS)) if (['office', 'party', 'kind', 'type'].includes(key) && state[key] && !Array.from($(id).options).some(option => option.value === state[key])) state[key] = '';
+      for (const [key, id] of Object.entries(FIELD_IDS)) if (['office', 'party', 'kind', 'type', 'direction'].includes(key) && state[key] && !Array.from($(id).options).some(option => option.value === state[key])) state[key] = '';
       fillFilters();
       if (!state.selected) {
         const candidates = F.filterCandidates(index, state).slice().sort((a, b) => (b.revenue ?? -1) - (a.revenue ?? -1));
@@ -268,6 +275,8 @@
       $('expense-note').textContent = expense.missing ? `Subtotal · ${number(expense.missing)} sem valor informado` : 'Soma dos totais por candidatura';
       const generated = new Date(typeof data.generated_at === 'string' && data.generated_at ? data.generated_at : NaN);
       $('freshness').textContent = !Number.isNaN(generated.getTime()) ? `Base publicada em ${new Intl.DateTimeFormat('pt-BR', {dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo'}).format(generated)} · Brasília` : 'Data da publicação não informada';
+      const audit = data.identity_audit;
+      $('identity-summary').textContent = audit ? `${number(audit.candidates_also_personal_donors)} candidatas/os também doadores por identificador pessoal confirmado · ${number(audit.candidates_with_financing_campaigns)} campanhas financiadoras · ${number(audit.inconclusive_donor_entities)} identidades de doadores sem correspondência confirmada com estas candidaturas · ${number(audit.identity_conflicts)} conflitos. Documentos pessoais não são publicados.` : 'Esta versão da base ainda não contém resolução oficial de identidade. Nomes não são usados para unir pessoas.';
       const invalidSources = data.transfers.filter(row => !F.safeSource(row.source_url)).length;
       $('notice').classList.remove('is-error'); $('notice').innerHTML = `<span class="notice-icon" aria-hidden="true">i</span><p>${data.transfers.length ? 'Base pública importada. Uma relação financeira não demonstra irregularidade; valores podem sofrer retificações.' : 'Candidaturas disponíveis. Transferências documentadas ainda não foram publicadas nesta base.'}${invalidSources ? ` ${number(invalidSources)} registro(s) sem URL oficial verificável; links não são exibidos nesses casos.` : ''}</p>`;
       document.querySelectorAll('.metric .skeleton').forEach(node => node.classList.remove('skeleton'));
@@ -310,7 +319,7 @@
     candidatePage = 0; tablePage = 0; detailPage = 0; selectedEdge = null; $('path-result').textContent = '';
     clearTimeout(scheduledRender); scheduledRender = setTimeout(() => {
       const selected = index?.nodes.get(state.selected);
-      if (selected?.kind === 'candidate' && ((state.office && selected.office !== state.office) || (state.party && selected.party !== state.party))) state.selected = '';
+      if (selected && candidateRole(selected) && ((state.office && selected.office !== state.office) || (state.party && selected.party !== state.party))) state.selected = '';
       render(); syncURL();
     }, 140);
   });
@@ -324,13 +333,13 @@
   $('graph-view-button').addEventListener('click', () => { state.view = 'graph'; renderView(); syncURL(); });
   $('filters-toggle').addEventListener('click', () => { const open = $('filters-panel').classList.toggle('is-open'); $('filters-toggle').setAttribute('aria-expanded', String(open)); if (open) $('search').focus({preventScroll: true}); });
   $('expand-neighbors').addEventListener('click', () => { state.depth = state.depth === 2 ? 1 : 2; selectedEdge = null; tablePage = 0; render(); syncURL(); });
-  $('clear-selection').addEventListener('click', () => { if (selectedEdge) { selectedEdge = null; renderDetail(); highlightSelection(); } else { state.selected = ''; $('path-search').value = ''; $('path-result').textContent = ''; render(); syncURL(); } });
+  $('clear-selection').addEventListener('click', () => { if (selectedEdge) { selectedEdge = null; renderDetail(); highlightSelection(); } else { state.selected = ''; state.direction = ''; $('identity-direction').value = ''; $('path-search').value = ''; $('path-result').textContent = ''; render(); syncURL(); } });
   $('guide-start').addEventListener('click', () => { $('workspace').scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start'}); if (matchMedia('(max-width: 680px)').matches) { $('filters-panel').classList.add('is-open'); $('filters-toggle').setAttribute('aria-expanded', 'true'); } $('search').focus({preventScroll: true}); });
   $('detail-content').addEventListener('click', event => {
     const node = event.target.closest('[data-node]'); if (node) { selectNode(node.dataset.node); return; }
     const page = event.target.closest('[data-detail-page]'); if (page) { detailPage += Number(page.dataset.detailPage); renderDetail(); }
   });
-  $('transfer-table').addEventListener('click', event => { const button = event.target.closest('[data-record]'); if (!button) return; const row = contextRows.find(record => record.id === button.dataset.record); if (row) selectEdge(JSON.stringify([row.from_id, row.to_id, row.type || 'Categoria não informada'])); });
+  $('transfer-table').addEventListener('click', event => { const button = event.target.closest('[data-record]'); if (!button) return; const row = contextRows.find(record => record.id === button.dataset.record); if (row) selectEdge(F.aggregate(contextRows).find(group => group.rows.some(record => record.id === row.id)).id); });
   document.querySelectorAll('button[data-kind]').forEach(button => button.addEventListener('click', () => { state.kind = state.kind === button.dataset.kind ? '' : button.dataset.kind; fillFilters(); selectedEdge = null; render(); syncURL(); }));
   $('path-search').addEventListener('input', renderPathOptions);
   $('path-search').addEventListener('keydown', event => { if (event.key === 'ArrowDown') { const option = $('path-options').querySelector('button'); if (option) { event.preventDefault(); option.focus(); } } if (event.key === 'Escape') { $('path-options').textContent = ''; $('path-search').setAttribute('aria-expanded', 'false'); } });
