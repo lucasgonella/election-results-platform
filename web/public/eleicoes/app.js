@@ -86,6 +86,23 @@ let allCandidates = [];
 let filteredCandidates = [];
 
 let currentPage = 1;
+let portalMarker = null;
+let selectedPresidentialCandidate = new URLSearchParams(window.location.search).get("candidate") || "";
+let resultRequestNumber = 0;
+let portalRefreshPending = false;
+
+function portalContext() {
+    return {round: SELECTED_ROUND, manifest, version: portalMarker, dataBase: activeDataBase,
+        scope: selectedScope, office: selectedOffice, result: currentResult,
+        candidate: selectedPresidentialCandidate};
+}
+
+function announcePortalContext() {
+    if (portalRefreshPending || !currentResult || !manifest || !portalMarker) return;
+    if (typeof document.dispatchEvent === "function" && typeof CustomEvent === "function") {
+        document.dispatchEvent(new CustomEvent("election:context", {detail: portalContext()}));
+    }
+}
 
 
 function formatNumber(value) {
@@ -1396,6 +1413,9 @@ function renderCandidateCard(
         );
 
     const awaiting = awaitingSecondRoundCount();
+    if (card.style && typeof card.style.setProperty === "function" && window.ElectionPortal) {
+        card.style.setProperty("--candidate-color", window.ElectionPortal.candidateColor(candidate.ballot_number));
+    }
     const positionElement =
         createElement(
             "div",
@@ -1478,8 +1498,9 @@ function renderCandidateCard(
 
     favoriteButton.setAttribute(
         "aria-label",
-        "Adicionar ou remover dos favoritos"
+        "Adicionar ou remover " + (candidate.ballot_name || candidate.name) + " dos favoritos"
     );
+    favoriteButton.setAttribute("aria-pressed", String(window.Favorites.isFavorite(favoriteRef)));
 
     favoriteButton.addEventListener(
         "click",
@@ -1493,6 +1514,7 @@ function renderCandidateCard(
                 selected
                     ? "\u2605"
                     : "\u2606";
+            favoriteButton.setAttribute("aria-pressed", String(selected));
         }
     );
 
@@ -1536,7 +1558,7 @@ function renderCandidateCard(
         createElement(
             "strong",
             null,
-            awaiting ? "—" : formatNumber(
+            awaiting ? "—" : candidate.votes == null ? "Não informado" : formatNumber(
                 candidate.votes
             )
         );
@@ -1552,7 +1574,7 @@ function renderCandidateCard(
         createElement(
             "div",
             "vote-percentage",
-            awaiting ? "—" : `${
+            awaiting ? "—" : candidate.vote_percentage == null ? "Não informado" : `${
                 formatPercentage(
                     candidate
                         .vote_percentage
@@ -1668,6 +1690,10 @@ function renderResults() {
             )
         );
 
+    if (typeof document.dispatchEvent === "function" && typeof CustomEvent === "function") {
+        document.dispatchEvent(new CustomEvent("election:results"));
+    }
+
     if (
         majorOffice
         || totalPages <= 1
@@ -1733,6 +1759,12 @@ function renderResults() {
 
 async function loadSelectedResult() {
 
+    const requestNumber = ++resultRequestNumber;
+    const requestedScope = selectedScope;
+    const requestedOffice = selectedOffice;
+    const requestedBase = activeDataBase;
+    document.getElementById("results")?.setAttribute("aria-busy", "true");
+
     const item =
         currentManifestItem();
 
@@ -1756,8 +1788,11 @@ async function loadSelectedResult() {
         );
     }
 
-    currentResult =
-        await response.json();
+    const nextResult = await response.json();
+    if (requestNumber !== resultRequestNumber || requestedScope !== selectedScope
+        || requestedOffice !== selectedOffice || requestedBase !== activeDataBase) return;
+    if (window.PortalBridge) window.PortalBridge.validateResult(nextResult, item, SELECTED_ROUND, manifest.environment);
+    currentResult = nextResult;
 
     allCandidates = [
         ...currentResult.candidates
@@ -1780,6 +1815,8 @@ async function loadSelectedResult() {
     renderSummary();
     renderSeatAllocation();
     renderResults();
+    document.getElementById("results")?.setAttribute("aria-busy", "false");
+    announcePortalContext();
 }
 
 
@@ -1840,6 +1877,7 @@ async function loadManifest(base = activeDataBase) {
     }
 
     const nextManifest = await response.json();
+    if (window.PortalBridge) window.PortalBridge.validateManifest(nextManifest, SELECTED_ROUND);
     if (SELECTED_ROUND === 2 && (nextManifest.environment !== "oficial"
         || !Array.isArray(nextManifest.results) || !nextManifest.results.length
         || nextManifest.results.some(row => Number(row.round) !== 2))) {
@@ -1871,6 +1909,10 @@ async function loadManifest(base = activeDataBase) {
 }
 async function refreshIfChanged() {
 
+    if (portalRefreshPending) return;
+    const previous = {manifest, alerts, base: activeDataBase, marker: portalMarker, result: currentResult,
+        scope: selectedScope, office: selectedOffice};
+
     try {
         const version =
             await loadVersion();
@@ -1888,12 +1930,14 @@ async function refreshIfChanged() {
         }
 
         const candidateBase = dataBaseForVersion(version);
+        portalRefreshPending = true;
 
         await Promise.all([
             loadManifest(candidateBase),
             loadAlerts(candidateBase)
         ]);
         activeDataBase = candidateBase;
+        portalMarker = version;
 
         renderElectedByState();
         renderScopeSelector();
@@ -1909,8 +1953,21 @@ async function refreshIfChanged() {
         // A failed result read must leave the publication token retryable.
         publishedVersion = nextVersion;
         window.Favorites.setManifest(manifest, publishedVersion, activeDataBase);
+        portalRefreshPending = false;
+        announcePortalContext();
 
     } catch (error) {
+        if (portalRefreshPending) {
+            manifest = previous.manifest;
+            alerts = previous.alerts;
+            activeDataBase = previous.base;
+            portalMarker = previous.marker;
+            currentResult = previous.result;
+            selectedScope = previous.scope;
+            selectedOffice = previous.office;
+        }
+        portalRefreshPending = false;
+        document.getElementById("results")?.setAttribute("aria-busy", "false");
         console.error(
             "Refresh failed:",
             error
@@ -1957,6 +2014,7 @@ async function initialize() {
         await loadVersion();
 
     activeDataBase = dataBaseForVersion(version);
+    portalMarker = version;
     await Promise.all([
         loadManifest(),
         loadAlerts()
@@ -1997,6 +2055,39 @@ async function initialize() {
     );
 }
 
+
+if (window.PortalBridge) window.PortalBridge.install({
+    getContext: portalContext,
+    scopeName,
+    getCandidates: () => filteredCandidates.slice(),
+    getResultPage: () => {
+        const size = [1, 3, 5].includes(selectedOffice) ? 50 : PAGE_SIZE;
+        return {candidates: filteredCandidates.slice((currentPage - 1) * size, currentPage * size),
+            total: filteredCandidates.length, page: currentPage, pageSize: size};
+    },
+    async selectScope(scope, office = 1) {
+        if (!manifest) return false;
+        const rows = getResultsForScope(scope);
+        const item = rows.find(row => Number(row.office) === Number(office));
+        if (!item) return false;
+        selectedScope = scope;
+        selectedOffice = Number(office);
+        currentPage = 1;
+        renderScopeSelector();
+        renderOfficeTabs();
+        updateUrl();
+        await loadSelectedResult();
+        return true;
+    },
+    setCandidate(number) {
+        selectedPresidentialCandidate = number == null ? "" : String(number);
+        const url = new URL(window.location.href);
+        if (selectedPresidentialCandidate) url.searchParams.set("candidate", selectedPresidentialCandidate);
+        else url.searchParams.delete("candidate");
+        history.replaceState({}, "", url);
+        announcePortalContext();
+    }
+});
 
 document.getElementById(
     "scope-select"
@@ -2062,6 +2153,10 @@ initialize().catch(
     error => {
 
         console.error(error);
+        document.getElementById("results")?.setAttribute("aria-busy", "false");
+        if (typeof document.dispatchEvent === "function" && typeof CustomEvent === "function") {
+            document.dispatchEvent(new CustomEvent("election:error"));
+        }
 
         document.getElementById(
             "results"

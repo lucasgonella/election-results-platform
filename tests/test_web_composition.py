@@ -325,7 +325,7 @@ def test_composition_pending_assets_are_cache_busted():
     )
 
     assert (
-        'href="composition.css?v=2"'
+        'href="composition.css?v=3"'
         in html
     )
 
