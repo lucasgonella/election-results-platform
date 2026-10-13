@@ -6,6 +6,7 @@ on:
       - 'collector/src/municipal*'
       - 'tools/municipal*'
       - 'deploy/scripts/wait-municipal-ci.py'
+      - 'deploy/frontend.py'
       - '.github/workflows/municipal-presidential-data.yml'
   schedule:
     - cron: '8,38 * * * *'
