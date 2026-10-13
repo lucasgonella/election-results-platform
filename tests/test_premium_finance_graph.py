@@ -49,6 +49,29 @@ assert.equal(idx.nodes.get('candidate-a').kind,'candidate');
 assert.equal(F.findPath(idx.data.transfers,'donor:a','donor:b').status,'missing');
 """)
 
+    def test_proven_person_identity_and_campaign_projection_preserve_rows(self):
+        self.run_node("""
+const candidates=[c('a','Urna A',{person_id:'person:a',civil_name:'Nome civil A'}),c('b','Urna B',{person_id:'person:b'})];
+const entities=[{id:'person:a',kind:'person',name:'Urna A',civil_name:'Nome civil A',roles:['candidate','donor','campaign_financier'],candidate_ids:['a'],campaign_ids:['campaign:a'],aliases:['Nome civil A']},{id:'person:b',kind:'person',name:'Urna B',roles:['candidate'],candidate_ids:['b'],aliases:[]},{id:'campaign:a',kind:'campaign',owner_person_id:'person:a',name:'Campanha A',roles:['campaign'],candidate_ids:['a'],aliases:[]}];
+const raw={...data(candidates,[t('1','person:a','person:b',10,{from_role:'person'}),t('2','campaign:a','person:b',20,{from_role:'campaign',from_campaign_id:'campaign:a'})]),identity_schema:1,entities};
+const idx=F.buildIndex(raw);
+assert.equal(idx.nodes.size,2); assert.equal(idx.aliases.get('a'),'person:a');
+assert.equal(idx.nodes.get('person:a').kind,'candidate-donor');
+assert.equal(idx.data.transfers[1].from_id,'person:a');
+assert.equal(idx.data.transfers[1].original_from_id,'campaign:a');
+assert.equal(idx.data.transfers[1].from_role,'campaign');
+assert.equal(F.sumKnown(idx.data.transfers).total,30);
+assert.deepEqual(F.filterTransfers(idx,{selected:'person:a',direction:'personal'}).map(r=>r.id),['1']);
+assert.deepEqual(F.filterTransfers(idx,{selected:'person:a',direction:'campaign'}).map(r=>r.id),['2']);
+assert.equal(F.filterTransfers(idx,{kind:'multi'}).length,2);
+assert.equal(F.filterCandidates(idx,{q:'Nome civil A'}).length,1);
+assert.equal(F.aggregate(idx.data.transfers).length,2);
+assert.equal(raw.transfers[1].from_id,'campaign:a');
+assert.equal(F.fromQuery(F.toQuery({selected:'person:a',direction:'campaign'})).direction,'campaign');
+assert.throws(()=>F.validateData({...raw,entities:entities.filter(e=>e.id!=='person:a')}));
+assert.throws(()=>F.validateData({...raw,entities:entities.map(e=>e.kind==='campaign'?{...e,owner_person_id:'missing'}:e)}));
+""")
+
     def test_dates_validate_calendar_and_brazilian_format(self):
         self.run_node("""
 assert.equal(F.dateKey('01/09/2026'),'2026-09-01');

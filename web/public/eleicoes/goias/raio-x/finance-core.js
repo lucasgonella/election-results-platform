@@ -36,6 +36,17 @@
       if (transfer.amount != null && (!validAmount(transfer.amount) || transfer.amount < 0)) throw new Error('Valor de transferência incompatível com o contrato.');
       transfers.add(transfer.id);
     }
+    if (data.identity_schema != null) {
+      if (data.identity_schema !== 1 || !Array.isArray(data.entities)) throw new Error('Contrato de identidade incompatível.');
+      const entities = new Map();
+      for (const entity of data.entities) {
+        if (!entity || !textID(entity.id) || entities.has(entity.id) || !['person', 'campaign', 'organization', 'unknown'].includes(entity.kind) || !Array.isArray(entity.roles) || !Array.isArray(entity.aliases) || !Array.isArray(entity.candidate_ids)) throw new Error('Identidade inválida.');
+        entities.set(entity.id, entity);
+      }
+      for (const candidate of data.candidates) if (!entities.has(candidate.person_id) || entities.get(candidate.person_id).kind !== 'person' || !entities.get(candidate.person_id).candidate_ids.includes(candidate.id)) throw new Error('Pessoa da candidatura ausente.');
+      for (const entity of entities.values()) if (entity.kind === 'campaign' && (!entities.has(entity.owner_person_id) || entities.get(entity.owner_person_id).kind !== 'person')) throw new Error('Titularidade de campanha inválida.');
+      for (const row of data.transfers) if (!entities.has(row.from_id) || !entities.has(row.to_id) || (row.from_campaign_id && row.from_campaign_id !== row.from_id) || (row.to_campaign_id && (!entities.has(row.to_campaign_id) || entities.get(row.to_campaign_id).owner_person_id !== row.to_id))) throw new Error('Identidade da transferência inválida.');
+    }
     return data;
   }
   function sumKnown(rows, field = 'amount') {
@@ -45,12 +56,28 @@
   }
   function buildIndex(data) {
     validateData(data);
-    const nodes = new Map(), outgoing = new Map(), incoming = new Map();
-    for (const candidate of data.candidates) nodes.set(candidate.id, {...candidate, kind: 'candidate', aliases: []});
+    const nodes = new Map(), outgoing = new Map(), incoming = new Map(), aliases = new Map();
+    if (data.identity_schema === 1) {
+      const entities = new Map(data.entities.map(entity => [entity.id, entity]));
+      for (const entity of data.entities) {
+        if (entity.kind === 'campaign') { aliases.set(entity.id, entity.owner_person_id); continue; }
+        const candidacies = data.candidates.filter(candidate => candidate.person_id === entity.id);
+        const roleKind = entity.roles.includes('candidate') ? entity.roles.includes('donor') ? 'candidate-donor' : entity.roles.includes('campaign_financier') ? 'candidate-campaign' : 'candidate' : entity.kind === 'person' ? 'donor' : entity.kind;
+        const node = {...(candidacies[0] || {}), ...entity, kind: roleKind, candidacies, campaigns: (entity.campaign_ids || []).map(id => entities.get(id)).filter(Boolean)};
+        if (candidacies.length) for (const key of ['revenue', 'expenses', 'votes']) node[key] = sumKnown(candidacies, key).total;
+        nodes.set(entity.id, node);
+        for (const candidate of candidacies) aliases.set(candidate.id, entity.id);
+      }
+      // Display campaign transfers at the documented owner; retain actual legal
+      // endpoints and roles on every record. This is a labelled projection.
+      data = {...data, candidates: [...nodes.values()].filter(node => node.candidacies.length), transfers: data.transfers.map(row => ({...row, original_from_id: row.from_id, original_to_id: row.to_id, from_id: aliases.get(row.from_id) || row.from_id, to_id: aliases.get(row.to_id) || row.to_id}))};
+    } else {
+      for (const candidate of data.candidates) nodes.set(candidate.id, {...candidate, kind: 'candidate', aliases: [], roles: ['candidate']});
+    }
     for (const transfer of data.transfers) {
       for (const side of ['from', 'to']) {
         const id = transfer[`${side}_id`];
-        if (!nodes.has(id)) nodes.set(id, {id, name: transfer[`${side}_name`] || 'Contraparte sem nome informado', kind: 'counterparty', aliases: []});
+        if (!nodes.has(id)) nodes.set(id, {id, name: transfer[`${side}_name`] || 'Contraparte sem nome informado', kind: 'counterparty', aliases: [], roles: []});
         const node = nodes.get(id), name = transfer[`${side}_name`];
         if (typeof name === 'string' && name.trim() && name !== node.name && !node.aliases.includes(name)) node.aliases.push(name);
       }
@@ -59,11 +86,11 @@
       outgoing.get(transfer.from_id).push(transfer);
       incoming.get(transfer.to_id).push(transfer);
     }
-    return {data, nodes, outgoing, incoming};
+    return {data, nodes, outgoing, incoming, aliases};
   }
   function filterCandidates(index, filters = {}) {
     const q = normalize(filters.q);
-    return index.data.candidates.filter(candidate => (!filters.office || candidate.office === filters.office) && (!filters.party || candidate.party === filters.party) && (!q || normalize([candidate.name, candidate.party, candidate.number].join(' ')).includes(q)));
+    return index.data.candidates.filter(candidate => (candidate.candidacies || [candidate]).some(record => (!filters.office || record.office === filters.office) && (!filters.party || record.party === filters.party)) && (!q || normalize([candidate.name, candidate.civil_name, ...(candidate.aliases || []), candidate.party, candidate.number].join(' ')).includes(q)));
   }
   function filterTransfers(index, filters = {}) {
     const candidateIDs = new Set(filterCandidates(index, {...filters, q: ''}).map(row => row.id));
@@ -74,11 +101,17 @@
     return index.data.transfers.filter(row => {
       const origin = index.nodes.get(row.from_id), target = index.nodes.get(row.to_id);
       if (narrowCandidates && !candidateIDs.has(row.from_id) && !candidateIDs.has(row.to_id)) return false;
-      if (filters.kind && origin.kind !== filters.kind && target.kind !== filters.kind) return false;
+      if (filters.kind && ![origin, target].some(node => node.kind === filters.kind || (filters.kind === 'candidate' && node.roles?.includes('candidate')) || (filters.kind === 'multi' && node.roles?.includes('candidate') && (node.roles.includes('donor') || node.roles.includes('campaign_financier'))))) return false;
+      if (filters.direction && filters.selected) {
+        if (filters.direction === 'incoming' && row.to_id !== filters.selected) return false;
+        if (filters.direction === 'outgoing' && row.from_id !== filters.selected) return false;
+        if (filters.direction === 'personal' && (row.from_id !== filters.selected || row.from_role !== 'person')) return false;
+        if (filters.direction === 'campaign' && (row.from_id !== filters.selected || row.from_role !== 'campaign')) return false;
+      }
       if (filters.type && (row.type || 'Categoria não informada') !== filters.type) return false;
-      if (q && !normalize([origin.name, target.name, origin.party, target.party, origin.number, target.number].join(' ')).includes(q)) return false;
-      if (from && !normalize(origin.name).includes(from)) return false;
-      if (to && !normalize(target.name).includes(to)) return false;
+      if (q && !normalize([origin.name, target.name, origin.civil_name, target.civil_name, ...origin.aliases, ...target.aliases, origin.party, target.party, origin.number, target.number].join(' ')).includes(q)) return false;
+      if (from && !normalize([origin.name, ...origin.aliases].join(' ')).includes(from)) return false;
+      if (to && !normalize([target.name, ...target.aliases].join(' ')).includes(to)) return false;
       if (hasMin && (!validAmount(row.amount) || row.amount < Number(filters.min))) return false;
       if (hasMax && (!validAmount(row.amount) || row.amount > Number(filters.max))) return false;
       const date = dateKey(row.date);
@@ -92,7 +125,7 @@
     const groups = new Map();
     for (const row of rows) {
       const type = row.type || 'Categoria não informada';
-      const id = JSON.stringify([row.from_id, row.to_id, type]);
+      const id = JSON.stringify([row.from_id, row.to_id, type, row.from_role || '', row.to_role || '']);
       if (!groups.has(id)) groups.set(id, {id, from_id: row.from_id, to_id: row.to_id, type, rows: []});
       groups.get(id).rows.push(row);
     }
@@ -160,7 +193,7 @@
     }
     return {status: 'missing', rows: [], visited: depth.size};
   }
-  const QUERY_FIELDS = ['q', 'office', 'party', 'kind', 'type', 'from', 'to', 'min', 'max', 'start', 'end', 'selected', 'view', 'depth'];
+  const QUERY_FIELDS = ['q', 'office', 'party', 'kind', 'type', 'from', 'to', 'min', 'max', 'start', 'end', 'selected', 'view', 'depth', 'direction'];
   function toQuery(state) {
     const query = new URLSearchParams();
     for (const key of QUERY_FIELDS) if (state[key] != null && String(state[key]) !== '' && !(key === 'view' && state[key] === 'graph') && !(key === 'depth' && Number(state[key]) === 1)) query.set(key, String(state[key]));
