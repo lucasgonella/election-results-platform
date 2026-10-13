@@ -15,6 +15,11 @@ import json
 from pathlib import Path
 import re
 import zipfile
+from collections import defaultdict
+try:
+    from tools.goias_identity import document, resolve
+except ModuleNotFoundError:
+    from goias_identity import document, resolve
 
 TSE_CAND = "https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_cand/consulta_cand_2026.zip"
 TSE_FIN = "https://cdn.tse.jus.br/estatistica/sead/odsele/prestacao_contas/prestacao_de_contas_eleitorais_candidatos_2026.zip"
@@ -61,12 +66,16 @@ def go_candidate(row):
 
 def build(candidates_zip: Path, finance_zip: Path):
     candidates = {}
+    private_candidates = {}
+    campaign_owners = defaultdict(lambda: defaultdict(set))
     for row, _ in read_csv_zip(candidates_zip, lambda n: "consulta_cand_2026" in n):
         if not go_candidate(row):
             continue
         candidate_id = field(row, "SQ_CANDIDATO")
         if not candidate_id:
             raise ValueError("Missing SQ_CANDIDATO")
+        facts = private_candidates.setdefault(candidate_id, {"cpfs": set(), "civil_name": field(row, "NM_CANDIDATO")})
+        facts["cpfs"].add(field(row, "NR_CPF_CANDIDATO"))
         candidates[candidate_id] = {
             "id": candidate_id,
             "name": field(row, "NM_URNA_CANDIDATO", "NM_CANDIDATO") or "Nome não informado",
@@ -86,12 +95,21 @@ def build(candidates_zip: Path, finance_zip: Path):
     transfers = []
     seen = set()
     matched = {"revenue": 0, "expense": 0}
+    duplicate_rows = 0
+    source_rows = defaultdict(int)
     for row, filename in read_csv_zip(finance_zip, lambda n: n.endswith(("receitas_candidatos_2026_go.csv", "despesas_contratadas_candidatos_2026_go.csv"))):
+        source_rows[filename] += 1
         low = filename.lower()
         kind = "revenue" if "receita" in low else "expense"
         cid = field(row, "SQ_CANDIDATO")
         if cid not in candidates:
             continue
+        own_cpf = document(field(row, "NR_CPF_CANDIDATO"), 11)
+        if own_cpf:
+            private_candidates[cid]["cpfs"].add(own_cpf)
+        campaign_cnpj = document(field(row, "NR_CNPJ_PRESTADOR_CONTA", "NR_CNPJ_PRESTADOR_CONTAS"), 14)
+        if campaign_cnpj:
+            campaign_owners[campaign_cnpj][cid].add(field(row, "SQ_PRESTADOR_CONTAS") or cid)
         # Check the columns before trusting totals; do not interpret expenses as income.
         value_column = "VR_RECEITA" if kind == "revenue" else "VR_DESPESA_CONTRATADA"
         raw_amount = field(row, value_column)
@@ -110,6 +128,7 @@ def build(candidates_zip: Path, finance_zip: Path):
             raise ValueError(f"Cannot deduplicate {kind} transactions: missing identifier")
         key = (kind, cid, record_id, str(amount))
         if key in seen:
+            duplicate_rows += 1
             continue
         seen.add(key)
         (incomes if kind == "revenue" else expenses)[cid] = (
@@ -117,32 +136,40 @@ def build(candidates_zip: Path, finance_zip: Path):
         )
         matched[kind] += 1
         if kind == "revenue":
-            origin = field(row, "NR_CPF_CNPJ_DOADOR_ORIGINARIO", "NR_CPF_CNPJ_DOADOR")
-            origin_name = field(row, "NM_DOADOR_ORIGINARIO", "NM_DOADOR")
-            if origin_name and origin:
-                # Do not publish tax identifiers; public graph nodes are opaque.
-                import hashlib
-                origin_id = "donor:" + hashlib.sha256(origin.encode()).hexdigest()[:20]
-                transfers.append({
-                    "id": f"{cid}:{record_id}:{len(transfers)}",
-                    "from_id": origin_id, "from_name": origin_name,
-                    "to_id": cid, "to_name": candidates[cid]["name"],
-                    "amount": float(amount),
-                    "date": field(row, "DT_RECEITA"),
-                    "type": field(row, "DS_ORIGEM_RECEITA", "DS_ESPECIE_RECEITA") or "Receita declarada",
-                    "source_url": TSE_DATA,
-                })
+            # Direct counterparty only. Original donor is not the sender of this accounting row.
+            origin = field(row, "NR_CPF_CNPJ_DOADOR")
+            origin_name = field(row, "NM_DOADOR", "NM_DOADOR_RFB") or "Doador não informado"
+            transfers.append({
+                "id": f"{cid}:{record_id}:{len(transfers)}",
+                "from_name": origin_name, "to_name": candidates[cid]["name"],
+                "amount": float(amount), "date": field(row, "DT_RECEITA"),
+                "type": field(row, "DS_ORIGEM_RECEITA", "DS_ESPECIE_RECEITA") or "Receita declarada",
+                "source_url": TSE_DATA, "source_record_id": record_id,
+                "source_file": filename, "source_row": source_rows[filename] + 1,
+                "candidate_id": cid, "donor_document": origin,
+                "donor_candidate_id": field(row, "SQ_CANDIDATO_DOADOR"),
+            })
     if matched["revenue"] == 0 or matched["expense"] == 0:
         raise ValueError("Finance CSV columns not mapped or GO transactions missing; refusing incomplete export")
     for cid, entry in candidates.items():
         entry["revenue"] = float(incomes[cid]) if cid in incomes else 0
         entry["expenses"] = float(expenses[cid]) if cid in expenses else 0
+    entities, transfers, audit = resolve(candidates, private_candidates, transfers, campaign_owners)
+    audit["existing_accounting_duplicates_skipped"] = duplicate_rows
+    audit["revenue_records_preserved"] = matched["revenue"]
+    audit["expense_records_preserved"] = matched["expense"]
+    audit["revenue_total"] = str(sum(incomes.values(), Decimal(0)))
+    audit["expense_total"] = str(sum(expenses.values(), Decimal(0)))
+    import hashlib
     return {
+        "identity_schema": 1, "entities": entities, "identity_audit": audit,
         "scope": "GO", "year": 2026,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "candidates": sorted(candidates.values(), key=lambda x: (x["office"], x["name"])),
         "transfers": transfers,
-        "source": {"candidates": TSE_CAND, "finance": TSE_FIN},
+        "source": {"candidates": TSE_CAND, "finance": TSE_FIN,
+                   "candidates_sha256": hashlib.sha256(candidates_zip.read_bytes()).hexdigest(),
+                   "finance_sha256": hashlib.sha256(finance_zip.read_bytes()).hexdigest()},
     }
 
 
