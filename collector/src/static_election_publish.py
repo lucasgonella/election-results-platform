@@ -344,7 +344,20 @@ def activate(transport, values, *, reviews=None, http=None):
     transport.directory(transport.site+'/releases')
     release_root = transport.site+'/releases/'+sid
     if transport.metadata(release_root+'/') is None:
-        transport.ftp.rename(staged, release_root)
+        try:
+            transport.ftp.rename(staged, release_root)
+        except (OSError, EOFError, ftplib.error_temp) as error:
+            if isinstance(error, ftplib.error_temp) and not str(error).startswith('421'):
+                raise
+            if transport.reconnect is None: raise
+            transport.ftp.close()
+            transport.ftp = transport.reconnect()
+            destination = transport.metadata(release_root+'/')
+            original = transport.metadata(staged+'/')
+            if destination is None or destination['type'] != 'dir' or original is not None:
+                raise RuntimeError('directory_promotion_not_confirmed') from None
+            # Lost RNTO completion: never repeat the rename. The full FTP and
+            # HTTPS inventory is still verified below before marker selection.
     for name, entry in desc['files'].items():
         wire.verify_bytes(transport.read(release_root+'/'+name), entry)
     verify_public(transport, marker_raw, desc, http=http, selected=False)
