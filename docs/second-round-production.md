@@ -86,6 +86,12 @@ reconcilia transação anterior antes de consultar dados novos. Configuração e
 coleta usam os valores oficiais fixos no código; não dependem da configuração do
 primeiro turno.
 
+Leituras FTP (`MLST` e `RETR`) possuem um único orçamento de três tentativas.
+Timeout, reset, EOF e encerramento 421 substituem a sessão antes da próxima
+leitura; bytes parciais são descartados. Não há retentativa de STOR, rename ou
+ativação. Erros permanentes, arquivos inválidos e divergências de integridade
+continuam bloqueando. Falha nas três leituras mantém o backoff do ciclo.
+
 ## Status e saúde
 
 ```sh

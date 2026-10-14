@@ -90,7 +90,7 @@ preservados. **Parar o writer e confirmar quiescência**, depois:
 ```text
 python -m collector.src.static_election_publish recover --writer-stopped --report RELATORIO
 python -m collector.src.static_election_publish rollback --report RELATORIO
-python -m collector.src.static_election_runner reconcile
+python -m collector.src.static_election_runner reconcile --writer-stopped
 ```
 
 Recover restaura somente a baseline do journal, após verificar os 140 backups e
@@ -103,6 +103,16 @@ Falha depois da seleção e antes de commit local pode exigir recuperação remo
 ou confirmação completa do job antes de `reconcile`; nunca iniciar outra coleta
 com um job ainda não reconciliado. Rollback remoto requer manter o timer parado
 e reconciliar explicitamente o checkpoint anterior antes de nova coleta.
+
+Se a tentativa não selecionou sua candidata, `reconcile --writer-stopped`
+também reconhece a baseline já adotada: exige ausência de lock remoto, journal
+`complete`/`restored` para a mesma baseline, checkpoint/descritor correspondentes,
+140 arquivos idênticos por FTP/HTTPS e watermarks válidos. Confere novamente
+marcador e metadados antes de concluir o job local. Preserva a candidata, o job
+original, checkpoints, watermarks e data da última coleta. Não publica o pacote
+interrompido nem transforma a verificação em uma coleta nova. Estados externos,
+pendentes ou inconsistentes continuam bloqueados; a próxima coleta constrói
+uma candidata nova pelos controles eleitorais existentes.
 
 ## Automação e monitor
 

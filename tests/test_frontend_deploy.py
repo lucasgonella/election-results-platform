@@ -339,7 +339,10 @@ class FrontendTest(unittest.TestCase):
         self.assertIn("'!web/public/eleicoes/goias/raio-x/data/**'", text)
         financial = (f.ROOT/'.github/workflows/goias-finance-data.yml').read_text(encoding='utf-8-sig')
         self.assertIn('data/go-2026.json', financial)
-        self.assertIn('--upload-file', financial)
+        self.assertIn('-m tools.goias_finance_publish', financial)
+        financial_client = (f.ROOT/'tools/goias_finance_publish.py').read_text()
+        self.assertIn("'--upload-file', '-'", financial_client)
+        self.assertIn("'--proto', '=ftp'", financial_client)
         self.assertNotIn('--upload-file "web/public/eleicoes/goias/raio-x/index.html"', financial)
 
     def test_identical_component_content_is_not_uploaded_again(self):
