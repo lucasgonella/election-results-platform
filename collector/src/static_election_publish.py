@@ -253,7 +253,7 @@ def validate_watermarks(transport, before, baseline_snapshot=None):
     return marks
 
 
-def activate(transport, values, *, reviews=None, http=None):
+def activate(transport, values, *, reviews=None, http=None, preassembled=False):
     desc = descriptor(values)
     expected_environment = 'oficial' if transport.environment == 'production' else 'fixture'
     if desc['environment'] != expected_environment:
@@ -300,15 +300,22 @@ def activate(transport, values, *, reviews=None, http=None):
     transport.put(journal_root+'/journal.json', canonical(journal))
     transport.put(transport.private+'/pending.json', canonical(journal), replace=True)
     staged = transport.private+'/staging/'+sid+'/files'
-    for name, raw in values.items():
-        transport.put(staged+'/'+name, raw)
-    # Re-read the full staging inventory before promoting its directory.
-    for name, entry in desc['files'].items():
-        wire.verify_bytes(transport.read(staged+'/'+name), entry)
     transport.directory(transport.site+'/releases')
     release_root = transport.site+'/releases/'+sid
-    if transport.metadata(release_root+'/') is None:
-        transport.ftp.rename(staged, release_root)
+    if preassembled:
+        # An isolated on-host assembler must create the *complete* release
+        # without touching the marker. Never upload or rename in this mode.
+        # This verification alone does not authorize a publication.
+        if transport.metadata(release_root+'/') is None:
+            raise ValueError('preassembled_release_missing')
+    else:
+        for name, raw in values.items():
+            transport.put(staged+'/'+name, raw)
+        # Re-read the full staging inventory before promoting its directory.
+        for name, entry in desc['files'].items():
+            wire.verify_bytes(transport.read(staged+'/'+name), entry)
+        if transport.metadata(release_root+'/') is None:
+            transport.ftp.rename(staged, release_root)
     for name, entry in desc['files'].items():
         wire.verify_bytes(transport.read(release_root+'/'+name), entry)
     verify_public(transport, marker_raw, desc, http=http, selected=False)
