@@ -7,7 +7,9 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import secrets
-from urllib.error import HTTPError
+import time
+from http.client import IncompleteRead
+from urllib.error import HTTPError,URLError
 from urllib.request import Request, build_opener
 
 from deploy import frontend as wire
@@ -26,14 +28,18 @@ def sid(value):
 
 def http(path):
     if not re.fullmatch(r'(turnos/[12]/(version\.json|releases/[a-f0-9]{64}/[a-z0-9/-]+\.json)|geography/[a-f0-9]{64}/[a-z-]+\.json)',path): raise ValueError('municipal_unsafe_https_path')
-    try:
-        with build_opener(wire.NoRedirect()).open(Request(PUBLIC+path,headers={'Cache-Control':'no-cache'}),timeout=30) as response:
-            raw=response.read(wire.MAX_BYTES+1)
-            if len(raw)>wire.MAX_BYTES: raise ValueError('municipal_oversized_https_response')
-            return raw
-    except HTTPError as error:
-        if error.code==404:return None
-        raise
+    for attempt in range(3):
+        try:
+            with build_opener(wire.NoRedirect()).open(Request(PUBLIC+path,headers={'Cache-Control':'no-cache'}),timeout=30) as response:
+                raw=response.read(wire.MAX_BYTES+1)
+                if len(raw)>wire.MAX_BYTES: raise ValueError('municipal_oversized_https_response')
+                return raw
+        except HTTPError as error:
+            if error.code==404:return None
+            if error.code not in {408,500,502,503,504} or attempt==2:raise
+        except (OSError,EOFError,URLError,IncompleteRead):
+            if attempt==2:raise
+        time.sleep(attempt+1)
 
 
 class Transport(wire.Transport):
@@ -69,6 +75,16 @@ class Transport(wire.Transport):
         for attempt in range(3):
             try:return super().metadata(path)
             except (OSError,EOFError,ftplib.error_temp):
+                if attempt==2 or self.reconnect is None:raise
+                self.ftp.close();self.ftp=self.reconnect()
+
+    def read(self,path,*,optional=False):
+        # A reset after RETR may discard a partial buffer. Start a fresh read;
+        # never repeat STOR, and retain all path/size/hash and marker checks.
+        for attempt in range(3):
+            try:return super().read(path,optional=optional)
+            except (OSError,EOFError,ftplib.error_temp) as error:
+                wire.control_failure(error,'retr')
                 if attempt==2 or self.reconnect is None:raise
                 self.ftp.close();self.ftp=self.reconnect()
 
