@@ -10,6 +10,14 @@ from test_frontend_deploy import FakeFTP
 
 class ElectionFTP(FakeFTP):
     def close(self): pass
+    def pwd(self): return getattr(self, '_cwd', '/')
+    def cwd(self, path):
+        from pathlib import PurePosixPath
+        self._cwd = str(PurePosixPath(self.pwd())/path)
+        assert self._cwd in self.dirs
+    def mkd(self, path):
+        from pathlib import PurePosixPath
+        return super().mkd(str(PurePosixPath(self.pwd())/path))
     def rename(self, old, new):
         if old in self.dirs:
             self.events.append(('rename_directory',new))
@@ -199,6 +207,50 @@ def test_metadata_and_read_share_one_attempt_budget(monkeypatch):
     t = Transport(Broken(), 'staging', reconnect=Broken)
     with pytest.raises(TimeoutError): t.read(t.site+'/version.json')
     assert len(calls) == 3 and not t._reading
+
+
+def test_long_directory_creation_uses_only_short_mkd_commands():
+    ftp = ElectionFTP()
+    t = Transport(ftp, 'staging', reconnect=lambda: ftp)
+    calls = []
+    original = ftp.mkd
+    def short(name):
+        calls.append(name)
+        assert '/' not in name
+        return original(name)
+    ftp.mkd = short
+    path = t.private+'/backups/'+'a'*64+'/files/ba'
+    t.directory(path)
+    assert t.metadata(path+'/')['type'] == 'dir'
+    assert ftp.pwd() == '/' and calls[-1] == 'ba'
+
+
+def test_lost_mkd_completion_verified_without_replaying_creation():
+    ftp = ElectionFTP()
+    t = Transport(ftp, 'staging', reconnect=lambda: ftp)
+    ftp.dirs.update({'/election-static-deploy', t.private})
+    calls = []
+    original = ftp.mkd
+    def lost(name):
+        calls.append(name)
+        original(name)
+        raise TimeoutError('completion lost')
+    ftp.mkd = lost
+    path = t.private+'/backups'
+    t.directory(path)
+    assert calls == ['backups']
+    assert t.metadata(path+'/')['type'] == 'dir'
+
+
+def test_failed_mkd_without_directory_never_assumed_successful():
+    ftp = ElectionFTP()
+    t = Transport(ftp, 'staging', reconnect=lambda: ftp)
+    ftp.dirs.update({'/election-static-deploy', t.private})
+    def absent(name): raise TimeoutError('creation did not occur')
+    ftp.mkd = absent
+    with pytest.raises(RuntimeError, match='directory_creation_unconfirmed'):
+        t.directory(t.private+'/backups')
+    assert not t.ftp.events
 
 
 def test_election_ftp_timeout_is_isolated(monkeypatch):

@@ -110,6 +110,33 @@ class Transport(wire.Transport):
             raise ValueError('immutable_release')
         return super().put(path, raw, replace=replace)
 
+    def directory(self, path):
+        """Use short MKD basenames, as the isolated round-two client does."""
+        self.allowed(path+'/')
+        actual = self.metadata(path+'/')
+        if actual is not None:
+            if actual['type'] != 'dir': raise RuntimeError('not_directory')
+            return
+        parent = str(PurePosixPath(path).parent)
+        if parent not in {'/', '/public_html'}: self.directory(parent)
+        try:
+            self.ftp.cwd('/')
+            for part in PurePosixPath(parent).parts[1:]: self.ftp.cwd(part)
+            self.ftp.mkd(PurePosixPath(path).name)
+            self.ftp.cwd('/')
+            actual = self.metadata(path+'/')
+            if actual is None or actual['type'] != 'dir':
+                raise RuntimeError('election_directory_creation_unconfirmed')
+        except (OSError, EOFError, ftplib.Error):
+            if self.reconnect is None: raise
+            self.ftp.close()
+            self.ftp = self.reconnect()
+            actual = self.metadata(path+'/')
+            if actual is None or actual['type'] != 'dir':
+                raise RuntimeError('election_directory_creation_unconfirmed') from None
+            # Only a directory actually inspected after a lost response is
+            # adopted. Never replay an uncertain MKD or remove another path.
+
     @contextmanager
     def lock(self):
         self.directory(self.private)
