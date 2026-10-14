@@ -95,6 +95,13 @@ isolamento no servidor nem aprova o protocolo eleitoral do PR #75.
 
 O workflow `municipal-presidential-data.yml` coleta somente na main após CI,
 conserva cache inclusive em interrupções e entrega artefato validado ao job FTP.
+Os três checks obrigatórios devem estar aprovados no SHA executado. Uma exceção
+estrita cobre o commit automático do exportador financeiro, que não dispara CI:
+somente uma diferença integral limitada a `goias/raio-x/data/go-2026.json` permite
+usar o primeiro ancestral com checks, todos aprovados. Código, testes, requisitos,
+renames, comparação truncada, checks pendentes ou falhos não herdam aprovação.
+O log identifica o SHA executado e o SHA efetivamente testado. Mudanças municipais
+posteriores na main continuam bloqueando jobs obsoletos antes da publicação.
 O job escritor usa concurrency global `locaweb-frontend-production`, MKD,
 journal, backup do marcador, temporários exclusivos e leitura FTP/HTTPS dos
 arquivos antes de ativar o marcador. O marcador é uma seleção por rename,
@@ -107,6 +114,10 @@ recovery; lock desconhecido falha fechado. Nunca apagar locks manualmente.
 Recuperação preserva o marcador anterior quando a preparação ficou incompleta,
 ou conclui uma ativação já verificada; ativos antigos não são apagados.
 Locks pendentes dos componentes visuais bloqueiam a publicação municipal.
+Leituras FTP/HTTPS repetem no máximo três vezes em falhas transitórias de rede;
+RETR reconecta antes de reler. Escritas não são repetidas por esse mecanismo.
+404, redirects, tamanhos inválidos e divergências de integridade preservam seus
+tratamentos anteriores; uma leitura malsucedida não é registrada como publicação.
 
 O segundo turno usa caches, checkpoints, releases e journals próprios. Antes de
 haver seções presidenciais totalizadas, o produtor registra espera e não ativa

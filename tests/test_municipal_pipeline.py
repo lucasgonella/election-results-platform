@@ -5,12 +5,14 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch,Mock
+from urllib.error import HTTPError
 
 import requests
 from collector.src.election_release import canonical,parse,digest
 from collector.src.municipal_collection import HTTP,Unavailable,Throttled,election,inventory,result,UF_CODES,collect,source_url,CONFIG
 from collector.src.municipal_release import assemble,verify
-from collector.src.municipal_publish import Transport,Publisher,SITE,PRIVATE
+from collector.src.municipal_publish import Transport,Publisher,SITE,PRIVATE,http
 from tests.municipal_fixtures import ELECTION,ea20,make_dataset,make_geometry
 from tests.test_frontend_deploy import FakeFTP
 
@@ -183,4 +185,34 @@ class MunicipalPublicationTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):self.publisher.recover()
         with self.assertRaises(ValueError):self.transport.writable(SITE+'/turnos/2/version.json')
         with self.assertRaises(ValueError):self.transport.writable(SITE+'/turnos/1/releases/'+'a'*64+'/../../version.json')
+
+    def test_https_read_reset_retries_but_missing_and_invalid_content_fail_closed(self):
+        response=Mock();response.__enter__=Mock(return_value=response);response.__exit__=Mock(return_value=False)
+        response.read.side_effect=[ConnectionResetError(104,'synthetic reset'),b'verified later by caller']
+        opener=Mock();opener.open.return_value=response
+        with patch('collector.src.municipal_publish.build_opener',return_value=opener),patch('collector.src.municipal_publish.time.sleep'):
+            self.assertEqual(http('turnos/1/version.json'),b'verified later by caller')
+            self.assertEqual(opener.open.call_count,2)
+            opener.open.reset_mock();opener.open.side_effect=HTTPError('fixture',404,'missing',{},None)
+            self.assertIsNone(http('turnos/2/version.json'));self.assertEqual(opener.open.call_count,1)
+            opener.open.reset_mock();opener.open.side_effect=None;response.read.side_effect=None;response.read.return_value=b'x'*(16*1024*1024+1)
+            with self.assertRaisesRegex(ValueError,'municipal_oversized_https_response'):http('turnos/1/version.json')
+            self.assertEqual(opener.open.call_count,1)
+
+    def test_ftp_read_reconnects_without_writes_and_permanent_reset_is_bounded(self):
+        path=SITE+'/turnos/1/version.json';self.ftp.files[path]=b'synthetic payload';before=dict(self.ftp.files);events=list(self.ftp.events)
+        original=self.ftp.retrbinary;calls=[]
+        def read(command,callback):
+            calls.append(command)
+            if len(calls)==1:raise ConnectionResetError(104,'synthetic reset')
+            return original(command,callback)
+        self.ftp.retrbinary=read;self.ftp.close=lambda:None;self.transport.reconnect=lambda:self.ftp
+        self.assertEqual(self.transport.read(path),b'synthetic payload');self.assertEqual(len(calls),2);self.assertEqual(self.ftp.files,before)
+        self.assertEqual(self.ftp.events,events)
+        calls.clear()
+        def permanent(command,callback):calls.append(command);raise ConnectionResetError(104,'synthetic reset')
+        self.ftp.retrbinary=permanent
+        with self.assertRaises(ConnectionResetError):self.transport.read(path)
+        self.assertEqual(len(calls),3);self.assertEqual(self.ftp.files,before)
+        self.assertEqual(self.ftp.events,events)
 
