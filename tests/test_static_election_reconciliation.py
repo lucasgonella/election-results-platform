@@ -51,11 +51,43 @@ def test_settled_baseline_reconciles_without_publishing_or_changing_checkpoint(i
     job = parse((root/'in-flight.json').read_bytes())
     assert job['status'] == 'complete' and job['package'] == str(candidate)
     assert job['selected'] == ['pi/state-deputy.json']
+    history = next((root/'reconciliations').glob('*.json'))
+    assert parse(history.read_bytes())['resolution'] == job
     health = parse((root/'health.json').read_bytes())
     assert health['collected_at'] == '2026-10-09T12:00:00+00:00'
     assert 'error_type' not in health
     assert t.ftp.files == remote and not t.ftp.events
     assert runner.reconcile_job(root, transport=t)['status'] == 'already_reconciled'
+    # A new job can occupy in-flight without erasing the completed evidence.
+    runner.save(root/'in-flight.json', {'package': 'new-cycle'})
+    assert parse(history.read_bytes())['resolution'] == job
+
+
+def test_new_failure_does_not_inherit_stale_error_code(interrupted, monkeypatch, capsys):
+    import sys
+    root, _, _, _ = interrupted
+    runner.save(root/'in-flight.json', {'status': 'complete', 'snapshot_id': '0'*64})
+    monkeypatch.setattr(runner, 'root_path', lambda: root)
+    monkeypatch.setattr(runner, 'require_official_runtime', lambda: None)
+    def fail(*args): raise RuntimeError('uncontrolled response with private information')
+    monkeypatch.setattr(runner, 'run_cycle', fail)
+    monkeypatch.setattr(sys, 'argv', ['runner', 'cycle'])
+    assert runner.main() == 1
+    health = parse((root/'health.json').read_bytes())
+    assert health['error_type'] == 'RuntimeError' and 'error_code' not in health
+    assert 'private information' not in capsys.readouterr().out
+
+
+def test_history_conflict_preserves_all_local_state(interrupted):
+    root, t, candidate, _ = interrupted
+    sid = digest(canonical(pub.descriptor(tree(candidate/'candidate'))))
+    folder = root/'reconciliations'
+    folder.mkdir()
+    runner.save(folder/(sid+'.json'), {'job': {'package': 'different'}, 'resolution': {}})
+    original = tree(root)
+    with pytest.raises(ValueError, match='reconciliation_history_conflict'):
+        runner.reconcile_job(root, writer_stopped=True, transport=t)
+    assert tree(root) == original and not t.ftp.events
 
 
 @pytest.mark.parametrize('fault', ['live_lock', 'writer_running', 'pending_prepared', 'wrong_pending', 'external_marker', 'corrupt_ftp', 'corrupt_https', 'watermarks', 'changed_marker', 'changed_current'])
