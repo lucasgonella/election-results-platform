@@ -6,6 +6,7 @@ guarantee; interrupted transactions remain for explicit recovery.
 """
 from __future__ import annotations
 import argparse
+import ftplib
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import json
@@ -41,28 +42,36 @@ class Transport(wire.Transport):
         self.environment = environment
         self.site, self.private = layout(environment)
 
-    def read(self, path, *, optional=False):
-        """Retry interrupted FTP reads only after replacing the broken session.
-
-        A failed RETR can leave unread FTP replies; reusing that control
-        connection poisons subsequent commands. Never treat an incomplete
-        read as valid bytes, and never retry a write here.
-        """
+    def _readonly_retry(self, operation):
+        """Keep transport failure types so put can reconcile a lost response."""
         import time
-
-        self.allowed(path)
         for attempt in range(3):
             try:
-                return super().read(path, optional=optional)
-            except (OSError, EOFError, TimeoutError) as error:
+                return operation()
+            except (OSError, EOFError, ftplib.error_temp) as error:
+                if isinstance(error, ftplib.error_temp) and not str(error).startswith('421'):
+                    raise
                 if attempt == 2 or self.reconnect is None:
-                    raise RuntimeError(
-                        f"ftp_read_failed path={path} attempts={attempt + 1} "
-                        f"error={type(error).__name__}"
-                    ) from error
+                    # Wrapping this in RuntimeError hid timeouts from the
+                    # shared put/read-after-write reconciliation mechanism.
+                    raise
                 self.ftp.close()
                 time.sleep(attempt + 1)
                 self.ftp = self.reconnect()
+
+    def metadata(self, path):
+        if getattr(self, '_reading', False):
+            return super().metadata(path)
+        return self._readonly_retry(lambda: super(Transport, self).metadata(path))
+
+    def read(self, path, *, optional=False):
+        self.allowed(path)
+        self._reading = True
+        try:
+            return self._readonly_retry(
+                lambda: super(Transport, self).read(path, optional=optional))
+        finally:
+            self._reading = False
 
     def allowed(self, path):
         if (not isinstance(path, str) or any(c in path for c in ('\r', '\n', '\\'))

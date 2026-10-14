@@ -146,9 +146,59 @@ def test_static_read_retry_is_bounded(monkeypatch):
     monkeypatch.setattr(wire.Transport, "read", always_timeout)
     monkeypatch.setattr("time.sleep", lambda seconds: None)
     transport = Transport(ElectionFTP(), "staging", reconnect=ElectionFTP)
-    with pytest.raises(RuntimeError, match="ftp_read_failed.*attempts=3.*TimeoutError"):
+    with pytest.raises(TimeoutError, match="interrupted RETR"):
         transport.read(transport.site + "/version.json")
     assert len(calls) == 3
+
+
+def test_exhausted_read_can_reconcile_completed_upload_without_replaying_stor(monkeypatch):
+    monkeypatch.setattr('time.sleep', lambda _: None)
+    ftp = ElectionFTP()
+    t = Transport(ftp, 'staging', reconnect=lambda: ftp)
+    ftp.dirs.update({'/election-static-deploy', t.private})
+    path = t.private+'/current.json'
+    original = ftp.retrbinary
+    failures = []
+    def interrupted(command, callback, **kwargs):
+        if command.endswith('.upload') and len(failures) < 3:
+            failures.append(command)
+            callback(b'incomplete')
+            raise TimeoutError('read completion lost')
+        return original(command, callback, **kwargs)
+    ftp.retrbinary = interrupted
+    t.put(path, b'complete verified bytes')
+    assert ftp.files[path] == b'complete verified bytes'
+    assert len(failures) == 3
+    assert sum(event[0] == 'upload' for event in ftp.events) == 1
+    assert t.reconciled_transfers == 1
+
+
+def test_stale_metadata_reconnects_without_mutation(monkeypatch):
+    monkeypatch.setattr('time.sleep', lambda _: None)
+    first, second = ElectionFTP(), ElectionFTP()
+    t = Transport(first, 'staging', reconnect=lambda: second)
+    path = t.site+'/version.json'
+    second.files[path] = b'valid'
+    original = first.sendcmd
+    def stale(command):
+        if command.startswith('MLST'): raise OSError('cannot read from timed out object')
+        return original(command)
+    first.sendcmd = stale
+    assert t.metadata(path)['type'] == 'file'
+    assert t.ftp is second
+    assert not first.events and not second.events
+
+
+def test_metadata_and_read_share_one_attempt_budget(monkeypatch):
+    monkeypatch.setattr('time.sleep', lambda _: None)
+    calls = []
+    class Broken(ElectionFTP):
+        def sendcmd(self, command):
+            calls.append(command)
+            raise TimeoutError('MLST interrupted')
+    t = Transport(Broken(), 'staging', reconnect=Broken)
+    with pytest.raises(TimeoutError): t.read(t.site+'/version.json')
+    assert len(calls) == 3 and not t._reading
 
 
 def test_election_ftp_timeout_is_isolated(monkeypatch):

@@ -367,7 +367,6 @@ def reconcile_job(root, *, writer_stopped=False, transport=None):
                 raise ValueError('remote_checkpoint_inventory_mismatch')
             receipt = verify_public(transport, marker, desc)
             receipt['published_at'] = remote['published_at']
-            accept_checkpoint(root, package, receipt)
             outcome = 'published'
         else:
             if not writer_stopped:
@@ -402,12 +401,28 @@ def reconcile_job(root, *, writer_stopped=False, transport=None):
             health = parse(health_path.read_bytes()) if health_path.exists() else {}
             for key in ('error_type', 'error_code', 'failed_at', 'errno', 'causes', 'ftp_code'):
                 health.pop(key, None)
-            save(health_path, health | {'status': 'reconciled_baseline', 'snapshot_id': sid,
-                                      'public_verified_at': receipt['verified_at']})
+            health = health | {'status': 'reconciled_baseline', 'snapshot_id': sid,
+                               'public_verified_at': receipt['verified_at']}
             outcome = 'baseline_preserved'
-        save(job, queued | {'status': 'complete', 'snapshot_id': sid,
-                            'candidate_snapshot_id': candidate_id, 'outcome': outcome,
-                            'reconciled_at': receipt['verified_at']})
+        completed = queued | {'status': 'complete', 'snapshot_id': sid,
+                             'candidate_snapshot_id': candidate_id, 'outcome': outcome,
+                             'reconciled_at': receipt['verified_at']}
+        history = root/'reconciliations'
+        history.mkdir(exist_ok=True)
+        record = history/(candidate_id+'.json')
+        if record.exists():
+            saved = parse(record.read_bytes())
+            if (saved.get('job') != queued
+                    or any(saved.get('resolution',{}).get(k) != completed[k]
+                           for k in ('snapshot_id','candidate_snapshot_id','outcome'))):
+                raise ValueError('reconciliation_history_conflict')
+        else:
+            save(record, {'job': queued, 'resolution': completed})
+        if outcome == 'published':
+            accept_checkpoint(root, package, receipt)
+        else:
+            save(health_path, health)
+        save(job, completed)
         return {'status': 'reconciled', 'snapshot_id': sid,
                 'candidate_snapshot_id': candidate_id, 'outcome': outcome, 'files': receipt['files']}
     finally:
@@ -458,6 +473,8 @@ def main():
             print(json.dumps(result));return 0
         except Exception as error:
             previous=parse((root/'health.json').read_bytes()) if (root/'health.json').exists() else {}
+            for key in ('error_type','error_code','errno','ftp_code','ftp_operation','causes','failed_at'):
+                previous.pop(key,None)
             result=previous|{'status':'failed','failed_at':datetime.now(timezone.utc).isoformat(),**error_report(error)}
             save(root/'health.json',result);print(json.dumps(result));return 1
 

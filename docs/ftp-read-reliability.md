@@ -46,3 +46,11 @@ checks no SHA efetivo, por PR de documentação quando necessário, e só depois
 executar o instalador oficial. Parar apenas os timers dos escritores envolvidos,
 confirmar inatividade, preservar estado e executar recover/reconcile oficiais.
 Reativar e confirmar ciclos reais; exit 0 de backoff não comprova nova coleta.
+
+O primeiro turno preserva `TimeoutError`/`OSError`/`EOFError` ao esgotar leituras.
+Isso permite ao transporte existente reconciliar um STOR já concluído por
+releitura, sem repetir o upload. MLST e RETR compartilham um orçamento de três
+tentativas, inclusive na limpeza de um temporário conhecido. O histórico local
+`reconciliations/<candidate-id>.json` guarda o job e a conclusão antes que outra
+coleta reutilize `in-flight.json`; candidata e arquivos continuam retidos.
+Uma falha nova não herda o código de erro antigo do health.
