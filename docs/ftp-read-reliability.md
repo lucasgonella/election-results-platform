@@ -31,3 +31,18 @@ Testes usam FTP simulado, bytes sintéticos e callbacks: RETR parcial, resets,
 421/permissões, orçamento de tentativas, preservação da candidata/checkpoint,
 baseline/restauração, alterações externas, corrupções, upload incerto completo,
 upload parcial, igualdade FTP/HTTPS, idempotência e proteção de credenciais.
+
+## Instalação do código aprovado
+
+O PR118 passou todos os checks; a suíte completa executou 500 testes e 27
+subtestes, com 17 skips da infraestrutura local. A execução financeira
+[38607350746](https://github.com/lucasgonella/election-results-platform/actions/runs/38607350746)
+concluiu FTP/HTTPS com 860 candidaturas e 5.899 transferências, sem alterar o
+importador. Seu commit automático contém exclusivamente o JSON financeiro.
+
+O instalador do segundo turno continua exigindo o SHA aprovado da main atual.
+Se o ETL avançar a main após os checks, não contornar essa recusa: concluir os
+checks no SHA efetivo, por PR de documentação quando necessário, e só depois
+executar o instalador oficial. Parar apenas os timers dos escritores envolvidos,
+confirmar inatividade, preservar estado e executar recover/reconcile oficiais.
+Reativar e confirmar ciclos reais; exit 0 de backoff não comprova nova coleta.
