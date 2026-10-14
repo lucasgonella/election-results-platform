@@ -335,6 +335,85 @@ def adopt_legacy_remote(root, *, transport=None):
         if own:t.ftp.close()
 
 
+def reconcile_job(root, *, writer_stopped=False, transport=None):
+    """Reconcile a verified publication or an interrupted, unselected candidate.
+
+    Never activate the candidate here. An unchanged/restored baseline requires
+    explicit writer quiescence, complete verification and a settled remote journal.
+    Retain the candidate and the original job for inspection/retry by a new cycle.
+    """
+    job = root/'in-flight.json'
+    queued = parse(job.read_bytes())
+    if queued.get('status') == 'complete':
+        return {'status': 'already_reconciled', 'snapshot_id': queued['snapshot_id']}
+    package = Path(queued['package'])
+    if package.is_symlink() or not package.resolve().is_relative_to((root/'cycles').resolve()):
+        raise ValueError('unsafe_reconciliation_package')
+    desc = descriptor(tree(package/'candidate'))
+    candidate_id = digest(canonical(desc))
+    own = transport is None
+    transport = transport or connect('production')
+    try:
+        if transport.metadata(transport.private+'/lock/') is not None:
+            raise ValueError('recover_remote_transaction_first')
+        marker = transport.read(transport.site+'/version.json')
+        sid = parse(marker)['snapshot_id']
+        current_raw = transport.read(transport.private+'/current.json')
+        remote = parse(current_raw)
+        if remote.get('snapshot_id') != sid:
+            raise ValueError('remote_checkpoint_not_confirmed')
+        if sid == candidate_id:
+            if remote.get('descriptor') != desc:
+                raise ValueError('remote_checkpoint_inventory_mismatch')
+            receipt = verify_public(transport, marker, desc)
+            receipt['published_at'] = remote['published_at']
+            accept_checkpoint(root, package, receipt)
+            outcome = 'published'
+        else:
+            if not writer_stopped:
+                raise ValueError('confirm_writer_stopped_before_baseline_reconciliation')
+            current = parse((root/'current.json').read_bytes())
+            previous = Path(current['package'])
+            if previous.is_symlink() or not previous.resolve().is_relative_to((root/'generations').resolve()):
+                raise ValueError('unsafe_checkpoint_location')
+            baseline = tree(previous/'candidate')
+            prior_desc = descriptor(baseline)
+            if (sid != current['snapshot_id'] or prior_desc != current['descriptor']
+                    or digest(canonical(prior_desc)) != current.get('content_snapshot_id', sid)
+                    or remote.get('descriptor') != prior_desc):
+                raise ValueError('reconciliation_requires_known_baseline')
+            pending_raw = transport.read(transport.private+'/pending.json')
+            pending = parse(pending_raw)
+            if pending.get('status') not in {'complete', 'restored'} or pending.get('snapshot_id') != sid:
+                raise ValueError('remote_transaction_not_settled')
+            from .static_election_publish import read_release, validate_watermarks
+            actual, actual_desc = read_release(transport, parse(marker))
+            if actual != baseline or actual_desc != prior_desc:
+                raise ValueError('reconciliation_baseline_bytes_mismatch')
+            validate_watermarks(transport, baseline, sid)
+            receipt = verify_public(transport, marker, prior_desc)
+            if (transport.read(transport.site+'/version.json') != marker
+                    or transport.read(transport.private+'/current.json') != current_raw
+                    or transport.read(transport.private+'/pending.json') != pending_raw
+                    or transport.metadata(transport.private+'/lock/') is not None):
+                raise ValueError('reconciliation_remote_state_changed')
+            # No checkpoint/watermark change and no collection timestamp invented.
+            health_path = root/'health.json'
+            health = parse(health_path.read_bytes()) if health_path.exists() else {}
+            for key in ('error_type', 'error_code', 'failed_at', 'errno', 'causes', 'ftp_code'):
+                health.pop(key, None)
+            save(health_path, health | {'status': 'reconciled_baseline', 'snapshot_id': sid,
+                                      'public_verified_at': receipt['verified_at']})
+            outcome = 'baseline_preserved'
+        save(job, queued | {'status': 'complete', 'snapshot_id': sid,
+                            'candidate_snapshot_id': candidate_id, 'outcome': outcome,
+                            'reconciled_at': receipt['verified_at']})
+        return {'status': 'reconciled', 'snapshot_id': sid,
+                'candidate_snapshot_id': candidate_id, 'outcome': outcome, 'files': receipt['files']}
+    finally:
+        if own: transport.ftp.close()
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('operation',choices=['adopt','cycle','reconcile','prepare-legacy','adopt-legacy'])
@@ -342,6 +421,7 @@ def main():
     parser.add_argument('--baseline',type=Path)
     parser.add_argument('--marker',type=Path)
     parser.add_argument('--checkpoint',type=Path)
+    parser.add_argument('--writer-stopped',action='store_true')
     args=parser.parse_args()
     root=root_path();root.mkdir(parents=True,exist_ok=True)
     import fcntl
@@ -371,20 +451,7 @@ def main():
                     accept_checkpoint(root,args.package,receipt);result={'status':'adopted','snapshot_id':sid}
                 finally:transport.ftp.close()
             elif args.operation=='reconcile':
-                queued=parse(job.read_bytes());package=Path(queued['package'])
-                if not package.resolve().is_relative_to((root/'cycles').resolve()):raise ValueError('unsafe_reconciliation_package')
-                values=tree(package/'candidate');desc=descriptor(values);sid=digest(canonical(desc))
-                transport=connect('production')
-                try:
-                    if transport.metadata(transport.private+'/lock/') is not None:raise ValueError('recover_remote_transaction_first')
-                    marker=transport.read(transport.site+'/version.json')
-                    if parse(marker)['snapshot_id']!=sid:raise ValueError('reconciliation_requires_matching_published_job')
-                    receipt=verify_public(transport,marker,desc)
-                    remote=parse(transport.read(transport.private+'/current.json'))
-                    if remote['snapshot_id']!=sid:raise ValueError('remote_checkpoint_not_confirmed')
-                    receipt['published_at']=remote['published_at'];accept_checkpoint(root,package,receipt)
-                    save(job,{'status':'complete','snapshot_id':sid});result={'status':'reconciled','snapshot_id':sid}
-                finally:transport.ftp.close()
+                result=reconcile_job(root,writer_stopped=args.writer_stopped)
             else:
                 require_official_runtime()
                 result=run_cycle(root)

@@ -5,6 +5,7 @@ on:
     paths:
       - 'tools/goias_finance_etl.py'
       - 'tools/goias_identity.py'
+      - 'tools/goias_finance_publish.py'
       - '.github/workflows/goias-finance-data.yml'
   workflow_dispatch:
   schedule:
@@ -21,9 +22,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           persist-credentials: true
       - name: Unit test financial importer
-        run: python3 -m unittest discover -s tests -p 'test_goias*py' -v
+        run: |
+          python3 -m pip install -r collector/requirements-dev.txt
+          python3 -m unittest discover -s tests -p 'test_goias*py' -v
+          python3 -m pytest -q tests/test_goias_finance_publish.py
       - name: Download official TSE datasets
         run: |
           set -euo pipefail
@@ -68,24 +73,5 @@ jobs:
           FTP_PASSWORD: ${{ secrets.LOCAWEB_FTP_PASSWORD }}
           FTP_DIR: ${{ vars.LOCAWEB_FTP_GOIAS_DIR }}
         run: |
-          set -euo pipefail
-          test -n "$FTP_HOST" && test -n "$FTP_USER" && test -n "$FTP_PASSWORD" && test -n "$FTP_DIR"
-          [[ "$FTP_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
-          [[ "$FTP_DIR" =~ ^[A-Za-z0-9_./-]+$ ]]
-          [[ "$FTP_DIR" != *..* && "$FTP_DIR" != /* && "$FTP_DIR" != *//* ]]
-          [[ "$FTP_DIR" == */eleicoes/goias/raio-x || "$FTP_DIR" == eleicoes/goias/raio-x ]]
-          NETRC="$(mktemp)"; trap 'rm -f "$NETRC"' EXIT
-          chmod 600 "$NETRC"
-          printf 'machine %s login %s password %s\n' "$FTP_HOST" "$FTP_USER" "$FTP_PASSWORD" > "$NETRC"
-          curl --fail --silent --show-error --retry 3 --proto '=ftp' --ftp-create-dirs \
-            --netrc-file "$NETRC" --upload-file web/public/eleicoes/goias/raio-x/data/go-2026.json \
-            "ftp://$FTP_HOST:21/$FTP_DIR/data/go-2026.json"
-          curl --fail --silent --show-error --retry 3 \
-            https://afgnet.com.br/eleicoes/goias/raio-x/data/go-2026.json \
-            -o /tmp/go-verified.json
-          python3 - <<'PY'
-          import json
-          with open('/tmp/go-verified.json') as f: data=json.load(f)
-          assert data['scope']=='GO' and data['year']==2026 and len(data['candidates'])>100
-          print('Official GO data published:',len(data['candidates']))
-          PY
+          python3 -m tools.goias_finance_publish \
+            --file web/public/eleicoes/goias/raio-x/data/go-2026.json
