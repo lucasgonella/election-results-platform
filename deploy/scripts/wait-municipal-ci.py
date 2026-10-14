@@ -34,8 +34,24 @@ def finance_only(comparison):
                     and entry.get('previous_filename', FINANCE_EXPORT) == FINANCE_EXPORT for entry in files))
 
 
+def commit_checks(commit, api):
+    path = '/commits/'+commit+'/check-runs?per_page=100'
+    data = api(path)
+    runs = {run['id']: run for run in data['check_runs']}
+    total = data.get('total_count', len(runs))
+    for page in range(2, 11):
+        if len(runs) >= total:
+            break
+        more = api(path+'&page='+str(page))
+        total = max(total, more.get('total_count', total))
+        runs.update((run['id'], run) for run in more['check_runs'])
+        if not more['check_runs']:
+            break
+    return latest_checks({'check_runs': list(runs.values()), 'total_count': total})
+
+
 def approved_commit(commit, api):
-    checks = latest_checks(api('/commits/'+commit+'/check-runs?per_page=100'))
+    checks = commit_checks(commit, api)
     if checks:
         return commit if successful(checks) else None
     # GITHUB_TOKEN exports do not trigger new CI. Reuse an approved ancestor
@@ -47,7 +63,7 @@ def approved_commit(commit, api):
         if not parents:
             return None
         ancestor = parents[0]['sha']
-        checks = latest_checks(api('/commits/'+ancestor+'/check-runs?per_page=100'))
+        checks = commit_checks(ancestor, api)
         if checks:
             if not finance_only(api('/compare/'+ancestor+'...'+commit)):
                 return None

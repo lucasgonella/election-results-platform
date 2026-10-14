@@ -73,6 +73,17 @@ class MunicipalCIGateTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'municipal_obsolete_source_commit'):
             gate.assert_fresh(HEAD, self.api)
 
+    def test_scheduled_job_checks_do_not_hide_required_ci_on_next_page(self):
+        path = '/commits/'+HEAD+'/check-runs?per_page=100'
+        required = checks()['check_runs']
+        self.responses[path] = {'total_count': 103, 'check_runs': [
+            {'id': 100+i, 'name': 'collect', 'status': 'completed', 'conclusion': 'success'} for i in range(100)]}
+        self.responses[path+'&page=2'] = {'total_count': 103, 'check_runs': required}
+        self.assertEqual(gate.approved_commit(HEAD, self.api), HEAD)
+        required[-1]['conclusion'] = 'failure'
+        with self.assertRaisesRegex(RuntimeError, 'municipal_required_ci_failed'):
+            gate.approved_commit(HEAD, self.api)
+
 
 if __name__ == '__main__':
     unittest.main()
