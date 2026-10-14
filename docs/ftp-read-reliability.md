@@ -54,3 +54,11 @@ tentativas, inclusive na limpeza de um temporário conhecido. O histórico local
 `reconciliations/<candidate-id>.json` guarda o job e a conclusão antes que outra
 coleta reutilize `in-flight.json`; candidata e arquivos continuam retidos.
 Uma falha nova não herda o código de erro antigo do health.
+
+A preparação dos backups do primeiro turno também usa CWD por componente e
+MKD somente do basename, seguindo o adaptador já validado do segundo turno.
+O destino absoluto continua delimitado e é inspecionado antes/depois; a sessão
+retorna a `/`. Uma resposta perdida exige reconexão e confirmação da existência,
+sem repetir MKD às cegas nem remover diretórios desconhecidos. A auditoria
+encontrou 21 backups retidos e a criação do diretório privado de BA pendente;
+o marcador selecionado permanecia na baseline verificada.
