@@ -7,9 +7,10 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
-from collector.src.election_release import canonical
+from collector.src.election_release import canonical,digest
+from collector.src.municipal_collection import result
 from collector.src.municipal_release import assemble,verify
-from tests.municipal_fixtures import make_dataset,make_geometry
+from tests.municipal_fixtures import make_dataset,make_geometry,ea20,ELECTION
 
 try:
     from playwright.sync_api import sync_playwright
@@ -104,6 +105,26 @@ class MunicipalBrowserTests(unittest.TestCase):
             return {map:map.uf,portal:fixtureContext.scope,control:document.getElementById('mmap-uf').value,url:new URL(location.href).searchParams.get('muf')};
         }""")
         self.assertEqual(result,{'map':'go','portal':'go','control':'go','url':'go'})
+
+    def test_tied_municipality_stays_neutral_for_leader_but_has_candidate_intensity(self):
+        data=make_dataset();index=next(i for i,row in enumerate(data['municipalities']) if row['uf']=='go');old=data['municipalities'][index]
+        municipality={key:old[key] for key in ['uf','name','tse_code','ibge_code']}
+        raw=ea20(old['tse_code'],tie=True)
+        info={'url':old['source_url'],'captured_at':old['captured_at'],'sha256':digest(canonical(raw))}
+        data['municipalities'][index]=result(raw,municipality,ELECTION,info,data['catalog'])
+        data['states']['go']=result({**raw,'tpabr':'uf','cdabr':'go'},None,ELECTION,{**info,'scope':'go'},data['catalog'])
+        directory=Path(self.tmp.name)/'tie-package';geometry=Path(self.tmp.name)/'tie-geometry'
+        make_geometry(data,geometry);marker=assemble(data,geometry,directory);_,files=verify(directory)
+        previous=Handler.files;Handler.files={**files,'turnos/1/version.json':canonical(marker)}
+        self.addCleanup(setattr,Handler,'files',previous)
+        self.open();self.go();self.assertIn('Empate',self.page.locator('#mmap-detail').inner_text())
+        color='(()=>{const m=ElectoralMap.view.municipal;return m.color(m.byId.get(m.selected));})()'
+        self.assertEqual(self.page.evaluate(color),'#d7dfe5')
+        self.page.locator('#mmap-mode').select_option('share');self.page.locator('#mmap-candidate').select_option('10')
+        self.page.wait_for_function('ElectoralMap.view.municipal.mode==="share" && ElectoralMap.view.municipal.candidate==="10"')
+        self.assertNotEqual(self.page.evaluate(color),'#d7dfe5')
+        self.assertIsNone(self.page.evaluate('ElectoralMap.view.municipal.byId.get(ElectoralMap.view.municipal.selected).leader'))
+        self.page.locator('#mmap-mode').select_option('leader');self.assertEqual(self.page.evaluate(color),'#d7dfe5')
 
     def test_mobile_dark_mode_accessibility_and_bounded_table(self):
         axe=os.environ.get('MUNICIPAL_AXE_PATH')

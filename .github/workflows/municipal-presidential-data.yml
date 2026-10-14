@@ -4,10 +4,17 @@ on:
     branches: [main]
     paths:
       - 'collector/src/municipal*'
+      - 'collector/src/parser.py'
+      - 'collector/src/tse_client.py'
+      - 'collector/src/election_release.py'
+      - 'collector/src/second_round_publish.py'
+      - 'collector/requirements.txt'
       - 'tools/municipal*'
+      - 'tests/test_municipal*'
+      - 'tests/municipal_fixtures.py'
       - 'deploy/scripts/wait-municipal-ci.py'
       - 'deploy/frontend.py'
-      - '.github/workflows/municipal-presidential-data.yml'
+      - '.github/workflows/municipal*.yml'
   schedule:
     - cron: '8,38 * * * *'
     - cron: '18,48 * * * *'

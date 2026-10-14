@@ -159,7 +159,7 @@
             const base=id=>this.baseColors.get(id)||'#d7dfe5';
             if(this.mode!=='share'&&!row.leader||['waiting','inconclusive'].includes(row.status))return '#d7dfe5';
             if(this.mode==='leader')return base(row.leader.id);
-            let percent=this.mode==='margin'?row.difference_percentage_points:null,color=base(row.leader.id);
+            let percent=this.mode==='margin'?row.difference_percentage_points:null,color=base(row.leader?.id);
             if(this.mode==='share'){
                 const candidate=Object.values(this.catalog).find(c=>String(c.number)===this.candidate);if(!candidate)return '#d7dfe5';
                 color=base(candidate.id);const full=this.fullById.get(row.ibge_code),value=full?.candidates.find(c=>c.id===candidate.id);
