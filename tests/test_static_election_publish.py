@@ -253,6 +253,49 @@ def test_failed_mkd_without_directory_never_assumed_successful():
     assert not t.ftp.events
 
 
+def test_directory_rename_lost_completion_verified_without_replay(release):
+    t, before, after, old, http = release
+    original = t.ftp.rename
+    calls = []
+    def lost(source, destination):
+        if source.endswith('/files') and destination.startswith(t.site+'/releases/'):
+            calls.append((source, destination))
+            original(source, destination)
+            raise TimeoutError('directory promoted, completion lost')
+        return original(source, destination)
+    t.ftp.rename = lost
+    t.reconnect = lambda: t.ftp
+    with t.lock():
+        result = activate(t, after, reviews={n:digest(after[n]) for n in targets() if n.startswith('am/')}, http=http)
+    assert result['status'] == 'published' and len(calls) == 1
+    assert parse(t.ftp.files[t.site+'/version.json'])['snapshot_id'] == result['snapshot_id']
+    assert t.ftp.files[t.site+'/version.json'] != old
+
+
+@pytest.mark.parametrize('outcome', ['absent', 'both_present', 'corrupt'])
+def test_uncertain_directory_promotion_never_selects_candidate(release, outcome):
+    t, before, after, old, http = release
+    original = t.ftp.rename
+    calls = []
+    def lost(source, destination):
+        if source.endswith('/files') and destination.startswith(t.site+'/releases/'):
+            calls.append((source, destination))
+            if outcome != 'absent':
+                original(source, destination)
+                if outcome == 'both_present': t.ftp.dirs.add(source)
+                else: t.ftp.files[destination+'/br/president.json'] = b'{}'
+            raise TimeoutError('unknown directory outcome')
+        return original(source, destination)
+    t.ftp.rename = lost
+    t.reconnect = lambda: t.ftp
+    with pytest.raises((RuntimeError, ValueError)):
+        with t.lock():
+            activate(t, after, reviews={n:digest(after[n]) for n in targets() if n.startswith('am/')}, http=http)
+    assert len(calls) == 1
+    assert t.ftp.files[t.site+'/version.json'] == old
+    assert t.metadata(t.private+'/lock/') is not None
+
+
 def test_election_ftp_timeout_is_isolated(monkeypatch):
     from collector.src import static_election_publish as pub
     from deploy import frontend as wire

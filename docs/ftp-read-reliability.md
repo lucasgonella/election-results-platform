@@ -62,3 +62,10 @@ retorna a `/`. Uma resposta perdida exige reconexão e confirmação da existên
 sem repetir MKD às cegas nem remover diretórios desconhecidos. A auditoria
 encontrou 21 backups retidos e a criação do diretório privado de BA pendente;
 o marcador selecionado permanecia na baseline verificada.
+
+A promoção da pasta de staging também pode concluir no servidor e perder a
+resposta RNTO. Após falha transitória, o cliente reconecta e só reconhece a
+promoção quando a origem desapareceu e o destino é um diretório. Não repete
+rename. Os 140 hashes FTP e HTTPS continuam obrigatórios antes de selecionar
+o marcador; origem/destino simultâneos, destino ausente ou bytes divergentes
+mantêm lock/journal e a seleção anterior.
