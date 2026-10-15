@@ -175,6 +175,11 @@ def _run_cycle(root, workspace, *, collect=None):
     cycle=Path(prior['cycle']) if prior.get('cycle') else None
     if cycle is not None and (cycle.is_symlink() or not cycle.resolve().is_relative_to((root/'cycles').resolve())):
         raise ValueError('unsafe_review_evidence_location')
+    if (not selected and quarantine and prior.get('fingerprint')==fingerprint
+            and cycle is not None and cycle.is_dir()):
+        # Keep hashes/captured_at of the actual retained bytes. This poll saw
+        # the same normalized source, not a new immutable artifact.
+        quarantine=parse((cycle/'review-required.json').read_bytes())
     if selected or (quarantine and (prior.get('fingerprint')!=fingerprint or cycle is None or not cycle.is_dir())):
         cycle=root/'cycles'/(datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')+'-'+secrets.token_hex(4))
         cycle.parent.mkdir(exist_ok=True)
@@ -197,7 +202,8 @@ def _run_cycle(root, workspace, *, collect=None):
         save(pending_path,{'fingerprint':fingerprint,'review_required':{}})
     else:
         save(pending_path,{'fingerprint':fingerprint,'cycle':str(cycle),
-                          'base_snapshot_id':current['snapshot_id'],'review_required':quarantine})
+                          'base_snapshot_id':current['snapshot_id'],'review_required':quarantine,
+                          'last_observed_at':collected_at})
     transport=connect('production')
     try:
         marker=transport.read(transport.site+'/version.json')
@@ -491,7 +497,10 @@ def main():
     import fcntl
     with (root/'runner.lock').open('a') as lock:
         try:
-            fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            try:
+                fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:
+                print(json.dumps({'status':'writer_busy_deferred'}));return 0
             job=root/'in-flight.json'
             if args.operation!='reconcile' and job.exists() and parse(job.read_bytes()).get('status')!='complete':
                 raise ValueError('interrupted_job_requires_reconciliation')

@@ -162,15 +162,15 @@ são arquivados. Somente saídas conhecidas do coletor entram nos arquivos.
 Cada ciclo elegível é compactado individualmente, conferido contra o inventário
 original e enviado por FTP passivo 21 ao diretório privado
 `/backup/election-results-platform/ftp-cycles`, fora de `/public_html`. Não existe
-fallback público. O arquivo temporário remoto e o arquivo renomeado são baixados
-e comparados por tamanho e SHA-256. Um manifesto remoto imutável também é
+fallback público. O tamanho do temporário remoto é conferido; o arquivo renomeado
+é baixado e comparado por tamanho e SHA-256. Um manifesto remoto imutável também é
 conferido. O journal local `archive-manifest.jsonl` recebe um registro `verified`
 com fsync antes da remoção e um registro `deleted` depois dela. Referências e
 todos os hashes locais são conferidos novamente antes de remover o original.
 Uma falha mantém o original e a próxima tentativa verifica arquivos remotos já
 existentes. Não se repetem operações de publicação para contornar erros de FTP.
 O processamento padrão mantém um único arquivo temporário; `--workers 2` ou
-`--workers 3` permite lotes pequenos na recuperação inicial de espaço.
+`--workers 3`/`--workers 4` permite lotes pequenos na recuperação inicial de espaço.
 
 Coletas agora usam um workspace temporário separado. Apenas uma alteração
 elegível preserva o ciclo completo, antes de qualquer escrita FTP. Revisões novas

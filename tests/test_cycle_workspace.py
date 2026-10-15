@@ -28,9 +28,22 @@ def setup(root, release, monkeypatch):
 def test_repeated_review_has_one_compact_evidence_and_unchanged_baseline(release,tmp_path,monkeypatch):
     before,after,package=setup(tmp_path,release,monkeypatch)
     original=tree(package)
+    polls=[]
     def collect(work):
+        polls.append(1)
         for name in {n for n in after if n.startswith('am/')}|META:
-            path=work/'stage'/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(after[name])
+            raw=after[name]
+            if name not in META:
+                payload=parse(raw)
+                payload['snapshot']['captured_at']=f'2026-10-09T13:00:0{len(polls)}+00:00'
+                raw=canonical(payload)
+            elif name=='manifest.json':
+                payload=parse(raw)
+                for row in payload['results']:
+                    if row['path'].startswith('am/'):
+                        row['captured_at']=f'2026-10-09T13:00:0{len(polls)}+00:00'
+                raw=canonical(payload)
+            path=work/'stage'/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
         checkpoint(work/'pending',after)
         return {'errors':[]}
     a=runner.run_cycle(tmp_path,collect=collect)
@@ -39,6 +52,8 @@ def test_repeated_review_has_one_compact_evidence_and_unchanged_baseline(release
     assert a['status']==b['status']=='unchanged'
     assert a['cycle']==b['cycle']
     assert tree(Path(a['cycle']))==first
+    for name,item in b['review_required'].items():
+        assert item['proposed_sha256']==digest(first['collection/stage/'+name])
     assert tree(package)==original
     assert len(list((tmp_path/'cycles').iterdir()))==1
     assert not list(tmp_path.glob('.collection-*'))

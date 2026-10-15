@@ -201,8 +201,8 @@ class ArchiveFTP:
         temporary = name+'.upload'
         self.phase = 'upload'
         self.transfer(temporary, stream.read())
-        if not self.verified(temporary, size, sha256):
-            raise ValueError('backup_missing_after_upload')
+        if self.ftp.size(temporary) != size:
+            raise ValueError('backup_size_mismatch')
         self.phase = 'rename'
         self.ftp.rename(temporary, name)
         if not self.verified(name, size, sha256):
@@ -310,7 +310,7 @@ def main():
     parser.add_argument('--apply', action='store_true', help='Archive, verify, then remove eligible cycles')
     parser.add_argument('--min-age-hours', type=float, default=24)
     parser.add_argument('--limit', type=int, default=25)
-    parser.add_argument('--workers', type=int, choices=(1,2,3), default=1)
+    parser.add_argument('--workers', type=int, choices=(1,2,3,4), default=1)
     args = parser.parse_args()
     if args.min_age_hours < 0 or args.limit < 1:
         parser.error('age must be nonnegative and limit positive')
@@ -349,7 +349,7 @@ def main():
             names = selected['eligible'][:args.limit]
             with ThreadPoolExecutor(max_workers=args.workers) as pool:
                 for start in range(0,len(names),args.workers):
-                    # At most three small archives and sessions exist at once.
+                    # At most four small archives and sessions exist at once.
                     results=list(pool.map(process,names[start:start+args.workers]))
                     previous_count=count; count+=len(results)
                     if count//10 > previous_count//10:
