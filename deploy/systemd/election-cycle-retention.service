@@ -1,0 +1,22 @@
+[Unit]
+Description=Archive verified dispensable election FTP cycles
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=electioncollector
+Group=electioncollector
+# Installation override pins this directory to the approved deployed SHA.
+WorkingDirectory=/opt/election-results-platform
+EnvironmentFile=/etc/election-results-platform/secrets/ftp.env
+Environment=ELECTION_STATIC_STATE_DIR=/var/lib/election-results-platform/static-ftp
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/election-results-platform/.venv/bin/python -m collector.src.cycle_retention --apply --min-age-hours 24 --limit 100
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+TimeoutStartSec=45min
+

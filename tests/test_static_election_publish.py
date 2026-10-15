@@ -319,11 +319,11 @@ def test_election_ftp_timeout_is_isolated(monkeypatch):
 
     monkeypatch.setattr(wire, "connect", original_connect)
     transport = pub.connect("staging")
-    assert transport.ftp.timeout == 15
+    assert transport.ftp.timeout == 60
     assert transport.ftp.sock.timeout == 15
     assert transport.reconnect is pub.election_ftp_connect
     renewed = transport.reconnect()
-    assert renewed.timeout == 15
+    assert renewed.timeout == 60
     assert renewed.sock.timeout == 15
     assert len(sessions) == 2
     assert sessions[0] is not sessions[1]

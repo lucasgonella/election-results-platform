@@ -8,6 +8,8 @@ Environment=TSE_ENVIRONMENT=oficial
 Environment=TSE_CYCLE=ele2026
 Environment=TSE_ROUND=1
 Environment=PUBLISH_AFTER_COLLECT=false
+Environment=ELECTION_MIN_FREE_BYTES=2147483648
+Environment=ELECTION_CYCLE_MAX_BYTES=4294967296
 ExecStart=
 ExecStart=/opt/election-results-platform/.venv/bin/python -m collector.src.static_election_runner cycle
 UMask=0077

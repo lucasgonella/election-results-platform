@@ -152,6 +152,7 @@ class Transport(wire.Transport):
 
 
 ELECTION_FTP_TIMEOUT = 15
+ELECTION_FTP_DATA_TIMEOUT = 60
 
 
 def election_ftp_connect():
@@ -161,7 +162,9 @@ def election_ftp_connect():
     Both control and future data sockets must use the shorter timeout.
     """
     ftp = wire.connect()
-    ftp.timeout = ELECTION_FTP_TIMEOUT
+    # Data sockets need enough time for complete JSONs/backups. Keep control
+    # commands bounded separately, including reconnects after an idle session.
+    ftp.timeout = ELECTION_FTP_DATA_TIMEOUT
     ftp.sock.settimeout(ELECTION_FTP_TIMEOUT)
     return ftp
 
@@ -188,14 +191,24 @@ def connect(environment):
 def http_read(environment, relative):
     site, _ = layout(environment)
     url = 'https://afgnet.com.br' + site.removeprefix('/public_html') + '/' + relative
-    with build_opener(wire.NoRedirect).open(Request(url, headers={
-            'Cache-Control':'no-cache', 'Accept-Encoding':'identity'}), timeout=30) as response:
-        if response.status != 200 or response.geturl() != url:
-            raise RuntimeError('unexpected_public_response')
-        raw = response.read(wire.MAX_BYTES+1)
-    if len(raw) > wire.MAX_BYTES:
-        raise RuntimeError('oversized_public_file')
-    return raw
+    from urllib.error import URLError, HTTPError
+    import time
+    for attempt in range(3):
+        try:
+            with build_opener(wire.NoRedirect).open(Request(url, headers={
+                    'Cache-Control':'no-cache', 'Accept-Encoding':'identity'}), timeout=30) as response:
+                if response.status != 200 or response.geturl() != url:
+                    raise RuntimeError('unexpected_public_response')
+                raw = response.read(wire.MAX_BYTES+1)
+            if len(raw) > wire.MAX_BYTES:
+                raise RuntimeError('oversized_public_file')
+            return raw
+        except (OSError, URLError) as error:
+            if isinstance(error, HTTPError) and error.code not in {408,429,500,502,503,504}:
+                raise
+            if attempt == 2:
+                raise
+            time.sleep(attempt+1)
 
 
 def descriptor(values):

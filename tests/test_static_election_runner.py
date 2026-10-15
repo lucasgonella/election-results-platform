@@ -7,6 +7,12 @@ from collector.src import static_election_runner as runner
 from test_static_election_publish import release
 
 
+@pytest.fixture(autouse=True)
+def fixture_storage(monkeypatch):
+    # Synthetic workspaces may live on a small /tmp tmpfs.
+    monkeypatch.setenv('ELECTION_MIN_FREE_BYTES','1')
+
+
 def checkpoint(root, values):
     root.mkdir()
     for name in META:(root/name).write_bytes(values[name])
