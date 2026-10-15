@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import secrets
 import shutil
+import tempfile
 
 from deploy.frontend import error_report
 from .election_release import META, canonical, digest, entries, hashes, parse, prepare, source, targets, tree, validate_release
@@ -112,6 +113,15 @@ def pinned_reviews(root, current_snapshot, baseline, stage):
 
 
 def run_cycle(root, *, collect=None):
+    from .cycle_retention import check_storage
+    check_storage(root)
+    # A disposable workspace is never a checkpoint. Only selected changes or
+    # distinct review evidence are promoted to a durable cycle before FTP writes.
+    with tempfile.TemporaryDirectory(prefix='.collection-', dir=root) as temporary:
+        return _run_cycle(root, Path(temporary), collect=collect)
+
+
+def _run_cycle(root, workspace, *, collect=None):
     job=root/'in-flight.json'
     if job.exists() and parse(job.read_bytes()).get('status')!='complete':
         raise ValueError('interrupted_job_requires_reconciliation')
@@ -124,9 +134,7 @@ def run_cycle(root, *, collect=None):
     expected_content=current.get('content_snapshot_id',current['snapshot_id'])
     if desc!=current['descriptor'] or digest(canonical(desc))!=expected_content:
         raise ValueError('local_release_mismatch')
-    cycle=root/'cycles'/(datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')+'-'+secrets.token_hex(4))
-    cycle.mkdir(parents=True,exist_ok=False)
-    work=cycle/'collection';work.mkdir()
+    work=workspace/'collection';work.mkdir()
     # prepare may remove pending/stage; both are absent in this brand-new workspace.
     # The original /live directories and all previous cycles remain untouched.
     shutil.copytree(previous/'checkpoint',work/'state')
@@ -141,7 +149,11 @@ def run_cycle(root, *, collect=None):
             else:os.environ['LIVE_PUBLISH_STATE_DIR']=original
     else:
         collection=collect(work)
-    stage=tree(work/'stage');rows=entries(parse(stage['manifest.json']))
+    if collection.get('errors'):
+        raise ValueError('collection_incomplete')
+    stage=tree(work/'stage') if (work/'stage').is_dir() else {}
+    rows=entries(parse(stage['manifest.json'])) if stage else {}
+    collected_at=parse((work/'pending'/'version.json').read_bytes())['generated_at']
     from .election_release import validate_result
     approved=pinned_reviews(root,current['snapshot_id'],before,stage)
     selected=[];quarantine={}
@@ -155,7 +167,43 @@ def run_cycle(root, *, collect=None):
                 'proposed':parse(stage[name])['snapshot'],'proposed_sha256':digest(stage[name]),
                 'source_sha256':digest(canonical(source(parse(stage[name]))))}
         else:selected.append(name)
-    save(cycle/'review-required.json',quarantine)
+    fingerprint=digest(canonical({'base_snapshot_id':current['snapshot_id'],
+        'reviews':{name:{key:item[key] for key in ('reason','source_sha256')}
+                   for name,item in sorted(quarantine.items())}}))
+    pending_path=root/'review-pending.json'
+    prior=parse(pending_path.read_bytes()) if pending_path.exists() else {}
+    cycle=Path(prior['cycle']) if prior.get('cycle') else None
+    if cycle is not None and (cycle.is_symlink() or not cycle.resolve().is_relative_to((root/'cycles').resolve())):
+        raise ValueError('unsafe_review_evidence_location')
+    if (not selected and quarantine and prior.get('fingerprint')==fingerprint
+            and cycle is not None and cycle.is_dir()):
+        # Keep hashes/captured_at of the actual retained bytes. This poll saw
+        # the same normalized source, not a new immutable artifact.
+        quarantine=parse((cycle/'review-required.json').read_bytes())
+    if selected or (quarantine and (prior.get('fingerprint')!=fingerprint or cycle is None or not cycle.is_dir())):
+        cycle=root/'cycles'/(datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')+'-'+secrets.token_hex(4))
+        cycle.parent.mkdir(exist_ok=True)
+        if selected:
+            workspace.rename(cycle)
+            work=cycle/'collection'
+        else:
+            # Keep all unique proposed bytes and review reasons, without copying
+            # checkpoints, pending or unrelated results for every polling tick.
+            for name in set(quarantine)|META:
+                path=cycle/'collection/stage'/name
+                path.parent.mkdir(parents=True,exist_ok=True)
+                path.write_bytes(stage[name])
+        save(cycle/'review-required.json',quarantine)
+        save(cycle/'collection-complete.json',{'collected_at':collected_at,
+            'base_snapshot_id':current['snapshot_id'],'review_fingerprint':fingerprint,
+            'selected':sorted(selected)})
+    if not quarantine:
+        if not selected: cycle=None
+        save(pending_path,{'fingerprint':fingerprint,'review_required':{}})
+    else:
+        save(pending_path,{'fingerprint':fingerprint,'cycle':str(cycle),
+                          'base_snapshot_id':current['snapshot_id'],'review_required':quarantine,
+                          'last_observed_at':collected_at})
     transport=connect('production')
     try:
         marker=transport.read(transport.site+'/version.json')
@@ -176,8 +224,9 @@ def run_cycle(root, *, collect=None):
             receipt=verify_public(transport,marker,desc)
         health={'status':'published' if selected else 'unchanged','snapshot_id':receipt['snapshot_id'],
             'published_at':parse((root/'current.json').read_bytes())['published_at'],
-            'public_verified_at':receipt['verified_at'],'collected_at':parse(stage['version.json'])['generated_at'],
-            'eligible_changes':0,'review_required':quarantine,'selected':selected,'cycle':str(cycle)}
+            'public_verified_at':receipt['verified_at'],'collected_at':collected_at,
+            'eligible_changes':0,'review_required':quarantine,'selected':selected,
+            **({'cycle':str(cycle)} if cycle else {})}
         save(root/'health.json',health)
         return health
     finally:transport.ftp.close()
@@ -429,6 +478,12 @@ def reconcile_job(root, *, writer_stopped=False, transport=None):
         if own: transport.ftp.close()
 
 
+def log_summary(value):
+    # Full review evidence stays in health.json; repeated journals carry counts.
+    return {key:item for key,item in value.items() if key!='review_required'} | {
+        'review_required_count':len(value.get('review_required',{}))}
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('operation',choices=['adopt','cycle','reconcile','prepare-legacy','adopt-legacy'])
@@ -442,7 +497,10 @@ def main():
     import fcntl
     with (root/'runner.lock').open('a') as lock:
         try:
-            fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            try:
+                fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:
+                print(json.dumps({'status':'writer_busy_deferred'}));return 0
             job=root/'in-flight.json'
             if args.operation!='reconcile' and job.exists() and parse(job.read_bytes()).get('status')!='complete':
                 raise ValueError('interrupted_job_requires_reconciliation')
@@ -470,13 +528,13 @@ def main():
             else:
                 require_official_runtime()
                 result=run_cycle(root)
-            print(json.dumps(result));return 0
+            print(json.dumps(log_summary(result)));return 0
         except Exception as error:
             previous=parse((root/'health.json').read_bytes()) if (root/'health.json').exists() else {}
             for key in ('error_type','error_code','errno','ftp_code','ftp_operation','causes','failed_at'):
                 previous.pop(key,None)
             result=previous|{'status':'failed','failed_at':datetime.now(timezone.utc).isoformat(),**error_report(error)}
-            save(root/'health.json',result);print(json.dumps(result));return 1
+            save(root/'health.json',result);print(json.dumps(log_summary(result)));return 1
 
 
 if __name__=='__main__':

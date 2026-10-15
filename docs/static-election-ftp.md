@@ -137,7 +137,68 @@ o timer, e observar novos ciclos automáticos. Intervalo proposto 60s após cada
 conclusão, limite 15min por serviço. Monitor a cada 5min, limite de atraso 900s,
 exit 2 e journal/estado failed em falha ou revisão pendente. Não há webhook ou
 destinatário externo configurado; notificação remota requer canal operacional.
-Backups/release anterior permanecem disponíveis, sem retenção destrutiva.
+Backups e releases anteriores permanecem disponíveis. A retenção local de ciclos
+segue o procedimento de arquivamento verificado abaixo.
+
+## Retenção e limite de armazenamento
+
+`cycle_retention` compartilha `runner.lock` com o único publicador. O padrão é
+dry-run, sem conexão FTP. A aplicação exige `--apply`; o serviço horário processa
+até 100 ciclos com pelo menos 24 horas. Uma execução concorrente é adiada.
+
+```text
+python -m collector.src.cycle_retention --root /var/lib/election-results-platform/static-ftp
+python -m collector.src.cycle_retention --apply --min-age-hours 24 --limit 100
+```
+
+A seleção lê recursivamente referências em registros JSON de controle,
+aprovações, reconciliações e recuperações. Preserva todos os pacotes de
+publicação/rollback, todas as gerações, ciclos incompletos/desconhecidos, ciclos
+recentes e a última evidência de cada fonte/motivo distinto de revisão. Idade
+ou presença de `review-required.json` isoladamente nunca autoriza exclusão.
+Registros inválidos bloqueiam a limpeza. Symlinks e arquivos desconhecidos não
+são arquivados. Somente saídas conhecidas do coletor entram nos arquivos.
+
+Cada ciclo elegível é compactado individualmente, conferido contra o inventário
+original e enviado por FTP passivo 21 ao diretório privado
+`/backup/election-results-platform/ftp-cycles`, fora de `/public_html`. Não existe
+fallback público. O tamanho do temporário remoto é conferido; o arquivo renomeado
+é baixado e comparado por tamanho e SHA-256. Um manifesto remoto imutável também é
+conferido. O journal local `archive-manifest.jsonl` recebe um registro `verified`
+com fsync antes da remoção e um registro `deleted` depois dela. Referências e
+todos os hashes locais são conferidos novamente antes de remover o original.
+Uma falha mantém o original e a próxima tentativa verifica arquivos remotos já
+existentes. Não se repetem operações de publicação para contornar erros de FTP.
+O processamento padrão mantém um único arquivo temporário; `--workers 2` ou
+`--workers 3`/`--workers 4` permite lotes pequenos na recuperação inicial de espaço.
+
+Coletas agora usam um workspace temporário separado. Apenas uma alteração
+elegível preserva o ciclo completo, antes de qualquer escrita FTP. Revisões novas
+preservam os JSONs propostos, metadados e motivos em um ciclo compacto. A mesma
+fonte e baseline reutilizam a evidência, sem acumular cópias por captura. Um poll
+sem mudanças, inclusive respostas 304, não cria ciclo persistente. Essa política
+não aprova revisões nem adota checkpoints de resultados retidos.
+
+O override de produção fixa uma reserva de 2 GiB e teto local de ciclos de
+4 GiB (`ELECTION_MIN_FREE_BYTES`, `ELECTION_CYCLE_MAX_BYTES`). O espaço livre é
+conferido antes de toda coleta; o uso de ciclos é amostrado a cada cinco minutos.
+O limite bloqueia nova coleta e preserva o espaço para estado/recuperação. Avisos
+começam a 80% do teto ou abaixo de 1,5 vezes a reserva, em `storage.json`, journal
+e monitor. Falhas não provocam exclusão sem backup. Pacotes/gerações protegidos
+podem exigir intervenção ao atingir o teto. Nenhum destinatário externo de
+alertas foi configurado.
+
+Instalar `election-cycle-retention.service` e `.timer`, fixando o WorkingDirectory
+na mesma release aprovada do publicador. Manter o timer do publicador parado
+durante a recuperação inicial. Executar os fluxos oficiais de recover/reconcile
+para jobs interrompidos, sem remover `in-flight.json`. Depois verificar dois
+ciclos supervisionados antes de reativar o timer e observar ciclos automáticos.
+Os logs resumem revisões por quantidade; saúde e evidências mantêm os detalhes.
+
+FTP mantém controle com timeout de 15s e permite até 60s no socket de dados.
+GETs HTTPS públicos repetem somente falhas transitórias, até três tentativas,
+descartando bytes parciais. Redirecionamentos, corrupção e divergências de hash
+continuam bloqueantes. Ativação incerta continua exigindo recuperação explícita.
 
 ## Garantias e limites declarados
 

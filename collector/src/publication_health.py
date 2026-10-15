@@ -204,6 +204,13 @@ def main():
         report = inspect(args.base_url, args.live_root, args.full, expected, max_age=args.max_age_seconds)
         if args.static_health:
             report=static_status(report,parse(args.static_health.read_bytes()),datetime.now(timezone.utc),args.max_age_seconds)
+            storage_path=args.static_health.parent/'storage.json'
+            if storage_path.exists():
+                status=parse(storage_path.read_bytes())
+                report['storage']=status
+                if status.get('alert'):
+                    report['alerts'].append('publisher_storage_warning')
+                    report['status']='alert'
     except Exception as error:
         # No response bodies, arbitrary exception messages or credentials in logs.
         report = {'status': 'alert', 'alerts': ['publication_verification_failed'],
