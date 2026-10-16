@@ -392,7 +392,7 @@
         if (
             rendering
             || document.hidden
-            || (SELECTED_ROUND === 2 && window.LiveData && (window.LiveData.paused() || !window.LiveData.shouldPoll()))
+            || (SELECTED_ROUND === 2 && window.LiveData && (window.LiveData.paused() || !window.LiveData.shouldPoll(activeDataBase)))
             || !isOpen()
         ) {
             return;

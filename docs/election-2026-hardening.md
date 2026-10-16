@@ -93,6 +93,11 @@ Backoff não significa nova consulta bem-sucedida e não gera log completo repet
 
 ## Métricas e estado público
 
+Cada view aplica um marcador compartilhado ainda não consumido, mesmo quando
+outro componente fez a consulta de rede. Corrupção de pacote remove a cópia em
+memória/Cache API e força `cache: reload` na próxima leitura: invalidar apenas a
+Cache API não expulsa uma resposta inválida do cache HTTP nativo do navegador.
+
 `health.json` guarda horário da consulta oficial bem-sucedida, mudança observada,
 publicação, duração do ciclo e contadores. `metrics-history.json` conserva no
 máximo 500 amostras. Etapas: descoberta/coleta, HTTP TSE, parsing, validação,

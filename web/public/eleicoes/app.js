@@ -1911,7 +1911,7 @@ async function loadManifest(base = activeDataBase) {
 async function refreshIfChanged() {
 
     if (portalRefreshPending || document.hidden || (SELECTED_ROUND === 2 && window.LiveData
-        && (window.LiveData.paused() || !window.LiveData.shouldPoll()))) return;
+        && (window.LiveData.paused() || !window.LiveData.shouldPoll(activeDataBase)))) return;
     const previous = {manifest, alerts, base: activeDataBase, marker: portalMarker, result: currentResult,
         scope: selectedScope, office: selectedOffice};
 
