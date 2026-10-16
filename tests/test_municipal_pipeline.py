@@ -127,11 +127,7 @@ class MunicipalDataTests(unittest.TestCase):
 
 
 class FTP(FakeFTP):
-    def __init__(self):super().__init__();self.pwd='/'
-    def cwd(self,path):
-        self.pwd=path if path.startswith('/') else self.pwd.rstrip('/')+'/'+path
-        if self.pwd not in self.dirs:raise ftplib.error_perm('550 Missing')
-    def mkd(self,path):super().mkd(path if path.startswith('/') else self.pwd.rstrip('/')+'/'+path)
+    def mkd(self,path):super().mkd(path if path.startswith('/') else self.pwd().rstrip('/')+'/'+path)
 
 
 class MunicipalPublicationTests(unittest.TestCase):

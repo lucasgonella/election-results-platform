@@ -70,8 +70,12 @@ jobs:
           LOCAWEB_FTP_USER: ${{ secrets.LOCAWEB_FTP_USER }}
           LOCAWEB_FTP_PASSWORD: ${{ secrets.LOCAWEB_FTP_PASSWORD }}
           LOCAWEB_FTP_GOIAS_DIR: ${{ vars.LOCAWEB_FTP_GOIAS_DIR }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           case "$OPERATION" in deploy|rollback|recover|status) ;; *) exit 1 ;; esac
+          if test "$OPERATION" = deploy || test "$OPERATION" = rollback; then
+            python deploy/scripts/recover-frontend-owned-actions.py
+          fi
           python -m deploy.frontend "$OPERATION" --component "$COMPONENT" --directory "$RUNNER_TEMP/frontend" --version "$VERSION" --transaction "actions-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --report "$RUNNER_TEMP/report.json"
       - name: Report effective publication and verified URLs
         if: always()

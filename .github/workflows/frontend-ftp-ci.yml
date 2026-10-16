@@ -24,7 +24,9 @@ jobs:
       - run: python -m pip install -r deploy/frontend-requirements.txt
       - run: python -m pip install pytest
       - name: Test transport activation rollback and failure recovery (no network)
-        run: python -m unittest tests.test_frontend_deploy -v
+        run: |
+          python -m unittest tests.test_frontend_deploy -v
+          python -m pytest -q tests/test_frontend_owned_recovery.py
       - name: Validate portal readers and favorites using Node fixtures
         run: python -m pytest -q tests/test_frontend_readers.py tests/test_web_favorites.py
       - name: Validate HTML CSS external and inline JavaScript; build both allowlists

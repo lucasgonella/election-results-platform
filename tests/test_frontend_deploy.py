@@ -3,7 +3,7 @@ import ftplib
 import importlib.util
 import io
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import socket
 import tempfile
 import unittest
@@ -19,6 +19,14 @@ class FakeFTP:
         self.events = []
         self.fail_rename = None
         self.corrupt_upload = False
+        self._cwd = '/'
+
+    def pwd(self): return self._cwd
+
+    def cwd(self, path):
+        path = str(PurePosixPath(self.pwd()) / path)
+        if path not in self.dirs: raise ftplib.error_perm('550 Not found')
+        self._cwd = path
 
     def sendcmd(self, command):
         verb, path = command.split(' ', 1)
@@ -51,6 +59,8 @@ class FakeFTP:
         self.corrupt_upload = False
 
     def rename(self, old, new):
+        old = str(PurePosixPath(self.pwd()) / old)
+        new = str(PurePosixPath(self.pwd()) / new)
         self.events.append(('rename', new))
         if self.fail_rename == new:
             self.fail_rename = None
@@ -705,7 +715,7 @@ class FrontendControlReconnectTests(unittest.TestCase):
         ftp.connect = Mock()
         ftp.login = Mock()
         ftp.set_pasv = Mock()
-        ftp.pwd = Mock(return_value='/')
+        ftp.pwd = Mock(wraps=ftp.pwd)
         failed = self.client(connect_error=ConnectionResetError(104, 'fixture-secret'))
         native = []
         def transfer(path, raw=None):
@@ -736,6 +746,7 @@ class FrontendControlReconnectTests(unittest.TestCase):
             transport._rename('/public_html/eleicoes/a.upload', '/public_html/eleicoes/unsafe.php')
         ftp.rename.assert_not_called()
         ftp.rename.side_effect = TimeoutError('fixture-secret')
+        ftp.pwd.return_value = '/public_html/eleicoes'
         with self.assertRaises(TimeoutError) as error:
             transport._rename('/public_html/eleicoes/index.html.upload', '/public_html/eleicoes/index.html')
         result = f.error_report(error.exception)

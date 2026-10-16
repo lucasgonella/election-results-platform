@@ -34,6 +34,8 @@ def test_bundle_bound_to_marker_and_all_individual_results(tmp_path):
     values = tree(dest)
     marker = json.loads(marker_for(valid))
     assert marker['portal']['sha256'] == digest(values['portal.json'])
+    oversized = {**values, 'portal.json': values['portal.json'] + b' ' * (4 * 1024 * 1024)}
+    with pytest.raises(ValueError, match='portal_too_large'): describe(oversized)
     bad = json.loads(values['portal.json'])
     bad['files']['ac/governor.json']['candidates'][0]['votes'] += 1
     values['portal.json'] = canonical(bad)
@@ -133,6 +135,11 @@ def test_public_status_is_honest_before_results_and_during_source_outage():
     assert 'checkpoint_publication_inconsistency' in bad['reasons']
     pending = {'snapshot_id': 'b' * 64, 'created_at': now.isoformat(), 'phase': 'verified'}
     assert assess(health, cp, pending, {'snapshot_id': 'b' * 64})['state'] == 'updating'
+    observed = {**health, 'observed_snapshot_id': 'b' * 64,
+        'observed_snapshot_since': (now - timedelta(minutes=5)).isoformat()}
+    assert 'publication_late' in assess(observed, cp, None, marker)['reasons']
+    review = {**health, 'status': 'failed', 'failure_code': 'second_round_roster_change_requires_review'}
+    assert 'review_required' in assess(review, cp, None, marker)['reasons']
 
 
 def test_status_partial_upload_recovers_only_known_journal(tmp_path):

@@ -48,9 +48,12 @@ class CachedClient(TseClient):
         path = self.directory / (digest(url.encode()) + '.json')
         try: old = parse(path.read_bytes()) if path.exists() else None
         except (ValueError, UnicodeError): old = None
+        if not isinstance(old, dict): old = None
         # Legacy/unverifiable cache entries require a fresh official 200. Cache
         # corruption must never turn a 304 into an invented source response.
-        if old and old.get('payload_sha256') != digest(canonical(old.get('payload'))): old = None
+        if old and (old.get('url') != url or not isinstance(old.get('payload'), dict)
+                or old['payload'].get('f') != 'o'
+                or old.get('payload_sha256') != digest(canonical(old.get('payload')))): old = None
         headers = {'If-None-Match': old['etag']} if old and old.get('etag') else {}
         with measure(self.metrics, 'tse_http'):
             response = self.session.get(url, headers=headers, timeout=self.timeout, allow_redirects=False)
