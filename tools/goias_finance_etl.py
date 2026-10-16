@@ -18,8 +18,10 @@ import zipfile
 from collections import defaultdict
 try:
     from tools.goias_identity import document, resolve
+    from tools.goias_finance_audit import financial_summary
 except ModuleNotFoundError:
     from goias_identity import document, resolve
+    from goias_finance_audit import financial_summary
 
 TSE_CAND = "https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_cand/consulta_cand_2026.zip"
 TSE_FIN = "https://cdn.tse.jus.br/estatistica/sead/odsele/prestacao_contas/prestacao_de_contas_eleitorais_candidatos_2026.zip"
@@ -41,11 +43,13 @@ def money(raw):
     try:
         amount = Decimal(str(raw).replace(".", "").replace(",", "."))
     except InvalidOperation as exc:
-        raise ValueError(f"Invalid monetary number {raw!r}") from exc
+        raise ValueError("Invalid monetary number") from exc
+    if not amount.is_finite() or amount < 0:
+        raise ValueError("Invalid monetary number")
     return amount
 
 
-def read_csv_zip(path, predicate):
+def read_csv_zip(path, predicate, validate_columns=None):
     with zipfile.ZipFile(path) as archive:
         matches = [n for n in archive.namelist()
                    if n.lower().endswith(".csv") and predicate(n.lower())]
@@ -56,6 +60,8 @@ def read_csv_zip(path, predicate):
                 reader = csv.DictReader(io.TextIOWrapper(stream, encoding="latin-1", newline=""), delimiter=";")
                 if not reader.fieldnames or len(reader.fieldnames) < 3:
                     raise ValueError(f"Unrecognized CSV {name}")
+                if validate_columns:
+                    validate_columns(set(reader.fieldnames), name)
                 for row in reader:
                     yield row, name
 
@@ -98,7 +104,17 @@ def build(candidates_zip: Path, finance_zip: Path):
     duplicate_rows = 0
     empty_revenue_declarations = 0
     source_rows = defaultdict(int)
-    for row, filename in read_csv_zip(finance_zip, lambda n: n.endswith(("receitas_candidatos_2026_go.csv", "despesas_contratadas_candidatos_2026_go.csv"))):
+    coverage = {cid: {key: {"known_records": 0, "missing_records": 0, "zero_declarations": []}
+                      for key in ("revenue", "expenses")} for cid in candidates}
+    mapped = set()
+    def check_columns(columns, filename):
+        kind = "revenue" if "receita" in filename.lower() else "expense"
+        values = {"VR_RECEITA"} if kind == "revenue" else {"VR_DESPESA_CONTRATADA", "VR_DESPESA_PAGA"}
+        if "SQ_CANDIDATO" not in columns or not columns & values:
+            raise ValueError("Finance CSV columns not mapped; refusing incomplete export")
+        mapped.add(kind)
+
+    for row, filename in read_csv_zip(finance_zip, lambda n: n.endswith(("receitas_candidatos_2026_go.csv", "despesas_contratadas_candidatos_2026_go.csv")), check_columns):
         source_rows[filename] += 1
         low = filename.lower()
         kind = "revenue" if "receita" in low else "expense"
@@ -116,17 +132,24 @@ def build(candidates_zip: Path, finance_zip: Path):
         raw_amount = field(row, value_column)
         if raw_amount is None and kind == "expense":
             raw_amount = field(row, "VR_DESPESA_PAGA")
-        if raw_amount is None:
-            continue
         amount = money(raw_amount)
-        if amount is None or amount < 0:
-            continue
+        metric = coverage[cid]["revenue" if kind == "revenue" else "expenses"]
         # TSE emits zero-valued account declarations without a receipt, donor
         # or date. These prove account availability, not a financial transfer.
         if kind == "revenue" and amount == 0 and all(field(row, column) is None for column in
                 ("SQ_RECEITA", "NR_CPF_CNPJ_DOADOR", "NM_DOADOR", "NM_DOADOR_RFB", "DT_RECEITA", "DS_ORIGEM_RECEITA")):
             empty_revenue_declarations += 1
             incomes.setdefault(cid, Decimal(0))
+            metric["zero_declarations"].append({"source_file": filename, "source_row": source_rows[filename] + 1})
+            continue
+        # An amount sentinel is absence, never zero. Retain a receipt with its
+        # official sequence even when its value is missing; otherwise record
+        # incomplete source coverage without inventing a financial edge.
+        if amount is None and field(row, "SQ_RECEITA" if kind == "revenue" else "SQ_DESPESA") is None:
+            if kind == "revenue" and any(field(row, column) is not None for column in
+                    ("NR_CPF_CNPJ_DOADOR", "NM_DOADOR", "NM_DOADOR_RFB", "DT_RECEITA", "DS_ORIGEM_RECEITA")):
+                raise ValueError("Revenue transaction lacks its official receipt sequence")
+            metric["missing_records"] += 1
             continue
         if kind == "revenue" and field(row, "SQ_RECEITA") is None:
             raise ValueError("Revenue transaction lacks its official receipt sequence")
@@ -141,9 +164,11 @@ def build(candidates_zip: Path, finance_zip: Path):
             duplicate_rows += 1
             continue
         seen.add(key)
-        (incomes if kind == "revenue" else expenses)[cid] = (
-            (incomes if kind == "revenue" else expenses).get(cid, Decimal(0)) + amount
-        )
+        metric["known_records" if amount is not None else "missing_records"] += 1
+        if amount is not None:
+            (incomes if kind == "revenue" else expenses)[cid] = (
+                (incomes if kind == "revenue" else expenses).get(cid, Decimal(0)) + amount
+            )
         matched[kind] += 1
         if kind == "revenue":
             # Direct counterparty only. Original donor is not the sender of this accounting row.
@@ -152,7 +177,7 @@ def build(candidates_zip: Path, finance_zip: Path):
             transfers.append({
                 "id": f"{cid}:{record_id}:{len(transfers)}",
                 "from_name": origin_name, "to_name": candidates[cid]["name"],
-                "amount": float(amount), "date": field(row, "DT_RECEITA"),
+                "amount": float(amount) if amount is not None else None, "date": field(row, "DT_RECEITA"),
                 "type": field(row, "DS_ORIGEM_RECEITA", "DS_ESPECIE_RECEITA") or "Receita declarada",
                 "source_url": TSE_DATA, "source_record_id": record_id,
                 "source_file": filename, "source_row": source_rows[filename] + 1,
@@ -160,11 +185,19 @@ def build(candidates_zip: Path, finance_zip: Path):
                 "recipient_campaign_document": campaign_cnpj,
                 "donor_candidate_id": field(row, "SQ_CANDIDATO_DOADOR"),
             })
-    if matched["revenue"] == 0 or matched["expense"] == 0:
-        raise ValueError("Finance CSV columns not mapped or GO transactions missing; refusing incomplete export")
+    if mapped != {"revenue", "expense"}:
+        raise ValueError("Finance CSV columns not mapped; refusing incomplete export")
     for cid, entry in candidates.items():
-        entry["revenue"] = float(incomes[cid]) if cid in incomes else 0
-        entry["expenses"] = float(expenses[cid]) if cid in expenses else 0
+        entry["revenue"] = float(incomes[cid]) if cid in incomes else None
+        entry["expenses"] = float(expenses[cid]) if cid in expenses else None
+        entry["financial_coverage"] = coverage[cid]
+        for key, metric in coverage[cid].items():
+            metric["status"] = "missing" if entry[key] is None else "partial" if metric["missing_records"] else "known"
+            metric["known_subtotal"] = entry[key]
+            # Older readers know number|null but do not know coverage. They
+            # must see absence rather than label an incomplete sum as a total.
+            if metric["status"] == "partial":
+                entry[key] = None
     entities, transfers, audit = resolve(candidates, private_candidates, transfers, campaign_owners)
     audit["empty_revenue_declarations_excluded_from_graph"] = empty_revenue_declarations
     audit["existing_accounting_duplicates_skipped"] = duplicate_rows
@@ -173,8 +206,9 @@ def build(candidates_zip: Path, finance_zip: Path):
     audit["revenue_total"] = str(sum(incomes.values(), Decimal(0)))
     audit["expense_total"] = str(sum(expenses.values(), Decimal(0)))
     import hashlib
-    return {
+    data = {
         "identity_schema": 1, "entities": entities, "identity_audit": audit,
+        "financial_schema": 1,
         "scope": "GO", "year": 2026,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "candidates": sorted(candidates.values(), key=lambda x: (x["office"], x["name"])),
@@ -183,6 +217,8 @@ def build(candidates_zip: Path, finance_zip: Path):
                    "candidates_sha256": hashlib.sha256(candidates_zip.read_bytes()).hexdigest(),
                    "finance_sha256": hashlib.sha256(finance_zip.read_bytes()).hexdigest()},
     }
+    data["financial_audit"] = financial_summary(data)
+    return data
 
 
 def main():

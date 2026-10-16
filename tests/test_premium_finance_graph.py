@@ -105,6 +105,56 @@ assert.equal(F.filterTransfers(idx,{to:'bia',kind:'candidate'}).length,1);
 assert.equal(F.filterTransfers(idx,{to:'inexistente'}).length,0);
 """)
 
+    def test_candidate_subtotals_survive_person_projection_and_metrics(self):
+        self.run_node("""
+const coverage=(status,known_records=0,missing_records=0,zero_declarations=[],known_subtotal=(known_records||zero_declarations.length)?0:null)=>({status,known_records,missing_records,zero_declarations,known_subtotal});
+const a=c('a','Urna A',{person_id:'person:a',revenue:null,expenses:0,financial_coverage:{revenue:coverage('partial',1,1,[],25),expenses:coverage('known',1)}});
+const b=c('b','Urna B',{person_id:'person:a',financial_coverage:{revenue:coverage('missing'),expenses:coverage('missing')}});
+const d=c('d','Urna D',{person_id:'person:d',revenue:0,expenses:null,financial_coverage:{revenue:coverage('known',0,0,[{source_file:'receitas_candidatos_2026_GO.csv',source_row:2}]),expenses:coverage('missing')}});
+const raw={...data([a,b,d],[]),financial_schema:1,identity_schema:1,entities:[{id:'person:a',kind:'person',name:'Urna A',roles:['candidate'],candidate_ids:['a','b'],aliases:[]},{id:'person:d',kind:'person',name:'Urna D',roles:['candidate'],candidate_ids:['d'],aliases:[]}]};
+assert.equal(F.validateData(raw),raw);
+assert.deepEqual(F.sumKnown(raw.candidates,'revenue'),{total:25,known:2,missing:2,count:3});
+const idx=F.buildIndex(raw), person=idx.nodes.get('person:a');
+assert.equal(person.revenue,25); assert.equal(person.expenses,0);
+assert.deepEqual(person.financial_summary.revenue,{total:25,known:1,missing:2,count:2});
+assert.equal(person.financial_summary.expenses.missing,1);
+assert.equal(F.sumKnown(idx.data.candidates,'revenue').missing,1);
+assert.equal(F.sumKnown(idx.data.candidates,'revenue').total,25);
+assert.equal(raw.candidates[0].financial_coverage.revenue.status,'partial');
+// A reader ignoring additive metadata must never see a partial sum as total.
+assert.equal(raw.candidates[0].revenue,null);
+assert.equal(F.sumKnown(raw.candidates.map(({revenue})=>({revenue})),'revenue').total,0);
+assert.equal(F.buildIndex(data([c('legacy','Legacy',{revenue:0,expenses:0})],[])).nodes.get('legacy').revenue,0);
+""")
+
+    def test_value_coverage_schema_rejects_inconsistent_claims(self):
+        self.run_node("""
+const metric=(status,known_records,missing_records=0,zero_declarations=[])=>({status,known_records,missing_records,zero_declarations,known_subtotal:(known_records||zero_declarations.length)?0:null});
+const base=c('a','A',{revenue:0,financial_coverage:{revenue:metric('known',1),expenses:metric('missing',0)}});
+assert.doesNotThrow(()=>F.validateData({...data([base],[]),financial_schema:1}));
+for (const revenue of [metric('known',0),metric('known',1,1),metric('missing',1),metric('known',-1),metric('known',1.5),metric('known',0,0,[{source_file:'wrong.csv',source_row:2}])]) {
+  assert.throws(()=>F.validateData({...data([{...base,financial_coverage:{...base.financial_coverage,revenue}}],[]),financial_schema:1}));
+}
+assert.throws(()=>F.validateData({...data([c('a')],[]),financial_schema:1}));
+assert.throws(()=>F.validateData({...data([base],[]),financial_schema:2}));
+assert.throws(()=>F.validateData({...data([{...base,revenue:null}],[]),financial_schema:1}));
+""")
+
+    def test_graph_volumes_keep_partial_and_zero_evidence(self):
+        self.run_node("""
+const rows=[t('positive','x','a',10),t('missing','x','a',null),t('zero','y','a',0),t('unknown','z','a',null),t('self','a','a',2)];
+const index=F.buildIndex(data([c('a')],rows));
+const view=F.graphView(index,rows,'a');
+assert.equal(view.nodes.find(n=>n.id==='x').volume,10);
+assert.equal(view.nodes.find(n=>n.id==='x').volume_summary.missing,1);
+assert.equal(view.nodes.find(n=>n.id==='y').volume,0);
+assert.equal(view.nodes.find(n=>n.id==='y').volume_summary.missing,0);
+assert.equal(view.nodes.find(n=>n.id==='z').volume,null);
+assert.equal(view.nodes.find(n=>n.id==='a').volume,12);
+assert.deepEqual(F.filterTransfers(index,{min:'0',max:'0'}).map(r=>r.id),['zero']);
+assert.equal(F.aggregate(rows).find(g=>g.from_id==='x').missing,1);
+""")
+
     def test_grouping_preserves_direction_categories_and_original_records(self):
         self.run_node("""
 const groups=F.aggregate([t('1','a','b',100),t('2','a','b',null),t('3','b','a',50),t('4','a','b',25,{type:'Outra categoria'})]);

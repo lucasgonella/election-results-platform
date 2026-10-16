@@ -24,6 +24,44 @@ def test_existing_verified_dataset_never_uploaded(dataset, monkeypatch):
     assert p.publish(path)['status'] == 'unchanged'
 
 
+def test_nullable_values_and_additive_coverage_preserve_publication_bytes(tmp_path, monkeypatch):
+    def candidate(i):
+        value = [None, 0, 42][i % 3]
+        coverage = {'status': 'missing' if value is None else 'known',
+                    'known_records': 0 if value is None else 1, 'missing_records': 0,
+                    'zero_declarations': [], 'known_subtotal': value}
+        return {'id': 'synthetic:'+str(i), 'name': 'Exemplo', 'office': 'deputado federal',
+                'revenue': value, 'expenses': value,
+                'financial_coverage': {'revenue': coverage, 'expenses': coverage}}
+    data = {'scope': 'GO', 'year': 2026, 'financial_schema': 1,
+            'candidates': [candidate(i) for i in range(101)],
+            'transfers': [{'id': 'receipt:'+str(i), 'amount': value} for i, value in enumerate([None, 0, 42])]}
+    data['candidates'][0]['financial_coverage']['revenue'] = {
+        'status': 'partial', 'known_records': 1, 'missing_records': 1,
+        'known_subtotal': 12.5, 'zero_declarations': []}
+    path = tmp_path / 'nullable.json'
+    path.write_text(json.dumps(data))
+    raw = path.read_bytes()
+    reads = iter([b'previous', raw])
+    uploads = []
+    monkeypatch.setattr(p, 'ftp_read', lambda: next(reads))
+    monkeypatch.setattr(p, 'https_read', lambda: raw)
+    monkeypatch.setattr(p, '_ftp', lambda content: (uploads.append(content) or 0, b''))
+    result = p.publish(path)
+    assert result['status'] == 'published' and result['ftp_https_verified']
+    assert uploads == [raw] and json.loads(uploads[0]) == data
+
+
+def test_empty_financial_dataset_remains_blocked_before_transport(dataset, monkeypatch):
+    path, raw = dataset
+    data = json.loads(raw)
+    data['transfers'] = []
+    path.write_text(json.dumps(data))
+    monkeypatch.setattr(p, 'ftp_read', lambda: pytest.fail('gate must run before transport'))
+    with pytest.raises(ValueError, match='invalid_goias_dataset'):
+        p.publish(path)
+
+
 @pytest.mark.parametrize('code', [0, 18, 28, 56])
 def test_lost_upload_response_resolved_by_complete_ftp_and_https_bytes(dataset, monkeypatch, code):
     path, raw = dataset
