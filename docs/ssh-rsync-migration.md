@@ -18,7 +18,11 @@ Não existe um segundo writer ou mecanismo de ativação paralelo.
 SSH abre um processo Python por stdio, sem daemon/porta nova no servidor.
 Metadados via JSON não entram no shell; somente código fixo e constantes são
 citados por `shlex`. O servidor repete validação de caminhos e recusa symlinks.
-Timeouts limitam conexão, RPC, rsync e encerramento. Uma operação de escrita com
+Timeouts limitam conexão, RPC, rsync e encerramento. Somente estabelecimento de
+sessão e o `hello` de leitura permitem três tentativas, em conexões novas, antes
+de entregar o transporte ao publicador. Falhas de home/validação não repetem.
+Contadores conservam as falhas anteriores à conexão bem-sucedida.
+Uma operação de escrita com
 resposta perdida interrompe; o publicador consulta journal/estado real para
 recuperar. Não há replay automático de ativação.
 

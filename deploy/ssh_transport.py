@@ -157,7 +157,9 @@ class SSHSession:
                 self.metrics['ssh_failures'] += 1
                 self.close()
                 # Do not reconnect/replay a mutation with an unknown outcome.
-                raise SSHError('ssh_operation_outcome_unknown') from None
+                failure = SSHError('ssh_operation_outcome_unknown')
+                failure.transport_operation = op
+                raise failure from None
             finally:
                 self.metrics['rpc_seconds'] = self.metrics.get('rpc_seconds',0) + time.monotonic()-started
                 operations = self.metrics.setdefault('operations',{})
@@ -364,9 +366,30 @@ class SSHOperations:
 
 
 def transport(policy, scope, *args, environment=None, **kwargs):
-    session = SSHSession(scope, environment=environment)
-    cls = type('SSH' + policy.__name__, (SSHOperations, policy), {})
-    instance = cls(session, *args, reconnect=None, **kwargs)
-    session.checker = instance
-    session.connect()
-    return instance
+    # Only session establishment and the read-only hello are repeatable here.
+    # No caller receives a transport until authentication/home verification has
+    # succeeded, so no namespace, lock, upload or activation can be replayed.
+    failures, elapsed_rpc, started = 0, 0.0, time.monotonic()
+    for attempt in range(3):
+        session = SSHSession(scope, environment=environment)
+        cls = type('SSH' + policy.__name__, (SSHOperations, policy), {})
+        instance = cls(session, *args, reconnect=None, **kwargs)
+        session.checker = instance
+        try:
+            session.connect()
+        except SSHError as error:
+            failures += session.metrics.get('ssh_failures', 0)
+            elapsed_rpc += session.metrics.get('rpc_seconds', 0.0)
+            session.shutdown()
+            error.connection_attempts = attempt + 1
+            if (str(error) != 'ssh_operation_outcome_unknown'
+                    or getattr(error, 'transport_operation', None) != 'hello' or attempt == 2):
+                raise
+            time.sleep((2, 5)[attempt])
+        else:
+            session.metrics['connect_retries'] = attempt
+            session.metrics['connections'] += attempt
+            session.metrics['ssh_failures'] += failures
+            session.metrics['rpc_seconds'] = session.metrics.get('rpc_seconds',0.0) + elapsed_rpc
+            session.metrics['connection_total_seconds'] = time.monotonic()-started
+            return instance

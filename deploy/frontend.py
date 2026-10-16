@@ -59,10 +59,12 @@ def error_report(error):
     if isinstance(transport_code, str) and re.fullmatch('[a-z_]{1,80}', transport_code):
         result.update(transport='ssh_rsync', error_code=transport_code)
         op = getattr(error, 'transport_operation', None)
-        if op in {'hello','metadata','read','mkdir','reserve','hash','cached','cache','commit','rename','unlink','rmdir'}:
+        if op in {'hello','metadata','read','mkdir','reserve','hash','cached','cache','commit','rename','unlink','rmdir','chunk','reserve_batch','cache_batch','promote'}:
             result['transport_operation'] = op
         number = getattr(error, 'remote_errno', None)
         if isinstance(number, int): result['remote_errno'] = number
+        attempts = getattr(error, 'connection_attempts', None)
+        if type(attempts) is int and 1 <= attempts <= 3: result['connection_attempts'] = attempts
     operation = getattr(error, 'frontend_operation', None)
     if isinstance(operation, str) and operation in CONTROL_OPERATIONS:
         result['ftp_operation'] = operation
