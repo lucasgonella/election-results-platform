@@ -27,11 +27,16 @@ verificação da candidata entre esses dois momentos. A baseline imutável já
 verificada pode ser reutilizada somente dentro da mesma operação do único writer.
 Uma consulta normal posterior e o comando `status` fazem verificação completa nova.
 
-Até dois workers preparam arquivos imutáveis disjuntos ou verificam arquivos;
-ativação, journals, lock remoto e checkpoint continuam serializados. Cada worker
-tem sua própria sessão FTP passiva, porta 21. São no máximo três sessões do
-publicador (uma de controle e duas de trabalho). `ELECTION_ROUND2_FTP_WORKERS=1`
-permite operação serial se a conta limitar conexões. HTTPS de verificação é
+Até dois workers preparam arquivos imutáveis disjuntos; ativação, journals, lock
+remoto e checkpoint continuam serializados. Somente a preparação dos uploads
+usa sessões FTP de trabalho independentes, até três sessões com o controle.
+A leitura integral de uma release reutiliza uma única sessão FTP, com acesso
+serializado ao socket, enquanto até duas verificações HTTPS se sobrepõem. Isso
+evita deixar o controle principal ocioso durante toda a verificação e reduz
+aberturas de sessão no caminho FTP que apresentou timeouts. Todos os bytes FTP
+e hashes HTTPS continuam sendo conferidos. FTP passivo, porta 21, permanece
+obrigatório. `ELECTION_ROUND2_FTP_WORKERS=1` permite operação serial.
+HTTPS de verificação é
 limitado a quatro GETs/s por publicador, configurável somente até cinco. Controle
 FTP/conexão têm 15s; dados FTP, 45s. Leituras transitórias têm orçamento de três
 tentativas em sessões novas; STOR/ativação não são repetidos cegamente.
