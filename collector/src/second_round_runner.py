@@ -62,11 +62,19 @@ def verify_proof(package):
     return describe(actual)
 
 
-def cycle(state, *, dry_run=False, client=None, connector=connect):
+def cycle(state, *, dry_run=False, client=None, connector=connect, retry_after_reconcile=False):
     health_path = state / 'health.json'
     previous = load(health_path) or {}
-    if previous.get('retry_after_epoch', 0) > time.time():
+    if retry_after_reconcile and (dry_run or previous.get('status') != 'failed'):
+        # In particular, never bypass a source's Retry-After/rate-limit state
+        # or the ordinary cadence of a healthy/awaiting-data pipeline.
+        raise ValueError('supervised_retry_requires_failed_live_cycle')
+    if previous.get('retry_after_epoch', 0) > time.time() and not retry_after_reconcile:
         return {**previous, 'status': 'backoff', 'checked_at': now()}
+    diagnostics = {'error_type', 'error_code', 'failure_code', 'failure_stage',
+                   'transport', 'transport_operation', 'remote_errno', 'remote_error_type',
+                   'connection_attempts', 'errno', 'ftp_code', 'ftp_operation', 'causes', 'failed_at'}
+    clean_previous = {key: value for key, value in previous.items() if key not in diagnostics}
     transport = None
     client = client or CachedClient(state / 'http-cache')
     metrics = getattr(client, 'metrics', {})
@@ -81,6 +89,14 @@ def cycle(state, *, dry_run=False, client=None, connector=connect):
             publisher = Publisher(transport, state, metrics=metrics)
             with measure(metrics, 'recovery'):
                 publisher.recover()  # Pending work is always settled before new collection.
+                if retry_after_reconcile:
+                    verified = publisher.status()
+                    if (verified.get('status') != 'verified' or verified.get('pending')
+                            or verified.get('remote_lock') or not verified.get('checkpoint_matches')):
+                        raise RuntimeError('supervised_retry_requires_verified_publication')
+                    metrics['supervised_retry'] = {'verified_at': now(),
+                        'snapshot_id': verified['snapshot_id'],
+                        'prior_retry_after_epoch': previous.get('retry_after_epoch')}
         storage(state)
         step = 'collection'
         with measure(metrics, 'collection'):
@@ -136,7 +152,7 @@ def cycle(state, *, dry_run=False, client=None, connector=connect):
         save(health_path, result)
         return result
     except AwaitingData:
-        result = {**previous, 'status': 'awaiting_official_round_two_data', 'round': 2, 'checked_at': now(),
+        result = {**clean_previous, 'status': 'awaiting_official_round_two_data', 'round': 2, 'checked_at': now(),
                   'last_source_success_at': now(),
                   'election_state': previous.get('election_state', 'awaiting_official_data'),
                   'failures': 0, 'retry_after_epoch': time.time() + 120,
@@ -151,7 +167,7 @@ def cycle(state, *, dry_run=False, client=None, connector=connect):
             metrics['ftp_failures'] = metrics.get('ftp_failures', 0) + 1
         failures = previous.get('failures', 0) + 1
         delay = error.seconds if isinstance(error, RateLimited) else min(3600, 60 * 2 ** min(failures, 6))
-        result = {**previous, **observation, 'status': 'rate_limited' if isinstance(error, RateLimited) else 'failed',
+        result = {**clean_previous, **observation, 'status': 'rate_limited' if isinstance(error, RateLimited) else 'failed',
                   'round': 2, 'checked_at': now(), 'failures': failures,
                   'failure_stage': step,
                   'retry_after_epoch': time.time() + delay, **error_report(error)}
@@ -163,6 +179,8 @@ def cycle(state, *, dry_run=False, client=None, connector=connect):
         raise
     finally:
         if result is not None:
+            result['transport'] = metrics.get('transport', {}).get('transport',
+                'ssh_rsync' if os.environ.get('PUBLICATION_TRANSPORT') == 'ssh' else 'ftp')
             result.update(cycle_started_at=cycle_started_at, cycle_finished_at=now(),
                           cycle_seconds=round(time.monotonic() - started, 6), metrics=metrics,
                           http_429_total=previous.get('http_429_total', 0) + getattr(client, 'http_429', 0),
@@ -214,9 +232,13 @@ def main():
     parser.add_argument('--state', type=Path, default=Path(os.environ.get('ELECTION_ROUND2_STATE_DIR', STATE)))
     parser.add_argument('--directory', type=Path)
     parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--retry-after-reconcile', action='store_true',
+                        help='Retry a failed live cycle only after full recovery and verified remote/HTTPS status; never bypass rate limits')
     args = parser.parse_args()
     try:
         if not args.state.is_absolute() or args.state.is_symlink(): raise ValueError('unsafe_round_two_state')
+        if args.retry_after_reconcile and args.operation != 'cycle':
+            raise ValueError('supervised_retry_requires_cycle_operation')
         if args.operation in {'verify', 'publish'} and not args.directory:
             raise ValueError('second_round_package_required')
         credentials()
@@ -228,7 +250,8 @@ def main():
                 if not at or (datetime.now(timezone.utc) - datetime.fromisoformat(at)).total_seconds() > 900:
                     raise RuntimeError('second_round_health_stale')
                 if result.get('status') == 'failed': raise RuntimeError('second_round_health_failed')
-            elif args.operation == 'cycle': result = cycle(args.state, dry_run=args.dry_run)
+            elif args.operation == 'cycle':
+                result = cycle(args.state, dry_run=args.dry_run, retry_after_reconcile=args.retry_after_reconcile)
             else:
                 transport = connect()
                 try:
