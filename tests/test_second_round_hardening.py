@@ -192,14 +192,20 @@ def test_reader_cache_dedup_bundle_hash_retry_after_and_etag(tmp_path):
     script = r'''
 const assert=require('node:assert/strict'),fs=require('node:fs'),{create}=require('./web/public/eleicoes/live-data.js');
 const f=JSON.parse(fs.readFileSync(process.argv[1])),base='/data/turnos/2/releases/'+f.marker.snapshot_id;
-let time=10000,calls=[];
-const reader=create(async(url,options)=>{calls.push({url,options,time});return new Response(url.endsWith('/version.json')?JSON.stringify(f.marker):f.values['portal.json'],{headers:{ETag:'"version"'}});},
+let time=10000,calls=[],marker=f.marker;
+const reader=create(async(url,options)=>{calls.push({url,options,time});return new Response(url.endsWith('/version.json')?JSON.stringify(marker):f.values['portal.json'],{headers:{ETag:'"version"'}});},
  {clock:()=>time,sleep:async ms=>{time+=ms;},random:()=>0,spacingMs:0});
 (async()=>{
  await reader.fetch('/data/turnos/2/version.json');
  const result=await Promise.all([reader.fetch(base+'/manifest.json'),reader.fetch(base+'/ac/governor.json'),reader.fetch(base+'/alerts.json')]);
  assert.equal((await result[1].json()).election.round,2);assert.equal(calls.length,2);
  assert.equal(calls[1].url,base+'/portal.json');
+ reader.setState('counting_in_progress');time+=6000;
+ marker={...marker,snapshot_id:'b'.repeat(64)};
+ await reader.fetch('/data/turnos/2/version.json');
+ assert.equal(reader.shouldPoll(),false); // Another component just checked it.
+ assert.equal(reader.shouldPoll(base),true); // An older view must still consume it.
+ assert.equal(reader.shouldPoll('/data/turnos/2/releases/'+marker.snapshot_id),false);
  let tries=0,starts=[];
  const limited=create(async()=>{starts.push(time);return ++tries===1?new Response('',{status:429,headers:{'Retry-After':'3'}}):new Response('{}');},
  {clock:()=>time,sleep:async ms=>{time+=ms;},random:()=>0,spacingMs:0});

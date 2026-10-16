@@ -5,6 +5,7 @@
         const clock = options.clock || Date.now, sleep = options.sleep || (ms => new Promise(r => setTimeout(r, ms)));
         const random = options.random || Math.random;
         const memory = new Map(), inFlight = new Map(), bundles = new Map(), markers = new Map();
+        const reload = new Set();
         let tail = Promise.resolve(), nextRequest = 0, blockedUntil = 0, failures = 0;
         let electionState = null, lastMarkerCheck = 0;
         let selectedBase = null;
@@ -21,10 +22,14 @@
         };
         async function discard(url) {
             memory.delete(url);
+            // Cache API deletion cannot evict a corrupt native HTTP cache entry.
+            reload.add(url);
+            if (reload.size > 80) reload.delete(reload.values().next().value);
             try { await (await cache())?.delete(url); } catch (_) {}
         }
         async function forgetRelease(base) {
             for (const key of memory.keys()) if (key.startsWith(base + '/')) memory.delete(key);
+            for (const key of reload) if (key.startsWith(base + '/')) reload.delete(key);
             bundles.delete(base);
             try {
                 const store = await cache();
@@ -90,7 +95,7 @@
                     const prior = memory.get(url)?.response;
                     const conditional = prior?.headers.get('ETag') && !immutable(url)
                         ? {'If-None-Match': prior.headers.get('ETag')} : {};
-                    response = await fetcher(url, {cache: immutable(url) ? 'force-cache' : 'no-cache',
+                    response = await fetcher(url, {cache: reload.has(url) ? 'reload' : immutable(url) ? 'force-cache' : 'no-cache',
                         headers: conditional, credentials: 'same-origin', redirect: 'error', signal: controller.signal});
                     if (response.status === 304 && prior) return remember(url, prior.clone());
                 } finally { clearTimeout(timeout); }
@@ -102,7 +107,14 @@
                 }
                 if (!response.ok) return response;
                 failures = 0;
-                return remember(url, response);
+                try {
+                    const stored = await remember(url, response);
+                    reload.delete(url);
+                    return stored;
+                } catch (error) {
+                    if (immutable(url)) await discard(url);
+                    throw error;
+                }
             }
             throw new Error('election_rate_limited');
         }
@@ -176,7 +188,9 @@
         }
         return {fetch: request, stats, retryAfter,
             setState: state => { electionState = state; },
-            shouldPoll: () => clock() - lastMarkerCheck >= ({official_data_available: 15000,
+            // Consumers must process a marker already fetched by another view.
+            shouldPoll: knownBase => !!(knownBase && selectedBase && knownBase !== selectedBase)
+                || clock() - lastMarkerCheck >= ({official_data_available: 15000,
                 awaiting_official_data: 15000, counting_stable: 10000, counting_finished: 30000}[electionState] || 5000),
             paused: () => !!root.document?.hidden || clock() < blockedUntil};
     }
