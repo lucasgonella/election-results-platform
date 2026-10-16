@@ -1,0 +1,25 @@
+[Unit]
+Description=Archive verified duplicate round two cycles before local removal
+Wants=network-online.target
+After=network-online.target
+[Service]
+Type=oneshot
+User=electionround2
+Group=electionround2
+WorkingDirectory=/opt/election-round2/current
+EnvironmentFile=/etc/election-results-platform/round2.env
+LoadCredential=ftp.env:/etc/election-results-platform/secrets/ftp.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/election-round2-venv/bin/python -m collector.src.second_round_retention --apply --limit 25
+StateDirectory=election-round2
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+CPUQuota=15%
+MemoryMax=256M
+TimeoutStartSec=20min

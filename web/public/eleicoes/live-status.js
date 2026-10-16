@@ -13,7 +13,8 @@
         unknown_transaction: 'Publicação em verificação', collector_timer_inactive: 'Atualização interrompida',
         storage_warning: 'Atualização requer atenção', ftp_unavailable: 'Publicação temporariamente indisponível'};
     const display = stamp => stamp ? new Date(stamp).toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'}) : 'Ainda não registrada';
-    const metrics = root.ElectionLiveMetrics = {renderedAt: null, snapshotId: null, detectionAfterPublicationSeconds: null};
+    const metrics = root.ElectionLiveMetrics = {renderedAt: null, snapshotId: null,
+        detectionAfterActivationSeconds: null, renderAfterDetectionSeconds: null};
     let status = null, busy = false;
     function render() {
         const context = root.ElectionPortal?.getContext();
@@ -30,9 +31,11 @@
             doc.getElementById(id).textContent = display(status?.[key]);
         }
         doc.getElementById('live-data-at').textContent = display(context?.result?.snapshot?.generated_at);
-        if (status && metrics.snapshotId === status.snapshot_id && root.LiveData.stats.markerDetectedAt) {
-            const delay = (Date.parse(root.LiveData.stats.markerDetectedAt) - Date.parse(status.last_publication_at)) / 1000;
-            metrics.detectionAfterPublicationSeconds = Number.isFinite(delay) && delay >= 0 ? delay : null;
+        if (status && metrics.snapshotId === status.snapshot_id && root.LiveData.stats.markerSnapshotId === metrics.snapshotId) {
+            const delay = (Date.parse(root.LiveData.stats.markerDetectedAt) - Date.parse(status.last_activation_at || status.last_publication_at)) / 1000;
+            metrics.detectionAfterActivationSeconds = Number.isFinite(delay) && delay >= 0 ? delay : null;
+            const rendered = (Date.parse(metrics.renderedAt) - Date.parse(root.LiveData.stats.markerDetectedAt)) / 1000;
+            metrics.renderAfterDetectionSeconds = Number.isFinite(rendered) && rendered >= 0 ? rendered : null;
         }
     }
     async function refresh() {

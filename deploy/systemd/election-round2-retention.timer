@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly safe retention for the second round
+[Timer]
+OnBootSec=10min
+OnUnitInactiveSec=1h
+RandomizedDelaySec=60s
+Persistent=true
+Unit=election-round2-retention.service
+[Install]
+WantedBy=timers.target

@@ -125,6 +125,8 @@ def cycle(state, *, dry_run=False, client=None, connector=connect):
         result.update(collected_at=now(), round=2, failures=0,
                       last_source_success_at=source_success_at,
                       last_publication_at=(load(state / 'checkpoint.json') or {}).get('verified_at'),
+                      last_activation_at=(load(state / 'checkpoint.json') or {}).get('activation_completed_at'),
+                      https_marker_observed_at=(load(state / 'checkpoint.json') or {}).get('https_marker_observed_at'),
                       official_generated_at=verified['descriptor']['generated_at'],
                       publication_phase=verified['publication_phase'],
                       official_files_checked=len(client.records),

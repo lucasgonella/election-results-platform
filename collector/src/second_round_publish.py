@@ -392,12 +392,18 @@ class Publisher:
 
     def finish(self, job):
         # Proof before adopting checkpoint; a checkpoint failure leaves the journal.
+        with measure(self.metrics, 'https_marker_confirmation'):
+            if self.marker() != bytes.fromhex(job['marker']):
+                raise RuntimeError('second_round_selection_changed')
+        marker_observed_at = now()
         with measure(self.metrics, 'https_post_activation_verification'):
             self.release(bytes.fromhex(job['marker']), expected=job['descriptor'])
         if self.marker() != bytes.fromhex(job['marker']):
             raise RuntimeError('second_round_selection_changed')
         receipt = {'status': 'published', 'round': 2, 'snapshot_id': job['snapshot_id'],
                    'verified_at': now(), 'activation': 'ftp_marker_rename', 'multinode_guarantee': False,
+                   'activation_completed_at': job.get('activation_completed_at'),
+                   'https_marker_observed_at': marker_observed_at,
                    'transaction_owner': job['owner']}
         receipt_path = self.state / 'receipts' / (job['snapshot_id'] + '.json')
         previous_receipt = load(receipt_path)
@@ -475,6 +481,8 @@ class Publisher:
                 self.t.ftp.rename(SITE + '/version.json.upload', SITE + '/version.json')
             else:
                 self.t.put(SITE + '/version.json', new, replace=True)
+        job['activation_completed_at'] = now()
+        save(self.job_path, job)
         self.fault('after_activation')
         return self.finish(job)
 

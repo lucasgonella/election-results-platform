@@ -7,6 +7,7 @@
         const memory = new Map(), inFlight = new Map(), bundles = new Map(), markers = new Map();
         let tail = Promise.resolve(), nextRequest = 0, blockedUntil = 0, failures = 0;
         let electionState = null, lastMarkerCheck = 0;
+        let selectedBase = null;
         const stats = {network: 0, cacheHits: 0, bundleReuses: 0, deduplicated: 0, http429: 0, bytes: 0, markerDetectedAt: null};
         const immutable = url => /\/releases\/[a-f0-9]{64}\/[a-z/.-]+\.json$/.test(url);
         const eligible = url => /^\/data\/turnos\/2\/(?:version\.json|status\.json|releases\/[a-f0-9]{64}\/[a-z/.-]+\.json)$/.test(url);
@@ -160,7 +161,11 @@
                 const value = await response.clone().json();
                 if (value.environment !== 'oficial' || value.round !== 2 || !/^[a-f0-9]{64}$/.test(value.snapshot_id || '')) throw new Error('invalid_round2_marker');
                 const base = '/data/turnos/2/releases/' + value.snapshot_id;
-                if (!markers.has(base)) stats.markerDetectedAt = new Date(clock()).toISOString();
+                if (selectedBase !== base) {
+                    stats.markerDetectedAt = new Date(clock()).toISOString();
+                    stats.markerSnapshotId = value.snapshot_id;
+                    selectedBase = base;
+                }
                 markers.set(base, value);
                 if (markers.size > 3) {
                     const old = markers.keys().next().value;

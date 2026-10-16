@@ -1,0 +1,10 @@
+[Unit]
+Description=Monitor second round independently of first round
+[Timer]
+OnBootSec=90s
+OnUnitInactiveSec=60s
+RandomizedDelaySec=5s
+AccuracySec=1s
+Unit=election-round2-monitor.service
+[Install]
+WantedBy=timers.target
