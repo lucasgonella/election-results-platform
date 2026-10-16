@@ -105,8 +105,15 @@ def verify_values(values, *, strict=False):
                 if value is not None and (type(value) is not int or value < 0):
                     raise ValueError('invalid_second_round_votes')
         count += payload["candidate_count"]
-    if set(values) != names | META:
+    extra = {'portal.json'} if 'portal.json' in values else set()
+    if set(values) != names | META | extra:
         raise ValueError("unexpected_second_round_files")
+    if extra:
+        portal = parse(values['portal.json'])
+        expected = {'schema_version': 1, 'environment': 'oficial', 'round': 2,
+                    'files': {name: parse(raw) for name, raw in values.items() if name != 'portal.json'}}
+        if portal != expected:
+            raise ValueError('second_round_portal_bundle_mismatch')
     if count != manifest.get("candidate_count"):
         raise ValueError("second_round_candidate_count_mismatch")
     if (not isinstance(alerts.get("alerts"), list)

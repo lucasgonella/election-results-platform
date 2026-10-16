@@ -68,7 +68,7 @@
         if (typeof value === "string" && /^[=+@\-\t\r]/.test(text)) text = "'" + text;
         return '"' + text.replaceAll('"', '""') + '"';
     }
-    function createReader(getContext, fetcher = global.fetch?.bind(global)) {
+    function createReader(getContext, fetcher = (global.LiveData?.fetch || global.fetch?.bind(global))) {
         const cache = new Map();
         let generation = null;
         return async function loadResult(scope, office = 1, options = {}) {
@@ -108,16 +108,16 @@
             async loadRoundResult(round, scope = "br", office = 1) {
                 if (![1, 2].includes(round)) throw new Error("invalid_comparison_round");
                 const namespace = round === 2 ? "/data/turnos/2" : "/data";
-                const pointerResponse = await global.fetch(namespace + "/version.json", {cache: "no-store"});
+                const pointerResponse = await (global.LiveData?.fetch || global.fetch.bind(global))(namespace + "/version.json", {cache: "no-store"});
                 if (!pointerResponse.ok) return null;
                 const pointer = await pointerResponse.json();
                 const base = baseFor(pointer, round);
-                const manifestResponse = await global.fetch(base + "/manifest.json", {cache: "no-store"});
+                const manifestResponse = await (global.LiveData?.fetch || global.fetch.bind(global))(base + "/manifest.json", {cache: "no-store"});
                 if (!manifestResponse.ok) throw new Error("comparison_manifest_unavailable");
                 const manifest = validateManifest(await manifestResponse.json(), round);
                 const row = rowFor(manifest, scope, office);
                 if (!row) return null;
-                const response = await global.fetch(base + "/" + row.path, {cache: "no-store"});
+                const response = await (global.LiveData?.fetch || global.fetch.bind(global))(base + "/" + row.path, {cache: "no-store"});
                 if (!response.ok) throw new Error("comparison_result_unavailable");
                 const result = validateResult(await response.json(), row, round, manifest.environment);
                 return {result, version: pointer, manifest, dataBase: base};

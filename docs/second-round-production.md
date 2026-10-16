@@ -139,3 +139,11 @@ reprocessa essa prova offline. Nunca fornecer fixture nesse comando de produçã
 Todos os testes de dados sintéticos usam mocks, FTP loopback ou o namespace de
 staging separado. O frontend fixa `/data/turnos/2/releases/<id>` após marcador
 válido; enquanto 404, informa espera e não busca os arquivos do primeiro turno.
+
+## Hardening para 25/10
+
+A política de coleta, publicação, retenção, métricas e monitoramento atualizada
+está em [hardening de produção](election-2026-hardening.md). Ela substitui os
+intervalos e limites descritos anteriormente neste documento. Releases antigas
+continuam legíveis; rollback de código anterior ao agregado exige a conversão
+verificada `legacy-rollback`, preservando exatamente os dados oficiais ativos.

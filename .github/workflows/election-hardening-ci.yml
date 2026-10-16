@@ -1,0 +1,49 @@
+name: Validate election production hardening
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: Election hardening and recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r collector/requirements-dev.txt -r tests/raiox-browser-requirements.txt
+      - run: python -m playwright install --with-deps chromium
+      - name: Transactions, retention, retries and source proof (isolated only)
+        run: python -m pytest -q tests/test_second_round_runner.py tests/test_second_round_transactions.py tests/test_second_round_read_reliability.py tests/test_second_round_hardening.py tests/test_cycle_retention.py
+      - name: Real Chromium shared cache, release corruption and freshness
+        run: python -m pytest -q tests/test_round2_hardening_browser.py
+      - name: Bounded synthetic users, changed releases and Retry-After (loopback only)
+        run: |
+          python tools/election_hardening_rehearsal.py --users 20 --duration 30 --change-every 10 --output "$RUNNER_TEMP/election-rehearsal"
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          result=json.loads((Path(os.environ['RUNNER_TEMP'])/'election-rehearsal/report.json').read_text())
+          assert not result['client_errors'],result['client_errors']
+          assert result['target_counts']==[35]
+          assert result['intentional_429_injected'] and result['retry_after_respected']
+          PY
+      - name: Validate systemd and source syntax
+        run: |
+          bash -n deploy/scripts/install-round2.sh
+          node --check web/public/eleicoes/live-data.js
+          node --check web/public/eleicoes/live-status.js
+          python -m compileall -q collector/src/second_round* tools/election_hardening*.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: election-hardening-rehearsal-${{ github.sha }}
+          path: ${{ runner.temp }}/election-rehearsal/
+          retention-days: 30

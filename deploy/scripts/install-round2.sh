@@ -36,6 +36,14 @@ ln -s "$release_dir" /opt/election-round2/current.new
 mv -Tf /opt/election-round2/current.new /opt/election-round2/current
 install -m 0644 "$release_dir/deploy/systemd/election-round2.service" /etc/systemd/system/election-round2.service
 install -m 0644 "$release_dir/deploy/systemd/election-round2.timer" /etc/systemd/system/election-round2.timer
+for kind in monitor retention; do
+  install -m 0644 "$release_dir/deploy/systemd/election-round2-$kind.service" "/etc/systemd/system/election-round2-$kind.service"
+  install -m 0644 "$release_dir/deploy/systemd/election-round2-$kind.timer" "/etc/systemd/system/election-round2-$kind.timer"
+done
+if [[ -d /etc/zabbix/zabbix_agent2.d ]]; then
+  install -m 0644 "$release_dir/deploy/zabbix/election-round2.conf" /etc/zabbix/zabbix_agent2.d/election-round2.conf
+  if systemctl is-active --quiet zabbix-agent2; then zabbix_agent2 -R userparameter_reload; fi
+fi
 systemctl daemon-reload
 # Full official discovery and collection with no FTP connection/activation.
 (cd "$release_dir" && runuser -u electionround2 -- env PYTHONDONTWRITEBYTECODE=1 \
@@ -43,6 +51,8 @@ systemctl daemon-reload
   --dry-run --state /var/lib/election-round2/preflight)
 systemctl start election-round2.service
 systemctl enable --now election-round2.timer
+systemctl enable --now election-round2-monitor.timer election-round2-retention.timer
+systemctl start election-round2-monitor.service
 systemctl show election-round2.service -p Result -p ExecMainStatus -p User -p WorkingDirectory
 systemctl is-enabled election-round2.timer
 systemctl list-timers election-round2.timer --no-pager

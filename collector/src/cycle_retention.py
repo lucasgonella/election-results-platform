@@ -139,7 +139,10 @@ def plan(root, *, min_age_hours=24, now=None):
 
 class ArchiveFTP:
     """Dedicated private backup namespace. Plain passive FTP, existing account."""
-    def __init__(self, ftp=None, transfer=None):
+    def __init__(self, ftp=None, transfer=None, *, destination=BACKUP):
+        if not re.fullmatch(r'/backup/election-results-platform/(?:ftp-cycles|round2-cycles)', destination):
+            raise ValueError('unsafe_private_backup_destination')
+        self.destination = destination
         self.ftp = ftp or connect()
         self.transfer = transfer or self.ftp_transfer
         self.ftp.timeout = 15
@@ -148,14 +151,14 @@ class ArchiveFTP:
             raise ValueError('ftp_home_mismatch')
         # Require the audited account-home mapping; never fall back to public.
         self.ftp.cwd('/public_html'); self.ftp.cwd('/')
-        for part in BACKUP.strip('/').split('/'):
+        for part in destination.strip('/').split('/'):
             try:
                 self.ftp.cwd(part)
             except ftplib.error_perm as error:
                 if not str(error).startswith('550'):
                     raise
                 self.ftp.mkd(part); self.ftp.cwd(part)
-        if self.ftp.pwd().rstrip('/') != BACKUP:
+        if self.ftp.pwd().rstrip('/') != destination:
             raise ValueError('backup_directory_mapping_mismatch')
         self.ftp.voidcmd('TYPE I')
 

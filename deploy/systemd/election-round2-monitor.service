@@ -1,0 +1,27 @@
+[Unit]
+Description=Round two operational health, public freshness and notifications
+Wants=network-online.target
+After=network-online.target
+[Service]
+Type=oneshot
+User=electionround2
+Group=electionround2
+WorkingDirectory=/opt/election-round2/current
+EnvironmentFile=/etc/election-results-platform/round2.env
+EnvironmentFile=-/etc/election-results-platform/round2-alerts.env
+LoadCredential=ftp.env:/etc/election-results-platform/secrets/ftp.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/election-round2-venv/bin/python -m collector.src.second_round_monitor
+StateDirectory=election-round2-monitor
+StateDirectoryMode=0755
+ReadWritePaths=/var/lib/election-round2
+UMask=0077
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+CPUQuota=10%
+MemoryMax=192M
+TimeoutStartSec=3min
