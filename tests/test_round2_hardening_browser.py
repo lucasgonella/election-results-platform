@@ -84,9 +84,13 @@ class HardeningBrowserTests(unittest.TestCase):
                 page.evaluate("Object.defineProperty(document,'hidden',{configurable:true,get:()=>false})")
                 changed = activate(2, 50)
                 State.corrupt = '/data/turnos/2/releases/' + changed + '/portal.json'
-                page.evaluate("LiveData.setState('counting_in_progress')")
-                # Actual periodic polling must retain the old complete context.
-                page.wait_for_timeout(6500)
+                # The interval and the minimum polling age have independent
+                # phases. Wait for actual rejection by periodic polling, not
+                # a guessed first tick; keep the old complete context meanwhile.
+                with page.expect_console_message(lambda message: message.type == 'error'
+                        and 'Refresh failed:' in message.text
+                        and 'portal_bundle_integrity_error' in message.text, timeout=20000):
+                    page.evaluate("LiveData.setState('counting_in_progress')")
                 self.assertEqual(page.evaluate('ElectionPortal.getContext().version.snapshot_id'), initial)
                 self.assertIn(State.corrupt, rows)
                 State.corrupt = None
@@ -94,8 +98,8 @@ class HardeningBrowserTests(unittest.TestCase):
                 self.assertEqual(page.evaluate('ElectionPortal.getContext().result.election.round'), 2)
                 self.assertTrue(page.evaluate('ElectionPortal.getContext().result.snapshot.sections.totalized > 0'))
                 status['last_source_success_at'] = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
-                page.wait_for_timeout(5500)
                 page.evaluate('ElectionLiveStatus.refresh()')
+                page.wait_for_function("document.getElementById('live-status-label').textContent.includes('atrasada')", timeout=20000)
                 self.assertIn('atrasada', page.locator('#live-status-label').inner_text())
                 self.assertFalse(any(path == '/data/version.json' for path in rows))
                 self.assertFalse(errors, errors)
