@@ -239,17 +239,24 @@ class Publisher:
         return self.finish(job,'published')
 
 
+def connect(round_number):
+    from deploy.ssh_transport import selection, transport
+    if selection() == 'ssh':
+        return transport(Transport, 'municipal-' + str(round_number), round_number)
+    return Transport(wire.connect(), round_number, reconnect=wire.connect)
+
+
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('operation',choices=['publish','status','recover']);p.add_argument('--round',type=int,choices=[1,2],required=True);p.add_argument('--package',type=Path)
     a=p.parse_args()
     try:
         # Frontend recovery gates remain in force; this writer never repairs them.
-        visual=wire.Transport(wire.connect(),reconnect=wire.connect)
+        visual=wire.publication_transport()
         try:
             for component in ['portal','raio-x']:
                 if visual.metadata('/frontend-deploy/'+component+'/lock/') is not None:raise RuntimeError('frontend_requires_recovery')
         finally:visual.ftp.close()
-        t=Transport(wire.connect(),a.round,reconnect=wire.connect)
+        t=connect(a.round)
         try:
             publisher=Publisher(t)
             import json

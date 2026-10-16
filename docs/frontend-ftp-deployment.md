@@ -1,5 +1,10 @@
 # CI/CD visual da Locaweb
 
+O fluxo, os componentes e os workflows deste documento são preservados. A
+alternativa SSH/rsync autorizada em 16/10/2026 é opt-in e está descrita em
+[migração SSH/rsync](ssh-rsync-migration.md); nomes históricos `*-ftp.yml` não
+determinam o transporte efetivo. Conferir configuração e recibo real.
+
 Esta é a operação central do portal e do Raio-X Goiás. A main publica alterações
 visuais pelo GitHub Actions: alteração → PR → CI → merge → FTP → SHA-256 público
 → relatório. PRs validam e geram artefatos, sem publicar. O PR #75 permanece

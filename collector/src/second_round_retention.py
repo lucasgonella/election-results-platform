@@ -152,7 +152,8 @@ def main():
             print(json.dumps(selected), flush=True)
             if not args.apply: return 0
             credentials()
-            remote = ArchiveFTP(destination=BACKUP)
+            from .cycle_retention import archive_transport
+            remote = archive_transport(destination=BACKUP)
             try:
                 for item in selected['eligible'][:args.limit]:
                     done = archive_one(args.state, item, remote)

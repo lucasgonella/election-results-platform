@@ -12,6 +12,10 @@ on:
         type: string
         default: previous
     secrets:
+      LOCAWEB_SSH_PRIVATE_KEY:
+        required: false
+      LOCAWEB_SSH_KNOWN_HOSTS:
+        required: false
       LOCAWEB_FTP_HOST:
         required: true
       LOCAWEB_FTP_USER:
@@ -31,6 +35,8 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      PUBLICATION_TRANSPORT: ${{ inputs.component == 'portal' && (vars.LOCAWEB_PORTAL_TRANSPORT || 'ftp') || (vars.LOCAWEB_RAIOX_TRANSPORT || 'ftp') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,7 +66,12 @@ jobs:
           path: ${{ runner.temp }}/frontend
           retention-days: 90
           if-no-files-found: error
-      - name: FTP transfer and controlled activation rollback or recovery
+      - name: Prepare dedicated SSH identity only when explicitly selected
+        env:
+          LOCAWEB_SSH_PRIVATE_KEY: ${{ secrets.LOCAWEB_SSH_PRIVATE_KEY }}
+          LOCAWEB_SSH_KNOWN_HOSTS: ${{ secrets.LOCAWEB_SSH_KNOWN_HOSTS }}
+        run: python deploy/scripts/prepare-ssh.py
+      - name: Selected transport and controlled activation rollback or recovery
         env:
           COMPONENT: ${{ inputs.component }}
           OPERATION: ${{ inputs.operation }}

@@ -8,6 +8,8 @@ on:
       - '!web/public/eleicoes/data/**'
       - '!web/public/eleicoes/**/*.md'
       - 'deploy/frontend.py'
+      - 'deploy/ssh_*.py'
+      - 'deploy/scripts/prepare-ssh.py'
       - 'deploy/frontend-*'
       - '.github/workflows/deploy-frontend-ftp.yml'
       - '.github/workflows/deploy-portal-ftp.yml'

@@ -75,7 +75,7 @@ def main():
             'X-GitHub-Api-Version': '2022-11-28'})
         with build_opener(f.NoRedirect).open(request, timeout=20) as response:
             return json.loads(response.read(2 * 1024 * 1024))
-    transport = f.Transport(f.connect(), reconnect=f.connect, transfer=f.curl_transfer)
+    transport = f.publication_transport(os.environ.get('COMPONENT', 'portal'))
     try: recovered = recover_owned(transport, repo, fetch_attempt)
     finally: transport.ftp.close()
     print(json.dumps({'status': 'recovered_known_owner' if recovered else 'no_recovery_needed', 'recoveries': recovered}))

@@ -32,8 +32,12 @@ respeitar o escopo autorizado na sessão. PRs não publicam.
 
 ## Política permanente da Locaweb
 
-Todo upload usa exclusivamente FTP convencional, porta 21, passivo, sem TLS.
-Não usar FTPS, SFTP, SCP, SSH ou upload HTTP/HTTPS para arquivos. Reutilizar
+FTP convencional, porta 21, passivo, sem TLS, permanece disponível para rollback.
+A missão explícita de 16/10/2026 autoriza SSH + rsync por seleção configurada,
+seguindo `docs/ssh-rsync-migration.md`, com identidades dedicadas, host pinado e
+os mesmos locks, journals, gates eleitorais e verificação HTTPS. Não alternar
+automaticamente transportes nem efetuar corte com transação pendente. Não usar
+FTPS, SFTP, SCP ou upload HTTP/HTTPS para arquivos. Para FTP, reutilizar
 `LOCAWEB_FTP_HOST`, `LOCAWEB_FTP_USER`, `LOCAWEB_FTP_PASSWORD`; não criar contas
 nem duplicar credenciais. `LOCAWEB_FTP_GOIAS_DIR` pertence ao Raio-X e deve ser
 `public_html/eleicoes/goias/raio-x`. Nunca imprimir credenciais, HMAC ou `.env`.

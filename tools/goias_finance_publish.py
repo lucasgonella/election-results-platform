@@ -84,6 +84,12 @@ def publish(path):
     if (data.get('scope') != 'GO' or data.get('year') != 2026
             or len(data.get('candidates', [])) <= 100 or not data.get('transfers')):
         raise ValueError('invalid_goias_dataset')
+    from deploy.ssh_transport import selection
+    if selection() == 'ssh':
+        from deploy.ssh_finance import publish as ssh_publish
+        return {**ssh_publish(raw, https_read), 'sha256':hashlib.sha256(raw).hexdigest(),
+                'bytes':len(raw), 'candidates':len(data['candidates']), 'transfers':len(data['transfers']),
+                'ssh_https_verified':True}
     if ftp_read() == raw and https_read() == raw:
         status, code = 'unchanged', 0
     else:

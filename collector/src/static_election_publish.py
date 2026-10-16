@@ -175,6 +175,9 @@ def connect(environment):
     Never retry publish/activate here: a failed write may already have
     succeeded remotely, and requires explicit reconciliation.
     """
+    from deploy.ssh_transport import selection, transport
+    if selection() == 'ssh':
+        return transport(Transport, 'first-' + environment, environment)
     import time
     last_error = None
     for attempt in range(3):
@@ -327,6 +330,8 @@ def activate(transport, values, *, reviews=None, http=None):
     transaction=secrets.token_hex(32)
     journal_root = transport.private+'/transactions/'+transaction
     backup_root=transport.private+'/backups/'+identity(old['snapshot_id'])+'/files'
+    if hasattr(transport, 'put_many'):
+        transport.put_many({backup_root+'/'+name:raw for name,raw in before.items()})
     # Previous-snapshot backups are immutable and reusable across retries.
     # Verify the exact bytes before reusing; never trust an existing path alone.
     # For an absent file, upload and then verify it before proceeding.
@@ -349,14 +354,19 @@ def activate(transport, values, *, reviews=None, http=None):
     transport.put(journal_root+'/journal.json', canonical(journal))
     transport.put(transport.private+'/pending.json', canonical(journal), replace=True)
     staged = transport.private+'/staging/'+sid+'/files'
-    for name, raw in values.items():
-        transport.put(staged+'/'+name, raw)
+    if hasattr(transport, 'put_many'):
+        transport.put_many({staged+'/'+name:raw for name,raw in values.items()})
+    else:
+        for name, raw in values.items():
+            transport.put(staged+'/'+name, raw)
     # Re-read the full staging inventory before promoting its directory.
     for name, entry in desc['files'].items():
         wire.verify_bytes(transport.read(staged+'/'+name), entry)
     transport.directory(transport.site+'/releases')
     release_root = transport.site+'/releases/'+sid
-    if transport.metadata(release_root+'/') is None:
+    if hasattr(transport, 'promote_release') and transport.metadata(staged+'/') is not None:
+        transport.promote_release(staged, release_root, desc['files'])
+    elif transport.metadata(release_root+'/') is None:
         try:
             transport.ftp.rename(staged, release_root)
         except (OSError, EOFError, ftplib.error_temp) as error:
