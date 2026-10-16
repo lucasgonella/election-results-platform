@@ -66,6 +66,55 @@ def test_selection_explicit_no_fallback(monkeypatch):
     with pytest.raises(ValueError): selection()
 
 
+@pytest.mark.parametrize('failed_attempts',[1,2,3])
+def test_only_readonly_ssh_hello_has_bounded_reconnection(failed_attempts):
+    from unittest.mock import Mock
+    sessions=[]
+    for i in range(3):
+        s=Mock();s.metrics={'ssh_failures':int(i<failed_attempts),'connections':1}
+        if i<failed_attempts:
+            failure=SSHError('ssh_operation_outcome_unknown');failure.transport_operation='hello'
+            s.connect.side_effect=failure
+        sessions.append(s)
+    with patch('deploy.ssh_transport.SSHSession',side_effect=sessions) as factory, patch('time.sleep'), patch.object(f,'connect') as ftp:
+        if failed_attempts==3:
+            with pytest.raises(SSHError) as failure:transport(f.Transport,'portal')
+            assert failure.value.connection_attempts==3
+            assert factory.call_count==3
+        else:
+            t=transport(f.Transport,'portal')
+            assert t.ftp is sessions[failed_attempts]
+            assert t.ftp.metrics['connect_retries']==failed_attempts
+            assert t.ftp.metrics['ssh_failures']==failed_attempts
+        ftp.assert_not_called()
+    assert all(s.shutdown.call_count==1 for s in sessions[:failed_attempts])
+
+
+def test_ssh_home_failure_is_not_retried():
+    from unittest.mock import Mock
+    s=Mock();s.metrics={};s.connect.side_effect=SSHError('ssh_home_mismatch')
+    with patch('deploy.ssh_transport.SSHSession',return_value=s) as factory:
+        with pytest.raises(SSHError):transport(f.Transport,'portal')
+        assert factory.call_count==1
+
+
+def test_unknown_write_response_is_not_replayed_or_reconnected():
+    import subprocess,sys,tempfile
+    from unittest.mock import Mock
+    s=SSHSession.__new__(SSHSession)
+    s.scope,s.checker,s.metrics='benchmark',None,{'ssh_failures':0,'hash_failures':0}
+    s.guard,s.buffer=threading.RLock(),bytearray()
+    s.directory=tempfile.TemporaryDirectory()
+    s.connect=Mock(side_effect=AssertionError('unknown write must not reconnect'))
+    s.process=subprocess.Popen([sys.executable,'-c','import sys;sys.stdin.readline();sys.exit(1)'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,bufsize=0)
+    try:
+        with pytest.raises(SSHError) as failure:s.rpc('commit',path='/election-ssh-benchmark/marker.json')
+        assert failure.value.transport_operation=='commit'
+        assert s.metrics['operations']['commit']==1
+        s.connect.assert_not_called()
+    finally:s.close();s.directory.cleanup()
+
+
 @pytest.mark.parametrize('mode', [0o644, 0o660, 0o777])
 def test_private_key_permissions_fail_closed(tmp_path, mode):
     key = tmp_path / 'key'; key.write_bytes(b'fixture'); key.chmod(mode)

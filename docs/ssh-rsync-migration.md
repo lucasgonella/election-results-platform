@@ -18,7 +18,11 @@ Não existe um segundo writer ou mecanismo de ativação paralelo.
 SSH abre um processo Python por stdio, sem daemon/porta nova no servidor.
 Metadados via JSON não entram no shell; somente código fixo e constantes são
 citados por `shlex`. O servidor repete validação de caminhos e recusa symlinks.
-Timeouts limitam conexão, RPC, rsync e encerramento. Uma operação de escrita com
+Timeouts limitam conexão, RPC, rsync e encerramento. Somente estabelecimento de
+sessão e o `hello` de leitura permitem três tentativas, em conexões novas, antes
+de entregar o transporte ao publicador. Falhas de home/validação não repetem.
+Contadores conservam as falhas anteriores à conexão bem-sucedida.
+Uma operação de escrita com
 resposta perdida interrompe; o publicador consulta journal/estado real para
 recuperar. Não há replay automático de ativação.
 
@@ -62,6 +66,11 @@ Host fixo `afgnet1@ftp.afgnet.com.br:22`, raiz auditada
 Essa evidência é continuidade do known_hosts existente e conexão autenticada;
 não constitui certificação independente do provedor. Uma rotação requer nova
 validação fora de banda e revisão do pin, nunca `StrictHostKeyChecking=no`.
+
+O `/usr/bin/python3` da hospedagem foi identificado como 3.6.8. Somente o helper
+remoto é compatível com essa família; o cliente continua no Python atual da
+app01/Actions. CI executa o contrato do helper em Python 3.6, sem rede nem
+credenciais. Não usar APIs recentes de string/path nesse helper.
 
 Chaves dos serviços ficam protegidas sob `/etc/election-results-platform/ssh`;
 systemd entrega `locaweb_ssh_key` e `locaweb_known_hosts` por `LoadCredential`.

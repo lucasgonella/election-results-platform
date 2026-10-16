@@ -50,7 +50,7 @@ def test_rate_limit_is_not_retried_in_same_cycle(tmp_path):
 def test_pending_recovery_precedes_new_source_requests(tmp_path,monkeypatch):
     sequence=[]
     class Pub:
-        def __init__(self,*args):pass
+        def __init__(self,*args,**kwargs):pass
         def recover(self):sequence.append('recover')
     monkeypatch.setattr('collector.src.second_round_runner.Publisher',Pub)
     class SourceRequest:
@@ -61,6 +61,24 @@ def test_pending_recovery_precedes_new_source_requests(tmp_path,monkeypatch):
     transport=SimpleNamespace(ftp=SimpleNamespace(close=lambda:None))
     cycle(tmp_path/'state',client=SourceRequest(),connector=lambda:transport)
     assert sequence==['recover','source']
+
+
+def test_cycle_keeps_transport_metrics_in_health_and_history(tmp_path,monkeypatch):
+    from collector.src import second_round_publish as pub
+    from test_second_round_transactions import FTP
+    ftp=FTP();ftp.dirs.update({'/public_html/data','/public_html/data/turnos',pub.SITE})
+    # The transport owns this live counter dictionary; the publisher must attach
+    # it to the runner's collector metrics instead of a discarded temporary dict.
+    ftp.metrics={'transport':'ssh_rsync','ssh_failures':0,'files_sent':0}
+    t=pub.Transport(ftp)
+    def publisher(transport,state,*,metrics):
+        return pub.Publisher(transport,state,metrics=metrics,http=lambda name:ftp.files.get(pub.SITE+'/'+name))
+    monkeypatch.setattr('collector.src.second_round_runner.Publisher',publisher)
+    result=cycle(tmp_path/'state',client=Source(),connector=lambda:t)
+    assert result['status']=='published'
+    assert result['metrics']['transport'] is ftp.metrics
+    assert load(tmp_path/'state/health.json')['metrics']['transport']['transport']=='ssh_rsync'
+    assert load(tmp_path/'state/metrics-history.json')[-1]['metrics']['transport']['ssh_failures']==0
 
 
 def test_cache_etag_is_dedicated_and_304_reuses_exact_payload(tmp_path):

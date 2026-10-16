@@ -50,7 +50,7 @@ def test_legacy_proof_and_release_remain_valid(tmp_path):
 
 def test_unchanged_cycle_creates_no_additional_durable_cycle(tmp_path, monkeypatch):
     ftp = FTP(); ftp.dirs.update({'/public_html/data', '/public_html/data/turnos', SITE})
-    factory = lambda transport, state: Publisher(transport, state, http=lambda path: ftp.files.get(SITE + '/' + path))
+    factory = lambda transport, state, **kwargs: Publisher(transport, state, http=lambda path: ftp.files.get(SITE + '/' + path), **kwargs)
     monkeypatch.setattr('collector.src.second_round_runner.Publisher', factory)
     state = tmp_path / 'state'
     connector = lambda: Transport(ftp)

@@ -46,7 +46,7 @@ def run(source, report, selected="ssh", batch=False, cold=False):
             # Valid JSON, changed only inside this synthetic private benchmark.
             chosen = dict(chosen)
             key = next(iter(chosen))
-            chosen[key] = chosen[key].rstrip() + b' \n'
+            chosen[key] = chosen[key] + b' \n'
         transferred = time.monotonic()
         try:
             if batch and kind != 'few_changed': t.put_many({base+'/'+file:raw for file,raw in chosen.items()})

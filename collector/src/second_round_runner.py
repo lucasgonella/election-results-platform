@@ -78,9 +78,7 @@ def cycle(state, *, dry_run=False, client=None, connector=connect):
         if not dry_run:
             step = 'recovery'
             transport = connector()
-            publisher = Publisher(transport, state)
-            publisher.metrics = metrics
-            transport.metrics = metrics
+            publisher = Publisher(transport, state, metrics=metrics)
             with measure(metrics, 'recovery'):
                 publisher.recover()  # Pending work is always settled before new collection.
         storage(state)

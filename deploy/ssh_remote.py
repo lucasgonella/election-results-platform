@@ -44,7 +44,7 @@ def path_for(name, scope, root=HOME, *, ancestor=False):
         raise ValueError('ssh_other_round_protected')
     if scope in {'portal','raio-x'}:
         public = SCOPES[scope][0]
-        relative = name.removeprefix(public+'/')
+        relative = name[len(public)+1:] if name.startswith(public+'/') else name
         if name.startswith(public+'/') and ('data' in PurePosixPath(relative).parts
                 or scope == 'portal' and relative.split('/')[0] == 'goias'):
             raise ValueError('ssh_frontend_data_protected')
