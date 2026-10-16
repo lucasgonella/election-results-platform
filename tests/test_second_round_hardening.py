@@ -164,6 +164,26 @@ def test_notification_failure_does_not_hide_monitor_health(tmp_path, monkeypatch
     assert 'collector_timer_inactive' in status['reasons']
 
 
+def test_public_freshness_excludes_current_and_future_operational_details(tmp_path, monkeypatch):
+    monkeypatch.delenv('ELECTION_ROUND2_NTFY_URL', raising=False)
+    original = assess
+    monkeypatch.setattr('collector.src.second_round_monitor.assess',
+        lambda *args, **kwargs: {**original(*args, **kwargs),
+                                'future_internal_detail': 'private-service-address'})
+    ftp = FTP(); ftp.dirs.update({'/public_html/data', '/public_html/data/turnos', SITE})
+    reader = lambda name: ftp.files.get(SITE + '/' + name)
+    output = tmp_path / 'monitor' / 'status.json'
+    status = run(tmp_path, output, timer_active=True, transport=Transport(ftp), public_reader=reader)
+    public = json.loads(ftp.files[SITE + '/status.json'])
+    assert public['checked_at'] == status['checked_at'] and public['round'] == 2
+    assert public['state'] == status['state']
+    assert not {'future_internal_detail', 'free_bytes', 'cycle_bytes', 'cycle_count',
+                'timer_active', 'pending', 'ftp_failures_total', 'metrics'} & public.keys()
+    private = json.loads(output.read_text())
+    assert private['future_internal_detail'] == 'private-service-address'
+    assert 'free_bytes' in private and 'timer_active' in private
+
+
 def test_reader_cache_dedup_bundle_hash_retry_after_and_etag(tmp_path):
     node = shutil.which('node'); assert node
     source = Source(); values = build_values(source, discover(source)); valid = describe(values)

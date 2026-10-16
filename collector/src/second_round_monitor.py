@@ -161,7 +161,14 @@ def run(state, output, *, timer_active=None, transport=None, public_reader=None,
     if transport_error:
         status['ftp_error'] = transport_error
         status['reasons'].append('ftp_unavailable'); status['state'] = 'ftp_unavailable'
-    public = {key: value for key, value in status.items() if key not in {'public_read_error', 'metrics', 'ftp_error'}}
+    # A public freshness document is an explicit contract. Operational fields
+    # (including future diagnostics) belong only in the local Zabbix snapshot.
+    public_keys = {'schema_version', 'round', 'environment', 'checked_at', 'state',
+                   'election_state', 'snapshot_id', 'last_source_success_at',
+                   'last_official_change_at', 'last_publication_at',
+                   'last_activation_at', 'https_marker_observed_at',
+                   'official_generated_at', 'source_stale_after_seconds'}
+    public = {key: value for key, value in status.items() if key in public_keys}
     if transport is not None:
         try: publish_status(transport, state, public, public_reader=public_reader)
         except Exception as error:
