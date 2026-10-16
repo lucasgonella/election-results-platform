@@ -241,6 +241,9 @@ def main():
         if args.operation != 'cycle' or result.get('status') != 'backoff':
             print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     except Exception as error:
+        if args.operation == 'cycle' and isinstance(error, RuntimeError) and str(error) == 'second_round_writer_busy':
+            print(json.dumps({'status': 'writer_busy_cycle_deferred', 'round': 2}))
+            return 0
         print(json.dumps({'status': 'failed', 'round': 2, **error_report(error)}, sort_keys=True))
         return 2
     return 0

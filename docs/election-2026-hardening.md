@@ -136,7 +136,7 @@ remoto também é validado. Somente depois, sob o flock e nova conferência de
 referências/conteúdo, remove-se o original. Auditoria local em
 `retention-manifest.jsonl`. Nunca apagar um pacote pendente para liberar espaço.
 
-Padrões: reserva de 1 GiB, teto de 1 GiB de ciclos, aviso em 80% do teto,
+Padrões: reserva de 2 GiB (preserva a margem do primeiro turno), teto de 1 GiB de ciclos, aviso em 80% do teto,
 1,5 vezes a reserva ou crescimento acima de 256 MiB/h. Limites configuráveis:
 `ELECTION_ROUND2_MIN_FREE_BYTES`, `ELECTION_ROUND2_MAX_CYCLE_BYTES` e
 `ELECTION_ROUND2_GROWTH_BYTES_PER_HOUR`. Limite impede novas coletas; recuperação
