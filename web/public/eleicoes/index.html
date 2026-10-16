@@ -157,6 +157,7 @@
 
 
     </details>
+    <div id="publication-update-status" class="data-note" role="status" aria-live="polite" hidden></div>
     <section class="summary" aria-label="Resumo da seleção">
 
         <div class="summary-item">
@@ -295,7 +296,7 @@
                 autocomplete="off"
             >
 
-<label class="sr-only" for="result-view">Apresentação dos resultados</label><select id="result-view"><option value="cards">Cards</option><option value="table">Tabela</option></select><button class="text-button" id="download-results" type="button">Exportar CSV <span aria-hidden="true">↓</span></button>
+<label class="sr-only" for="result-view">Apresentação dos resultados</label><select id="result-view"><option value="cards">Cards</option><option value="table">Tabela</option></select><button class="text-button" id="download-results" type="button" disabled>Exportar CSV <span aria-hidden="true">↓</span></button>
         </div>
 
 
@@ -501,15 +502,15 @@
 <dialog id="source-dialog" aria-labelledby="source-title"><div class="dialog-heading"><div><p class="eyebrow">TRANSPARÊNCIA</p><h2 id="source-title">Dados com procedência.</h2></div><button class="icon-button" data-dialog-close type="button" aria-label="Fechar fontes e metodologia">×</button></div><p>Este projeto independente apresenta dados de resultados publicados pelo Tribunal Superior Eleitoral. Cada turno consulta seu próprio marcador e fixa uma publicação completa durante a exploração.</p><dl class="source-facts"><dt>Turno selecionado</dt><dd id="source-round">—</dd><dt>Geração do conjunto</dt><dd id="source-generation">—</dd><dt>Arquivo da seleção</dt><dd><a id="source-result-link" href="#resultados">Aguardando carregamento</a></dd></dl><h3>Como ler o mapa</h3><p>A liderança compara votos das candidaturas na UF. Empates, falta de votos e dados indisponíveis permanecem neutros. Totalização final e situação eleitoral são informações distintas. As diferenças exibidas são cálculos descritivos, não previsões.</p><h3>Limites da publicação atual</h3><p>O conjunto disponibilizado ao portal contém dados nacionais e por UF. Resultados municipais presidenciais usam uma publicação própria, versionada e validada, acessível no modo Municípios. Fotografias autorizadas e série histórica de snapshots permanecem indisponíveis neste contrato.</p><p><a href="https://resultados.tse.jus.br/oficial/app/index.html" target="_blank" rel="noopener noreferrer">Abrir o ambiente oficial do TSE ↗</a> · <a href="https://servicodados.ibge.gov.br/api/docs/malhas?versao=3" target="_blank" rel="noopener noreferrer">Malhas geográficas do IBGE ↗</a></p></dialog>
 <dialog id="compare-dialog" aria-labelledby="compare-title"><div class="dialog-heading"><div><p class="eyebrow">PERSPECTIVAS</p><h2 id="compare-title">Uma eleição, dois turnos.</h2></div><button class="icon-button" data-dialog-close type="button" aria-label="Fechar comparação">×</button></div><p>Compare a votação presidencial da mesma localidade em publicações oficiais independentes. Cada coluna identifica seu turno e sua situação.</p><div id="round-comparison" class="comparison-grid" role="status">Consultando os marcadores oficiais de cada turno…</div><p class="data-note">Diferenças só são apresentadas quando ambos os turnos possuem votos apurados. Mudanças de elenco são identificadas; ausência de dados não equivale a zero votos.</p><details><summary>Histórico temporal</summary><p>Esta publicação não fornece um catálogo público de snapshots históricos verificáveis. Uma evolução no tempo estará disponível quando houver essa fonte.</p></details></dialog>
 <div id="portal-announcement" class="sr-only" role="status" aria-live="polite"></div>
-    <script src="live-data.js?v=1"></script>
-    <script src="favorites.js?v=9"></script>
+    <script src="live-data.js?v=2"></script>
+    <script src="favorites.js?v=10"></script>
     <script src="portal-bridge.js?v=1"></script>
-    <script src="app.js?v=18"></script>
+    <script src="app.js?v=19"></script>
     <script src="brazil-states.js?v=1"></script>
     <script src="municipal-map.js?v=1"></script>
-    <script src="electoral-map.js?v=1"></script>
-    <script src="live-status.js?v=1"></script>
-    <script src="premium-controller.js?v=1"></script>
+    <script src="electoral-map.js?v=2"></script>
+    <script src="live-status.js?v=2"></script>
+    <script src="premium-controller.js?v=2"></script>
 
 </body>
 </html>

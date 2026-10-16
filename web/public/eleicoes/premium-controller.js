@@ -10,7 +10,7 @@
     const date = value => value && Number.isFinite(new Date(value).getTime())
         ? new Date(value).toLocaleString("pt-BR", {timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short"}) : "Não informada";
     const normalize = text => String(text ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
-    let national = null, raceKey = "", revision = 0, context = api.getContext();
+    let national = null, nationalPublication = "", raceKey = "", revision = 0, comparisonRevision = 0, context = api.getContext();
     function el(tag, className, text) {
         const node = document.createElement(tag);
         if (className) node.className = className;
@@ -58,6 +58,9 @@
         if (row && context.dataBase) {
             link.href = context.dataBase + "/" + row.path;
             link.textContent = api.scopeName(context.scope) + " · " + row.office_name + " · JSON publicado";
+        } else {
+            link.removeAttribute("href");
+            link.textContent = "Arquivo da seleção indisponível";
         }
         text("breadcrumb-scope", context.scope ? api.scopeName(context.scope) : "Todas as localidades");
         text("breadcrumb-office", context.result?.office?.name || "Resultados");
@@ -66,6 +69,9 @@
         if (progress && typeof sections === "number") {
             progress.setAttribute("aria-valuenow", String(Math.max(0, Math.min(100, sections))));
             progress.setAttribute("aria-valuetext", waiting(context.result) ? "Aguardando apuração" : percentage(sections) + " das seções totalizadas");
+        } else if (progress) {
+            progress.removeAttribute("aria-valuenow");
+            progress.setAttribute("aria-valuetext", context.status === "error" ? "Dados indisponíveis" : "Carregando resultados");
         }
         updateRoundLinks();
     }
@@ -135,10 +141,34 @@
         markCandidate();
     }
     async function paint(next) {
+        const currentRevision = ++revision;
+        ++comparisonRevision;
         context = next || api.getContext();
         overview();
-        if (!context.manifest || !context.version) return;
-        const currentRevision = ++revision;
+        renderTable();
+        const ready = !!context.result;
+        $("download-results").disabled = !ready;
+        document.querySelectorAll('[data-dialog-open="compare-dialog"]').forEach(button => { button.disabled = !ready; });
+        $("round-comparison").replaceChildren(el("p", "data-note", ready
+            ? "Abra a comparação para verificar os turnos desta seleção."
+            : context.status === "error" ? "A seleção está indisponível. Tente carregá-la novamente." : "Aguardando os resultados desta seleção…"));
+        const publication = JSON.stringify([context.round, context.dataBase, context.version]);
+        const unavailable = !ready || !context.manifest || !context.version;
+        if (unavailable || publication !== nationalPublication) {
+            national = null;
+            nationalPublication = publication;
+            raceKey = "";
+            const failed = context.status === "error";
+            text("national-presidency", "—");
+            text("national-presidency-detail", failed ? "Consulta indisponível" : "Conferindo dados");
+            text("race-context", failed ? "Resultados indisponíveis nesta consulta" : "Conferindo a seleção atual…");
+            $("presidential-race").replaceChildren(el("p", failed ? "error" : "skeleton", failed
+                ? "Tente novamente na área de resultados para conferir esta seleção."
+                : "Aguardando os dados da seleção atual…"));
+        }
+        if ($("global-search-dialog").open) globalSearch();
+        if (unavailable) return;
+        if ($("compare-dialog").open) void compareRounds();
         try {
             const result = await api.loadResult("br", 1);
             if (currentRevision !== revision) return;
@@ -146,6 +176,10 @@
             renderTable();
         } catch (_) {
             if (currentRevision !== revision) return;
+            national = null;
+            raceKey = "";
+            text("national-presidency", "—");
+            text("national-presidency-detail", "Consulta indisponível");
             text("race-context", "Não foi possível conferir a publicação presidencial");
             $("presidential-race").replaceChildren(el("p", "error", "A consulta ficará disponível após uma nova verificação. Nenhum valor foi estimado."));
         }
@@ -153,9 +187,10 @@
     function renderTable() {
         markCandidate();
         const active = $("result-view")?.value === "table";
-        $("results-table").hidden = !active;
-        $("results").hidden = active;
-        if (!active || !context.result) return;
+        $("results-table").hidden = !active || !context.result;
+        $("results").hidden = active && !!context.result;
+        if (!context.result) { $("results-table").replaceChildren(); return; }
+        if (!active) return;
         const table = el("table", "data-table");
         table.append(el("caption", null, `${api.scopeName(context.scope)} · ${context.result.office.name} · ${context.round}º turno`));
         const head = el("thead"), row = el("tr");
@@ -216,9 +251,12 @@
         if (options.length > 24) root.append(el("p", "data-note", "Mostrando os primeiros 24 resultados. Refine sua busca."));
     }
     async function compareRounds() {
+        const currentRevision = ++comparisonRevision;
+        if (!context.result) return;
         const root = $("round-comparison"); root.replaceChildren(el("p", "skeleton", "Verificando as publicações de cada turno…"));
         const scope = context.scope || "br";
         const values = await Promise.allSettled([api.loadRoundResult(1, scope), api.loadRoundResult(2, scope)]);
+        if (currentRevision !== comparisonRevision) return;
         root.replaceChildren();
         for (let index = 0; index < values.length; index++) {
             const item = values[index], result = item.status === "fulfilled" ? item.value?.result : null;
@@ -247,11 +285,7 @@
         }
     }
     document.addEventListener("election:context", event => { void paint(event.detail); });
-    document.addEventListener("election:error", () => {
-        text("national-freshness", "Não foi possível verificar o conjunto publicado");
-        text("race-context", "Publicação indisponível nesta consulta");
-        $("presidential-race").replaceChildren(el("p", "error", "Atualize a página para tentar uma nova consulta. Nenhum valor foi estimado."));
-    });
+    document.addEventListener("election:error", () => { void paint(api.getContext()); });
     document.addEventListener("election:results", renderTable);
     $("result-view").addEventListener("change", renderTable);
     $("global-search-input").addEventListener("input", globalSearch);
@@ -272,7 +306,8 @@
         catch (_) { window.prompt("Copie o link desta visão", url); }
     });
     $("download-results").addEventListener("click", () => {
-        if (!context.result) return;
+        const current = api.getContext();
+        if (!context.result || current.result !== context.result || current.scope !== context.scope || current.office !== context.office) return;
         const rows = [["turno", "localidade", "cargo", "candidatura", "numero", "partido", "votos", "percentual_oficial", "situacao_tse", "geracao_fonte"]];
         for (const candidate of api.getCandidates()) rows.push([context.round, context.scope, context.result.office.name,
             candidate.ballot_name || candidate.name, candidate.ballot_number, candidate.party_acronym,

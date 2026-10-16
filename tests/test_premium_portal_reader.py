@@ -89,7 +89,8 @@ const oldMarker={environment:'oficial',generated_at:'old',snapshot_id:'a'.repeat
 const nextMarker={environment:'oficial',generated_at:'new',snapshot_id:'b'.repeat(64)};
 let favoritesCalls=0;
 const c={URL,URLSearchParams,console:{error:()=>{}},window:{location:{search:'?turno=1',href:'https://afgnet.com.br/eleicoes/'},
- Favorites:{setManifest:()=>favoritesCalls++}},document:{getElementById:()=>({setAttribute:()=>{}})},
+ Favorites:{setManifest:()=>favoritesCalls++}},document:{getElementById:()=>({setAttribute:()=>{},replaceChildren:()=>{}}),
+ createElement:()=>({addEventListener:()=>{}})},
  old,next,oldMarker,nextMarker,fetch:async()=>({ok:true,json:async()=>nextMarker})};
 vm.createContext(c);vm.runInContext(SOURCE,c);
 vm.runInContext(`manifest=old;portalMarker=oldMarker;activeDataBase='/data/releases/'+oldMarker.snapshot_id;

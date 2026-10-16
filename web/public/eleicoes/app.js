@@ -91,15 +91,17 @@ let portalMarker = null;
 let selectedPresidentialCandidate = new URLSearchParams(window.location.search).get("candidate") || "";
 let resultRequestNumber = 0;
 let portalRefreshPending = false;
+let resultState = "loading";
+let initializationRetryPending = false;
 
 function portalContext() {
     return {round: SELECTED_ROUND, manifest, version: portalMarker, dataBase: activeDataBase,
         scope: selectedScope, office: selectedOffice, result: currentResult,
-        candidate: selectedPresidentialCandidate};
+        candidate: selectedPresidentialCandidate, status: resultState,
+        selectionRevision: resultRequestNumber};
 }
 
 function announcePortalContext() {
-    if (portalRefreshPending || !currentResult || !manifest || !portalMarker) return;
     if (typeof document.dispatchEvent === "function" && typeof CustomEvent === "function") {
         document.dispatchEvent(new CustomEvent("election:context", {detail: portalContext()}));
     }
@@ -493,7 +495,7 @@ function renderElectedByState() {
     });
 }
 
-async function loadAlerts(base = activeDataBase) {
+async function loadAlerts(base = activeDataBase, apply = true) {
     const response =
         await dataFetch(
             `${base}/alerts.json`,
@@ -506,8 +508,8 @@ async function loadAlerts(base = activeDataBase) {
         response.status
         === 404
     ) {
-        alerts = [];
-        return alerts;
+        if (apply) alerts = [];
+        return [];
     }
 
     if (!response.ok) {
@@ -520,14 +522,15 @@ async function loadAlerts(base = activeDataBase) {
     const payload =
         await response.json();
 
-    alerts =
+    const nextAlerts =
         Array.isArray(
             payload.alerts
         )
             ? payload.alerts
             : [];
 
-    return alerts;
+    if (apply) alerts = nextAlerts;
+    return nextAlerts;
 }
 
 
@@ -1630,6 +1633,7 @@ function renderCandidateCard(
 
 
 function renderResults() {
+    if (!currentResult) return;
 
     const container =
         document.getElementById(
@@ -1758,42 +1762,69 @@ function renderResults() {
 }
 
 
-async function loadSelectedResult() {
-
-    const requestNumber = ++resultRequestNumber;
-    const requestedScope = selectedScope;
-    const requestedOffice = selectedOffice;
-    const requestedBase = activeDataBase;
-    document.getElementById("results")?.setAttribute("aria-busy", "true");
-
-    const item =
-        currentManifestItem();
-
-    if (!item) {
-        throw new Error(
-            "Resultado não encontrado no manifest."
-        );
+function showResultState(state, retry = () => { void loadSelectedResult(); }) {
+    clearRefreshNotice();
+    resultState = state;
+    currentResult = null;
+    allCandidates = [];
+    filteredCandidates = [];
+    currentPage = 1;
+    const message = state === "error" ? "Não foi possível carregar os resultados desta seleção." : "Carregando os resultados desta seleção…";
+    const labels = {"location-summary": selectedScope ? scopeName(selectedScope) : "—",
+        "office-summary": manifest?.results?.find(item => item.scope === selectedScope && item.office === selectedOffice)?.office_name || "—",
+        "sections-summary": state === "error" ? "Dados indisponíveis" : "Carregando…",
+        "candidate-count-summary": "—", "progress-label": "—", "updated-at": message,
+        "page-title": selectedScope ? `${scopeName(selectedScope)} · Resultados` : "Resultados"};
+    for (const [id, value] of Object.entries(labels)) {
+        const node = document.getElementById(id);
+        if (node) node.textContent = value;
     }
-
-    const response =
-        await dataFetch(
-            `${activeDataBase}/${item.path}`,
-            {
-                cache: "no-store"
-            }
-        );
-
-    if (!response.ok) {
-        throw new Error(
-            `HTTP ${response.status}`
-        );
+    const progress = document.getElementById("progress-bar");
+    if (progress) progress.style.width = "0%";
+    const track = document.getElementById("sections-progress");
+    track?.removeAttribute("aria-valuenow");
+    track?.setAttribute("aria-valuetext", message);
+    const search = document.getElementById("search");
+    if (search) { search.value = ""; search.disabled = true; }
+    const download = document.getElementById("download-results");
+    if (download) download.disabled = true;
+    for (const id of ["results-table", "pagination"]) {
+        const node = document.getElementById(id);
+        if (node) node.replaceChildren();
     }
+    const table = document.getElementById("results-table");
+    if (table) table.hidden = true;
+    renderSeatAllocation();
+    const root = document.getElementById("results");
+    if (root) {
+        root.hidden = false;
+        root.setAttribute("aria-busy", String(state === "loading"));
+        const notice = createElement("div", state === "error" ? "error" : "skeleton", message);
+        if (state === "error") {
+            const button = createElement("button", "text-button", "Tentar novamente");
+            button.type = "button";
+            button.addEventListener("click", retry);
+            notice.appendChild(button);
+        }
+        root.replaceChildren(notice);
+    }
+    announcePortalContext();
+}
 
+async function readSelectedResult({scope, office, sourceManifest, base}) {
+    const item = sourceManifest?.results?.find(row => row.scope === scope && row.office === office);
+    if (!item) throw new Error("Resultado não encontrado no manifest.");
+    const response = await dataFetch(`${base}/${item.path}`, {cache: "no-store"});
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const nextResult = await response.json();
-    if (requestNumber !== resultRequestNumber || requestedScope !== selectedScope
-        || requestedOffice !== selectedOffice || requestedBase !== activeDataBase) return;
-    if (window.PortalBridge) window.PortalBridge.validateResult(nextResult, item, SELECTED_ROUND, manifest.environment);
+    if (window.PortalBridge) window.PortalBridge.validateResult(nextResult, item, SELECTED_ROUND, sourceManifest.environment);
+    return nextResult;
+}
+
+function applySelectedResult(nextResult) {
+    clearRefreshNotice();
     currentResult = nextResult;
+    resultState = "ready";
 
     allCandidates = [
         ...currentResult.candidates
@@ -1812,12 +1843,38 @@ async function loadSelectedResult() {
     document.getElementById(
         "search"
     ).value = "";
+    document.getElementById("search").disabled = false;
+    const download = document.getElementById("download-results");
+    if (download) download.disabled = false;
 
     renderSummary();
     renderSeatAllocation();
     renderResults();
     document.getElementById("results")?.setAttribute("aria-busy", "false");
     announcePortalContext();
+}
+
+async function loadSelectedResult(stagedPublication = null) {
+    // Refresh reads a complete candidate publication without changing the visible selection.
+    if (stagedPublication) return readSelectedResult(stagedPublication);
+    const requestNumber = ++resultRequestNumber;
+    const request = {scope: selectedScope, office: selectedOffice, sourceManifest: manifest, base: activeDataBase};
+    const isCurrent = () => requestNumber === resultRequestNumber && request.scope === selectedScope
+        && request.office === selectedOffice && request.base === activeDataBase && request.sourceManifest === manifest;
+    showResultState("loading");
+    try {
+        const nextResult = await readSelectedResult(request);
+        if (!isCurrent()) return false;
+        applySelectedResult(nextResult);
+        return true;
+    } catch (error) {
+        if (!isCurrent()) return false;
+        console.error("Result read failed:", error);
+        showResultState("error");
+        return false;
+    } finally {
+        if (isCurrent()) document.getElementById("results")?.setAttribute("aria-busy", "false");
+    }
 }
 
 
@@ -1843,11 +1900,13 @@ async function loadVersion() {
         );
 
     if (!response.ok) {
-        throw new Error(
+        const error = new Error(
             `Version HTTP ${
                 response.status
             }`
         );
+        error.publicationMissing = response.status === 404;
+        throw error;
     }
 
     const version = await response.json();
@@ -1859,7 +1918,7 @@ async function loadVersion() {
 }
 
 
-async function loadManifest(base = activeDataBase) {
+async function loadManifest(base = activeDataBase, apply = true) {
 
     const response =
         await dataFetch(
@@ -1884,8 +1943,13 @@ async function loadManifest(base = activeDataBase) {
         || nextManifest.results.some(row => Number(row.round) !== 2))) {
         throw new Error("second_round_not_official");
     }
+    if (!apply) return nextManifest;
     manifest = nextManifest;
+    renderRoundGuide();
+    return manifest;
+}
 
+function renderRoundGuide() {
     // Only announce a second-round dataset when it is actually present.
     const guideTitle = document.getElementById("round-guide-title");
     const guideDescription = document.getElementById("round-guide-description");
@@ -1905,15 +1969,35 @@ async function loadManifest(base = activeDataBase) {
                 "O portal continuará acompanhando as publicações oficiais. Dados do segundo turno serão identificados quando disponíveis, sem projeções.";
         }
     }
-
-    return manifest;
 }
+function clearRefreshNotice() {
+    const notice = document.getElementById("publication-update-status");
+    if (notice) { notice.hidden = true; notice.replaceChildren(); }
+}
+
+function showRefreshFailure() {
+    const notice = document.getElementById("publication-update-status");
+    if (!notice) return;
+    const message = createElement("span", null, "Não foi possível verificar a atualização. Exibindo a publicação anterior, já conferida. ");
+    const retry = createElement("button", "text-button", "Tentar novamente");
+    retry.type = "button";
+    retry.addEventListener("click", async () => {
+        retry.disabled = true;
+        try { await refreshIfChanged(); }
+        finally { retry.disabled = false; }
+    });
+    notice.replaceChildren(message, retry);
+    notice.hidden = false;
+}
+
 async function refreshIfChanged() {
 
-    if (portalRefreshPending || document.hidden || (SELECTED_ROUND === 2 && window.LiveData
-        && (window.LiveData.paused() || !window.LiveData.shouldPoll(activeDataBase)))) return;
+    if (portalRefreshPending || document.hidden || (window.LiveData
+        && (window.LiveData.paused(ROUND_DATA_ROOT) || !window.LiveData.shouldPoll(activeDataBase, ROUND_DATA_ROOT)))) return;
     const previous = {manifest, alerts, base: activeDataBase, marker: portalMarker, result: currentResult,
-        scope: selectedScope, office: selectedOffice};
+        scope: selectedScope, office: selectedOffice, requestNumber: resultRequestNumber, status: resultState};
+    // Serialize the marker request too: slow reads must not start competing refreshes.
+    portalRefreshPending = true;
 
     try {
         const version =
@@ -1928,52 +2012,51 @@ async function refreshIfChanged() {
             nextVersion
             === publishedVersion
         ) {
+            clearRefreshNotice();
             return;
         }
 
         const candidateBase = dataBaseForVersion(version);
-        portalRefreshPending = true;
-
-        await Promise.all([
-            loadManifest(candidateBase),
-            loadAlerts(candidateBase)
+        const [nextManifest, nextAlerts] = await Promise.all([
+            loadManifest(candidateBase, false),
+            loadAlerts(candidateBase, false)
         ]);
+        const nextResult = await loadSelectedResult({scope: previous.scope, office: previous.office,
+            sourceManifest: nextManifest, base: candidateBase});
+        if (previous.requestNumber !== resultRequestNumber || previous.scope !== selectedScope
+            || previous.office !== selectedOffice || previous.result !== currentResult || previous.status !== resultState) return;
+
+        manifest = nextManifest;
+        alerts = nextAlerts;
         activeDataBase = candidateBase;
         portalMarker = version;
 
+        renderRoundGuide();
         renderElectedByState();
         renderScopeSelector();
 
-        const newItem =
-            currentManifestItem();
-
-        if (newItem) {
-            renderOfficeTabs();
-            await loadSelectedResult();
-        }
+        renderOfficeTabs();
+        ++resultRequestNumber;
+        applySelectedResult(nextResult);
 
         // A failed result read must leave the publication token retryable.
         publishedVersion = nextVersion;
         window.Favorites.setManifest(manifest, publishedVersion, activeDataBase);
-        portalRefreshPending = false;
-        announcePortalContext();
-
     } catch (error) {
-        if (portalRefreshPending) {
-            manifest = previous.manifest;
-            alerts = previous.alerts;
-            activeDataBase = previous.base;
-            portalMarker = previous.marker;
-            currentResult = previous.result;
-            selectedScope = previous.scope;
-            selectedOffice = previous.office;
-        }
-        portalRefreshPending = false;
-        document.getElementById("results")?.setAttribute("aria-busy", "false");
+        // Only publication metadata belongs to this transaction; navigation never rolls back.
+        manifest = previous.manifest;
+        alerts = previous.alerts;
+        activeDataBase = previous.base;
+        portalMarker = previous.marker;
+        if (previous.requestNumber === resultRequestNumber && previous.scope === selectedScope
+            && previous.office === selectedOffice && previous.result && previous.result === currentResult
+            && resultState === "ready") showRefreshFailure();
         console.error(
             "Refresh failed:",
             error
         );
+    } finally {
+        portalRefreshPending = false;
     }
 }
 async function initialize() {
@@ -1996,15 +2079,25 @@ async function initialize() {
                 throw new Error("second_round_not_official");
             }
         } catch (error) {
+            if (!error.publicationMissing) {
+                document.body.classList.remove("round-two-unavailable");
+                document.getElementById("round-unavailable").hidden = true;
+                if (roundTwoWaitingTimer) {
+                    clearInterval(roundTwoWaitingTimer);
+                    roundTwoWaitingTimer = null;
+                }
+                throw error;
+            }
             document.body.classList.add("round-two-unavailable");
             document.getElementById("round-unavailable").hidden = false;
             document.getElementById("environment-badge").textContent = "Aguardando dados oficiais";
             if (!roundTwoWaitingTimer) {
                 roundTwoWaitingTimer = setInterval(async () => {
-                    if (roundTwoRetryPending) return;
+                    if (roundTwoRetryPending || document.hidden || (window.LiveData
+                        && (window.LiveData.paused(ROUND_DATA_ROOT) || !window.LiveData.shouldPoll(activeDataBase, ROUND_DATA_ROOT)))) return;
                     roundTwoRetryPending = true;
                     try { await initialize(); }
-                    catch (retryError) { console.error("Round two retry failed:", retryError); }
+                    catch (retryError) { initializationFailed(retryError); }
                     finally { roundTwoRetryPending = false; }
                 }, REFRESH_MS);
             }
@@ -2078,8 +2171,7 @@ if (window.PortalBridge) window.PortalBridge.install({
         renderScopeSelector();
         renderOfficeTabs();
         updateUrl();
-        await loadSelectedResult();
-        return true;
+        return loadSelectedResult();
     },
     setCandidate(number) {
         selectedPresidentialCandidate = number == null ? "" : String(number);
@@ -2151,23 +2243,15 @@ document.getElementById(
 );
 
 
-initialize().catch(
-    error => {
+function initializationFailed(error) {
+    console.error(error);
+    ++resultRequestNumber;
+    showResultState("error", () => {
+        if (initializationRetryPending) return;
+        initializationRetryPending = true;
+        showResultState("loading");
+        void initialize().catch(initializationFailed).finally(() => { initializationRetryPending = false; });
+    });
+}
 
-        console.error(error);
-        document.getElementById("results")?.setAttribute("aria-busy", "false");
-        if (typeof document.dispatchEvent === "function" && typeof CustomEvent === "function") {
-            document.dispatchEvent(new CustomEvent("election:error"));
-        }
-
-        document.getElementById(
-            "results"
-        ).innerHTML =
-            `
-            <div class="error">
-                Não foi possível carregar
-                os resultados.
-            </div>
-            `;
-    }
-);
+initialize().catch(initializationFailed);
