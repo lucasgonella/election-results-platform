@@ -11,6 +11,7 @@
     const MANIFEST_URL =
         ROUND_DATA_ROOT + "/manifest.json";
 
+    const dataFetch = (...args) => window.LiveData ? window.LiveData.fetch(...args) : fetch(...args);
     const REFRESH_MS = 5000;
 
     const OFFICE_ORDER = [
@@ -335,7 +336,7 @@
 
     async function loadVersion() {
         const response =
-            await fetch(
+            await dataFetch(
                 VERSION_URL,
                 {
                     cache: "no-store"
@@ -363,7 +364,7 @@
         const base = /^[a-f0-9]{32,64}$/.test(version.snapshot_id || "")
             ? `${ROUND_DATA_ROOT}/releases/${version.snapshot_id}` : ROUND_DATA_ROOT;
         const response =
-            await fetch(
+            await dataFetch(
                 `${base}/manifest.json`,
                 {
                     cache: "no-store"
@@ -390,6 +391,8 @@
     async function checkForPublication() {
         if (
             rendering
+            || document.hidden
+            || (SELECTED_ROUND === 2 && window.LiveData && (window.LiveData.paused() || !window.LiveData.shouldPoll()))
             || !isOpen()
         ) {
             return;
@@ -569,7 +572,7 @@
 
         if (!resultPromise) {
             resultPromise = (
-                fetch(
+                dataFetch(
                     `${base}/${item.path}`,
                     {
                         cache: "no-store"
@@ -963,6 +966,7 @@
     async function renderPanel() {
         if (
             rendering
+            || window.LiveData?.paused()
             || !isOpen()
         ) {
             return;

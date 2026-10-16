@@ -1,3 +1,4 @@
+const dataFetch = (...args) => window.LiveData ? window.LiveData.fetch(...args) : fetch(...args);
 const SELECTED_ROUND = new URLSearchParams(window.location.search).get("turno") === "2" ? 2 : 1;
 const ROUND_DATA_ROOT = SELECTED_ROUND === 2 ? "/data/turnos/2" : "/data";
 const VERSION_URL = ROUND_DATA_ROOT + "/version.json";
@@ -494,7 +495,7 @@ function renderElectedByState() {
 
 async function loadAlerts(base = activeDataBase) {
     const response =
-        await fetch(
+        await dataFetch(
             `${base}/alerts.json`,
             {
                 cache: "no-store"
@@ -1775,7 +1776,7 @@ async function loadSelectedResult() {
     }
 
     const response =
-        await fetch(
+        await dataFetch(
             `${activeDataBase}/${item.path}`,
             {
                 cache: "no-store"
@@ -1834,7 +1835,7 @@ function publicationToken(
 
 async function loadVersion() {
     const response =
-        await fetch(
+        await dataFetch(
             VERSION_URL,
             {
                 cache: "no-store"
@@ -1861,7 +1862,7 @@ async function loadVersion() {
 async function loadManifest(base = activeDataBase) {
 
     const response =
-        await fetch(
+        await dataFetch(
             `${base}/manifest.json`,
             {
                 cache: "no-store"
@@ -1909,7 +1910,8 @@ async function loadManifest(base = activeDataBase) {
 }
 async function refreshIfChanged() {
 
-    if (portalRefreshPending) return;
+    if (portalRefreshPending || document.hidden || (SELECTED_ROUND === 2 && window.LiveData
+        && (window.LiveData.paused() || !window.LiveData.shouldPoll()))) return;
     const previous = {manifest, alerts, base: activeDataBase, marker: portalMarker, result: currentResult,
         scope: selectedScope, office: selectedOffice};
 
@@ -1984,7 +1986,7 @@ async function initialize() {
         try {
             const candidateVersion = await loadVersion();
             const candidateBase = dataBaseForVersion(candidateVersion);
-            const candidateResponse = await fetch(candidateBase + "/manifest.json", {cache:"no-store"});
+            const candidateResponse = await dataFetch(candidateBase + "/manifest.json", {cache:"no-store"});
             if (!candidateResponse.ok) throw new Error("second_round_manifest_unavailable");
             const candidateManifest = await candidateResponse.json();
             if (!Array.isArray(candidateManifest.results)

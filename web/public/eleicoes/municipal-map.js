@@ -72,7 +72,7 @@
             if(url.searchParams.get('nivel')==='municipios')this.activate(true);
             root.addEventListener('popstate',()=>{const u=new URL(root.location.href);this.uf=UFS.includes(u.searchParams.get('muf'))?u.searchParams.get('muf'):'';this.selected=u.searchParams.get('municipio')||'';this.activate(u.searchParams.get('nivel')==='municipios',false);this.render();});
             // Pin each new version as a whole; never replace one UF in place.
-            this.poll=root.setInterval(async()=>{if(!this.active||this.loading)return;if(!this.context){if(this.waiting)this.load();return;}try{const marker=await this.reader.json(`turnos/${this.round}/version.json`);if(marker.release_id!==this.context.marker.release_id)this.load();}catch(_){/* retain the verified pinned release */}},60000);
+            this.poll=root.setInterval(async()=>{if(doc.hidden||!this.active||this.loading)return;if(!this.context){if(this.waiting)this.load();return;}try{const marker=await this.reader.json(`turnos/${this.round}/version.json`);if(marker.release_id!==this.context.marker.release_id)this.load();}catch(_){/* retain the verified pinned release */}},60000);
         }
         build(){
             const buttons=this.parent.mount.querySelectorAll('.emap-level button');this.stateButton=buttons[0];this.municipalButton=buttons[1];this.municipalButton.disabled=false;this.municipalButton.textContent='Municípios';
