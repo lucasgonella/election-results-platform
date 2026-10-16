@@ -64,7 +64,7 @@ def storage(state):
         old['growth_bytes_per_hour'] = (max(0, allocated - previous_bytes) * 3600 / (epoch - previous_epoch)
                                         if previous_epoch else 0)
     disk = shutil.disk_usage(state)
-    minimum = int(os.environ.get('ELECTION_ROUND2_MIN_FREE_BYTES', str(1024 ** 3)))
+    minimum = int(os.environ.get('ELECTION_ROUND2_MIN_FREE_BYTES', str(2 * 1024 ** 3)))
     maximum = int(os.environ.get('ELECTION_ROUND2_MAX_CYCLE_BYTES', str(1024 ** 3)))
     growth_limit = int(os.environ.get('ELECTION_ROUND2_GROWTH_BYTES_PER_HOUR', str(256 * 1024 ** 2)))
     result = {'checked_at': now(), 'sampled_epoch': old['sampled_epoch'],

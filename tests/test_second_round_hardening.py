@@ -258,3 +258,15 @@ def test_legacy_code_rollback_changes_no_official_result_and_preserves_reactivat
     assert pub.status()['snapshot_id'] == valid['snapshot_id']
     assert len(list((tmp_path / 'journals').glob('*.json'))) == 3
     assert list((tmp_path / 'receipt-history').glob('*.json'))
+
+
+def test_retention_lock_defers_timer_cycle_without_false_service_failure(tmp_path, monkeypatch, capsys):
+    from collector.src.second_round_publish import local_lock
+    from collector.src.second_round_runner import main
+    import sys
+    monkeypatch.setattr(sys, 'argv', ['round2', 'cycle', '--state', str(tmp_path)])
+    monkeypatch.setattr('collector.src.second_round_runner.credentials', lambda: None)
+    with local_lock(tmp_path):
+        assert main() == 0
+    assert json.loads(capsys.readouterr().out)['status'] == 'writer_busy_cycle_deferred'
+    assert not (tmp_path / 'health.json').exists()
