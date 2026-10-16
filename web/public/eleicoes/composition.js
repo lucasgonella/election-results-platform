@@ -762,7 +762,7 @@ function renderTable(
 
 async function fetchJson(url) {
     const response =
-        await fetch(
+        await (window.LiveData ? window.LiveData.fetch : fetch)(
             url,
             {
                 cache: "no-store"

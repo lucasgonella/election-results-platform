@@ -129,7 +129,7 @@ def test_composition_exploration_preserves_official_rendering_contract():
     assert 'data-composition-view="table" aria-pressed="false"' in html
     assert "não são consultadas em tempo real" in html
     assert "não mistura dados do segundo turno" in html
-    assert 'src="composition.js?v=3"' in html
+    assert 'src="composition.js?v=4"' in html
 
 
 def test_both_portal_entrypoints_share_theme_and_accessibility_primitives():
