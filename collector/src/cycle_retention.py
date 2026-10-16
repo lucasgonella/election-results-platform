@@ -215,6 +215,14 @@ class ArchiveFTP:
         self.ftp.close()
 
 
+def archive_transport(*, destination=BACKUP):
+    from deploy.ssh_transport import selection
+    if selection() == 'ssh':
+        from deploy.ssh_archive import ArchiveSSH
+        return ArchiveSSH(destination=destination)
+    return ArchiveFTP(destination=destination)
+
+
 def record(root, value):
     with MANIFEST_LOCK, (root/'archive-manifest.jsonl').open('ab') as stream:
         stream.write(canonical(value)+b'\n'); stream.flush(); os.fsync(stream.fileno())
@@ -334,7 +342,7 @@ def main():
         def process(name):
             worker = threading.get_ident()
             if worker not in sessions:
-                sessions[worker] = ArchiveFTP()
+                sessions[worker] = archive_transport()
             for attempt in range(3):
                 remote = sessions[worker]
                 try:
@@ -346,7 +354,7 @@ def main():
                     if attempt == 2:
                         raise
                     remote.close(); time.sleep(attempt+1)
-                    sessions[worker] = ArchiveFTP()
+                    sessions[worker] = archive_transport()
         try:
             from concurrent.futures import ThreadPoolExecutor
             names = selected['eligible'][:args.limit]

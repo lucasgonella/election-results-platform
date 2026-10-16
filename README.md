@@ -11,6 +11,10 @@ após CI aprovado, usando FTP porta 21, assets versionados, backups e verificaç
 HTTPS por SHA-256. PRs apenas validam. Deploy manual, status, rollback e recuperação
 estão no GitHub Actions; operação e destinos em
 [CI/CD visual da Locaweb](docs/frontend-ftp-deployment.md).
+O transporte alternativo SSH/rsync é selecionado explicitamente por componente;
+credenciais, corte supervisionado, recuperação e limitações estão em
+[migração SSH/rsync](docs/ssh-rsync-migration.md). Disponibilidade de código não
+significa que todos os componentes já deixaram o FTP.
 Essa automação não publica resultados eleitorais nem dados financeiros.
 
 > Projeto independente. Não é um serviço oficial do TSE. A interface apenas apresenta os dados publicados pela Justiça Eleitoral e não realiza projeções, estimativas ou declarações próprias de resultado.
@@ -32,7 +36,7 @@ PostgreSQL
 Static JSON Builder
  |
  v
-Atomic SSH Publisher
+Transactional Publisher (FTP / SSH + rsync)
  |
  v
 Locaweb /data/*.json

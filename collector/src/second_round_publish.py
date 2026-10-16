@@ -243,6 +243,9 @@ def ftp_connect():
 
 
 def connect():
+    from deploy.ssh_transport import selection, transport
+    if selection() == 'ssh':
+        return transport(Transport, 'second')
     # Small electoral JSONs share one passive control session, as round one does.
     return Transport(ftp_connect(), reconnect=ftp_connect)
 
@@ -296,6 +299,8 @@ class Publisher:
         self.job_path = self.state / 'pending.json'
         self.checkpoint_path = self.state / 'checkpoint.json'
         self.metrics = metrics if metrics is not None else {}
+        if hasattr(transport.ftp, 'metrics'):
+            self.metrics['transport'] = transport.ftp.metrics
         self.t.metrics, self.t.metrics_lock = self.metrics, threading.Lock()
         self._baseline_cache = None
         self._http_lock, self._http_next = threading.Lock(), 0
@@ -505,6 +510,14 @@ class Publisher:
             if transport.read(path, optional=True) is None: transport.put(path, raw)
         workers = int(os.environ.get('ELECTION_ROUND2_FTP_WORKERS', '2'))
         if workers not in (1, 2): raise ValueError('invalid_round2_ftp_workers')
+        if hasattr(self.t, 'put_many'):
+            # Resolve known legacy temporaries through the same journal path.
+            for name,raw in sorted(values.items()):
+                path = SITE+'/releases/'+job['snapshot_id']+'/'+name
+                if self.t.read(path+'.upload', optional=True) is not None: upload(self.t,name,raw)
+            self.t.put_many({SITE+'/releases/'+job['snapshot_id']+'/'+name:raw for name,raw in values.items()})
+            for _ in values: self.fault('after_file')
+            return
         if workers == 1 or not getattr(self.t, 'reconnect', None):
             for name, raw in sorted(values.items()):
                 upload(self.t, name, raw)

@@ -1,0 +1,64 @@
+name: Validate SSH rsync transport
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  transport:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.13', '3.14']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -r collector/requirements-dev.txt
+      - name: Transaction recovery and isolated filesystem protocol
+        run: python -m pytest -q tests/test_ssh_transport.py tests/test_static_election_publish.py tests/test_second_round_transactions.py tests/test_cycle_retention.py tests/test_municipal_pipeline.py tests/test_frontend_deploy.py tests/test_goias_finance_publish.py
+      - run: python -m compileall -q deploy collector
+      - run: git diff --check
+  runner-readiness:
+    name: Inspect runner credentials without activating transport
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Report configured secret names without disclosing values
+        id: credentials
+        env:
+          LOCAWEB_SSH_PRIVATE_KEY: ${{ secrets.LOCAWEB_SSH_PRIVATE_KEY }}
+          LOCAWEB_SSH_KNOWN_HOSTS: ${{ secrets.LOCAWEB_SSH_KNOWN_HOSTS }}
+        run: |
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          names=['LOCAWEB_SSH_PRIVATE_KEY','LOCAWEB_SSH_KNOWN_HOSTS']
+          missing=[name for name in names if not os.environ.get(name)]
+          report={'status':'blocked_credentials' if missing else 'configured_not_yet_verified','missing_secret_names':missing,'transport_activated':False}
+          Path(os.environ['RUNNER_TEMP'],'ssh-readiness.json').write_text(json.dumps(report))
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:out.write('ready='+str(not missing).lower()+'\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as out:out.write('SSH infrastructure readiness (does not activate transport):\n\n```json\n'+json.dumps(report,indent=2)+'\n```\n')
+          PY
+      - name: Validate configured identity and actual read-only SSH HTTPS access
+        if: steps.credentials.outputs.ready == 'true'
+        env:
+          PUBLICATION_TRANSPORT: ssh
+          LOCAWEB_SSH_PRIVATE_KEY: ${{ secrets.LOCAWEB_SSH_PRIVATE_KEY }}
+          LOCAWEB_SSH_KNOWN_HOSTS: ${{ secrets.LOCAWEB_SSH_KNOWN_HOSTS }}
+        run: |
+          python deploy/scripts/prepare-ssh.py
+          export LOCAWEB_SSH_IDENTITY_FILE="$RUNNER_TEMP/locaweb-ssh/identity"
+          export LOCAWEB_SSH_KNOWN_HOSTS_FILE="$RUNNER_TEMP/locaweb-ssh/known_hosts"
+          python -m deploy.ssh_finance status
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ssh-runner-readiness-${{ github.sha }}
+          path: ${{ runner.temp }}/ssh-readiness.json
+          retention-days: 30

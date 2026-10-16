@@ -55,6 +55,14 @@ class PassiveFTP(ftplib.FTP):
 def error_report(error):
     """Only controlled codes, numeric errno and types; no server messages/credentials."""
     result = {'error_type': type(error).__name__}
+    transport_code = getattr(error, 'transport_error_code', None)
+    if isinstance(transport_code, str) and re.fullmatch('[a-z_]{1,80}', transport_code):
+        result.update(transport='ssh_rsync', error_code=transport_code)
+        op = getattr(error, 'transport_operation', None)
+        if op in {'hello','metadata','read','mkdir','reserve','hash','cached','cache','commit','rename','unlink','rmdir'}:
+            result['transport_operation'] = op
+        number = getattr(error, 'remote_errno', None)
+        if isinstance(number, int): result['remote_errno'] = number
     operation = getattr(error, 'frontend_operation', None)
     if isinstance(operation, str) and operation in CONTROL_OPERATIONS:
         result['ftp_operation'] = operation
@@ -776,6 +784,13 @@ def connect():
             time.sleep((5, 15)[attempt])
 
 
+def publication_transport(component='portal'):
+    from .ssh_transport import selection, transport
+    if selection() == 'ssh':
+        return transport(Transport, component)
+    return Transport(connect(), reconnect=connect, transfer=curl_transfer)
+
+
 def execute(args):
     if args.action == 'build':
         result = build(args.component, args.commit, args.directory)
@@ -784,8 +799,7 @@ def execute(args):
         result = {'status': 'verified', 'commit': manifest['commit'], 'urls': verify_public(manifest, live=True)}
     else:
         manifest = validate_package(args.directory, args.component) if args.action == 'deploy' else None
-        ftp = connect()
-        transport = Transport(ftp, reconnect=connect, transfer=curl_transfer)
+        transport = publication_transport(args.component)
         try:
             if args.action == 'recover':
                 result = recover(transport, args.component)
@@ -800,6 +814,8 @@ def execute(args):
                         result = rollback(transport, args.component, args.version, args.transaction)
             result['ftp_reconciliations'] = transport.reconciled_transfers
             result['ftp_control_retries'] = CONTROL_RETRIES
+            if hasattr(transport.ftp, 'metrics'):
+                result['transport_metrics'] = transport.ftp.metrics
         finally:
             transport.ftp.close()
     return result

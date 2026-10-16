@@ -1,0 +1,46 @@
+name: SSH publication readiness and finance recovery
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [readiness, finance-status, finance-recover]
+        default: readiness
+permissions:
+  contents: read
+  actions: read
+  checks: read
+concurrency:
+  group: goias-finance-etl
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PUBLICATION_TRANSPORT: ssh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Require approved effective source
+        if: inputs.operation == 'finance-recover'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python deploy/scripts/wait-frontend-ci.py --commit "$GITHUB_SHA" --component raio-x
+      - name: Dedicated identity and pinned host verification
+        env:
+          LOCAWEB_SSH_PRIVATE_KEY: ${{ secrets.LOCAWEB_SSH_PRIVATE_KEY }}
+          LOCAWEB_SSH_KNOWN_HOSTS: ${{ secrets.LOCAWEB_SSH_KNOWN_HOSTS }}
+        run: python deploy/scripts/prepare-ssh.py
+      - name: Read actual remote state or recover a stopped finance writer
+        env:
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          if test "$OPERATION" = finance-recover; then
+            python -m deploy.ssh_finance recover --writer-stopped
+          else
+            python -m deploy.ssh_finance status
+          fi

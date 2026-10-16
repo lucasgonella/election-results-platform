@@ -91,6 +91,8 @@ jobs:
           path: ${{ runner.temp }}/municipal-state
           key: municipal-state-${{ github.event.inputs.round || (github.event.schedule == '18,48 * * * *' && '2' || '1') }}-${{ github.run_id }}-${{ github.run_attempt }}
   publish:
+    env:
+      PUBLICATION_TRANSPORT: ${{ vars.LOCAWEB_MUNICIPAL_TRANSPORT || 'ftp' }}
     needs: collect
     if: github.ref == 'refs/heads/main' && needs.collect.outputs.ready == 'true'
     runs-on: ubuntu-latest
@@ -113,6 +115,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python deploy/scripts/wait-municipal-ci.py --commit "$GITHUB_SHA"
+      - name: Prepare dedicated SSH identity only when selected
+        env:
+          LOCAWEB_SSH_PRIVATE_KEY: ${{ secrets.LOCAWEB_SSH_PRIVATE_KEY }}
+          LOCAWEB_SSH_KNOWN_HOSTS: ${{ secrets.LOCAWEB_SSH_KNOWN_HOSTS }}
+        run: python deploy/scripts/prepare-ssh.py
       - name: Inspect journals locks and previous public version
         env: &ftp-env
           LOCAWEB_FTP_HOST: ${{ secrets.LOCAWEB_FTP_HOST }}
@@ -134,6 +141,8 @@ jobs:
         env: *ftp-env
         run: python -m collector.src.municipal_publish status --round "${{ github.event.inputs.round || (github.event.schedule == '18,48 * * * *' && '2' || '1') }}"
   operation:
+    env:
+      PUBLICATION_TRANSPORT: ${{ vars.LOCAWEB_MUNICIPAL_TRANSPORT || 'ftp' }}
     if: github.ref == 'refs/heads/main' && (github.event.inputs.operation == 'status' || github.event.inputs.operation == 'recover')
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -151,6 +160,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python deploy/scripts/wait-municipal-ci.py --commit "$GITHUB_SHA"
+      - name: Prepare dedicated SSH identity only when selected
+        env:
+          LOCAWEB_SSH_PRIVATE_KEY: ${{ secrets.LOCAWEB_SSH_PRIVATE_KEY }}
+          LOCAWEB_SSH_KNOWN_HOSTS: ${{ secrets.LOCAWEB_SSH_KNOWN_HOSTS }}
+        run: python deploy/scripts/prepare-ssh.py
       - name: Official municipality status or journal recovery
         env: *ftp-env
         run: python -m collector.src.municipal_publish "${{ github.event.inputs.operation }}" --round "${{ github.event.inputs.round }}"

@@ -227,6 +227,8 @@ def _run_cycle(root, workspace, *, collect=None):
             'public_verified_at':receipt['verified_at'],'collected_at':collected_at,
             'eligible_changes':0,'review_required':quarantine,'selected':selected,
             **({'cycle':str(cycle)} if cycle else {})}
+        if hasattr(transport.ftp, 'metrics'):
+            health['transport_metrics'] = transport.ftp.metrics
         save(root/'health.json',health)
         return health
     finally:transport.ftp.close()

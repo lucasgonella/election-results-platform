@@ -19,6 +19,8 @@ jobs:
   import:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      PUBLICATION_TRANSPORT: ${{ vars.LOCAWEB_FINANCE_TRANSPORT || 'ftp' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,7 +68,12 @@ jobs:
           if git diff --cached --quiet; then exit 0; fi
           git commit -m 'data(go): update official candidate finance export'
           git push origin HEAD:main
-      - name: Upload validated GO dataset via plain FTP 21
+      - name: Prepare dedicated SSH identity only when selected
+        env:
+          LOCAWEB_SSH_PRIVATE_KEY: ${{ secrets.LOCAWEB_SSH_PRIVATE_KEY }}
+          LOCAWEB_SSH_KNOWN_HOSTS: ${{ secrets.LOCAWEB_SSH_KNOWN_HOSTS }}
+        run: python deploy/scripts/prepare-ssh.py
+      - name: Upload validated GO dataset through selected transport
         env:
           FTP_HOST: ${{ secrets.LOCAWEB_FTP_HOST }}
           FTP_USER: ${{ secrets.LOCAWEB_FTP_USER }}
