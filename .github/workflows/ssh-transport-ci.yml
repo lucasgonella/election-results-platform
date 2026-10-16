@@ -6,6 +6,13 @@ on:
 permissions:
   contents: read
 jobs:
+  hosting-python:
+    name: Hosting Python 3.6 filesystem contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run only the remote helper in the hosting interpreter family
+        run: docker run --rm --network none -v "$GITHUB_WORKSPACE:/work:ro" -w /work python:3.6.15-slim python tests/test_ssh_remote_compat.py
   transport:
     runs-on: ubuntu-latest
     strategy:
@@ -56,6 +63,8 @@ jobs:
           python deploy/scripts/prepare-ssh.py
           export LOCAWEB_SSH_IDENTITY_FILE="$RUNNER_TEMP/locaweb-ssh/identity"
           export LOCAWEB_SSH_KNOWN_HOSTS_FILE="$RUNNER_TEMP/locaweb-ssh/known_hosts"
+          python -m deploy.frontend status --component portal
+          python -m deploy.frontend status --component raio-x
           python -m deploy.ssh_finance status
       - uses: actions/upload-artifact@v4
         with:

@@ -67,6 +67,11 @@ Essa evidência é continuidade do known_hosts existente e conexão autenticada;
 não constitui certificação independente do provedor. Uma rotação requer nova
 validação fora de banda e revisão do pin, nunca `StrictHostKeyChecking=no`.
 
+O `/usr/bin/python3` da hospedagem foi identificado como 3.6.8. Somente o helper
+remoto é compatível com essa família; o cliente continua no Python atual da
+app01/Actions. CI executa o contrato do helper em Python 3.6, sem rede nem
+credenciais. Não usar APIs recentes de string/path nesse helper.
+
 Chaves dos serviços ficam protegidas sob `/etc/election-results-platform/ssh`;
 systemd entrega `locaweb_ssh_key` e `locaweb_known_hosts` por `LoadCredential`.
 Na app01 essa entrega tem owner root, ACL nominativa e modo aparente 0440

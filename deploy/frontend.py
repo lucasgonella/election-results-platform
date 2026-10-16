@@ -63,6 +63,8 @@ def error_report(error):
             result['transport_operation'] = op
         number = getattr(error, 'remote_errno', None)
         if isinstance(number, int): result['remote_errno'] = number
+        kind = getattr(error, 'remote_error_type', None)
+        if isinstance(kind, str) and re.fullmatch('[A-Za-z]{1,40}',kind): result['remote_error_type'] = kind
         attempts = getattr(error, 'connection_attempts', None)
         if type(attempts) is int and 1 <= attempts <= 3: result['connection_attempts'] = attempts
     operation = getattr(error, 'frontend_operation', None)

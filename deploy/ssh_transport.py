@@ -151,6 +151,7 @@ class SSHSession:
                     failure = SSHError(response['code'])
                     failure.transport_operation = op
                     failure.remote_errno = response.get('errno')
+                    failure.remote_error_type = response.get('type')
                     raise failure
                 return response['value']
             except (OSError, EOFError, ValueError) as error:
