@@ -1,9 +1,11 @@
 """Only synthetic FTP sessions; interrupted reads never replay writes."""
 import ftplib
+import threading
 
 import pytest
 
-from collector.src.second_round_publish import SITE, Transport
+from collector.src.second_round_publish import SITE, Transport, Publisher
+from collector.src.election_release import digest
 from test_second_round_transactions import FTP
 
 
@@ -74,3 +76,25 @@ def test_missing_optional_and_outside_namespace_never_retried():
     with pytest.raises(ValueError, match='outside_second_round_namespace'):
         t.read('/public_html/data/version.json')
     assert ftp.events == []
+
+
+def test_full_read_reuses_one_serial_ftp_session_and_overlaps_https(tmp_path, monkeypatch):
+    monkeypatch.setenv('ELECTION_ROUND2_FTP_WORKERS', '2')
+    active = threading.Lock()
+    class Exclusive(FTP):
+        def retrbinary(self, command, callback, **kwargs):
+            assert active.acquire(blocking=False), 'concurrent use of ftplib control socket'
+            try: return super().retrbinary(command, callback, **kwargs)
+            finally: active.release()
+    ftp = Exclusive(); sid = 'a' * 64
+    values = {'alerts.json': b'{"alerts":[]}', 'version.json': b'{"round":2}'}
+    for name, raw in values.items(): ftp.files[SITE + '/releases/' + sid + '/' + name] = raw
+    transport = Transport(ftp, reconnect=lambda: pytest.fail('secondary control session opened'))
+    barrier = threading.Barrier(2)
+    def http(path):
+        barrier.wait(timeout=5)  # Both checks must overlap outside the FTP lock.
+        return values[path.rsplit('/', 1)[1]]
+    publisher = Publisher(transport, tmp_path, http=http)
+    files = {name: {'size': len(raw), 'sha256': digest(raw)} for name, raw in values.items()}
+    assert publisher.read_files(sid, files) == values
+    assert ftp.events == []  # Verification must never write or rename.

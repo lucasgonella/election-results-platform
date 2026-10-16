@@ -317,9 +317,15 @@ class Publisher:
         self.http = read_public
 
     def read_files(self, sid, files):
+        ftp_lock = threading.Lock()
         def read(transport, pair):
             name, entry = pair
-            raw = transport.read(SITE + '/releases/' + sid + '/' + name)
+            # Keep one control session active. The production FTP path stalls
+            # the first RETR on secondary sessions; an idle parent can then
+            # receive 421. ftplib is not thread-safe, so only HTTPS checks may
+            # overlap. Every FTP byte and every HTTPS hash is still verified.
+            with ftp_lock:
+                raw = transport.read(SITE + '/releases/' + sid + '/' + name)
             wire.verify_bytes(raw, entry)
             if self.http('releases/' + sid + '/' + name) != raw:
                 raise RuntimeError('second_round_https_hash_mismatch')
@@ -329,16 +335,8 @@ class Publisher:
         if workers == 1 or not getattr(self.t, 'reconnect', None):
             return dict(read(self.t, pair) for pair in sorted(files.items()))
         from concurrent.futures import ThreadPoolExecutor
-        local, sessions = threading.local(), []
-        def run(pair):
-            if not hasattr(local, 'transport'):
-                local.transport = self.t.fork(); sessions.append(local.transport)
-            return read(local.transport, pair)
-        try:
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                return dict(pool.map(run, sorted(files.items())))
-        finally:
-            for transport in sessions: transport.ftp.close()
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            return dict(pool.map(lambda pair: read(self.t, pair), sorted(files.items())))
 
     def baseline(self, marker, *, reuse=False):
         # Scoped to one trusted writer operation. Never cache candidate validation
