@@ -39,6 +39,77 @@ def test_network_failure_has_bounded_backoff(tmp_path):
     assert result['error_type']=='TimeoutError'
 
 
+def test_new_ftp_failure_does_not_inherit_ssh_diagnostics(tmp_path,monkeypatch):
+    monkeypatch.setenv('PUBLICATION_TRANSPORT','ftp')
+    state=tmp_path/'state'
+    save(state/'health.json',{'status':'failed','failures':2,'transport':'ssh_rsync',
+        'error_code':'ssh_operation_outcome_unknown','failure_code':'ssh_operation_outcome_unknown',
+        'transport_operation':'hello','remote_errno':22,'connection_attempts':3})
+    def broken():raise TimeoutError()
+    with pytest.raises(TimeoutError):cycle(state,connector=broken)
+    health=load(state/'health.json')
+    assert health['error_type']=='TimeoutError' and health['transport']=='ftp'
+    assert health['failures']==3
+    assert not {'error_code','failure_code','transport_operation','remote_errno','connection_attempts'} & health.keys()
+    assert load(state/'metrics-history.json')[-1]==health
+
+
+def test_supervised_retry_verifies_complete_remote_state_before_source(tmp_path,monkeypatch):
+    state=tmp_path/'state';sequence=[]
+    save(state/'health.json',{'status':'failed','retry_after_epoch':10**12,'failures':4,
+        'failed_cycles_total':4,'error_code':'old_error','failure_code':'old_error'})
+    class Pub:
+        def __init__(self,*args,**kwargs):pass
+        def recover(self):sequence.append('recover')
+        def status(self):
+            sequence.append('verified status')
+            return {'status':'verified','pending':False,'remote_lock':False,
+                    'checkpoint_matches':True,'snapshot_id':'a'*64}
+    monkeypatch.setattr('collector.src.second_round_runner.Publisher',Pub)
+    class Requests:
+        records={}
+        def fetch_json(self,url):sequence.append('source');raise AwaitingData()
+    t=SimpleNamespace(ftp=SimpleNamespace(close=lambda:sequence.append('close')))
+    result=cycle(state,client=Requests(),connector=lambda:t,retry_after_reconcile=True)
+    assert sequence==['recover','verified status','source','close']
+    assert result['metrics']['supervised_retry']['prior_retry_after_epoch']==10**12
+    assert result['failed_cycles_total']==4
+    assert not {'error_code','failure_code'} & result.keys()
+
+
+@pytest.mark.parametrize('change',[{'status':'unknown'},{'pending':True},
+    {'remote_lock':True},{'checkpoint_matches':False}])
+def test_supervised_retry_fails_closed_without_verified_quiescent_publication(tmp_path,monkeypatch,change):
+    state=tmp_path/'state'
+    save(state/'health.json',{'status':'failed','failures':2,'retry_after_epoch':10**12})
+    class Pub:
+        def __init__(self,*args,**kwargs):pass
+        def recover(self):pass
+        def status(self):return {'status':'verified','pending':False,'remote_lock':False,
+            'checkpoint_matches':True,'snapshot_id':'a'*64,**change}
+    monkeypatch.setattr('collector.src.second_round_runner.Publisher',Pub)
+    class Requests:
+        records={}
+        def fetch_json(self,url):pytest.fail('source before verified reconciliation')
+    t=SimpleNamespace(ftp=SimpleNamespace(close=lambda:None))
+    with pytest.raises(RuntimeError,match='supervised_retry_requires_verified'):
+        cycle(state,client=Requests(),connector=lambda:t,retry_after_reconcile=True)
+    result=load(state/'health.json')
+    assert result['status']=='failed' and result['failures']==3
+    assert 'supervised_retry' not in result['metrics']
+
+
+@pytest.mark.parametrize('status,dry_run',[('rate_limited',False),('unchanged',False),
+    ('awaiting_official_round_two_data',False),('failed',True)])
+def test_supervised_retry_cannot_override_source_rate_limit_cadence_or_dry_run(tmp_path,status,dry_run):
+    state=tmp_path/'state';before={'status':status,'retry_after_epoch':10**12}
+    save(state/'health.json',before)
+    with pytest.raises(ValueError,match='supervised_retry_requires_failed_live_cycle'):
+        cycle(state,dry_run=dry_run,retry_after_reconcile=True,
+              connector=lambda:pytest.fail('connection before retry authorization'))
+    assert load(state/'health.json')==before
+
+
 def test_rate_limit_is_not_retried_in_same_cycle(tmp_path):
     state=tmp_path/'state'
     class Limited:

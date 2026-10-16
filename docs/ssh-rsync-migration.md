@@ -144,6 +144,15 @@ Não reinstalar o serviço coletor/banco para mudar I/O. Não reduzir revisões
 pendentes do Amazonas/outros estados. Um ciclo inalterado confirma leitura e
 verificação, não comprova nova ativação nem desempenho de publicação com votos.
 
+Se o turno 2 estiver em backoff após falha de transporte já investigada, a CLI
+oferece `cycle --retry-after-reconcile` para uma tentativa supervisionada. Ela
+adquire o mesmo flock, executa recovery e exige status remoto/HTTPS verificado,
+checkpoint correspondente e ausência de pending/lock antes de consultar o TSE.
+Registra a prova e o prazo anterior em metrics-history, sem editar health à mão,
+zerar contadores históricos ou repetir automaticamente uma escrita incerta.
+Não aceita dry-run, estado rate_limited ou cadência de ciclo saudável. Uma nova
+falha conserva o backoff normal. O timer não recebe essa opção.
+
 ## Ensaios e limites
 
 `tools/ssh_rsync_benchmark.py` aceita somente destino privado UUID em
