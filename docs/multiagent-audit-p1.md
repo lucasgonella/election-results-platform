@@ -84,3 +84,8 @@ operacional faz parte desta entrega. O workflow financeiro existente observa
 alterações no ETL: um eventual merge pode executar esse fluxo e publicar uma
 nova exportação. A PR é o limite autorizado desta sessão; o merge e seus efeitos
 precisam de decisão posterior.
+
+O [preflight final](goias-finance-publication-preflight.md) acrescenta uma trava
+de compatibilidade à job financeira, sob a mesma exclusão dos workflows visuais.
+Ela impede coleta/publicação prematura sem antecipar nem executar deploy nesta
+sessão. Os horários, transportes e writers existentes permanecem preservados.

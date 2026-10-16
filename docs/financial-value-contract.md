@@ -81,9 +81,9 @@ candidaturas de uma pessoa sem conservar a ausência de outra candidatura. Pode,
 portanto, apresentar o agregado misto conhecido/ausente como total. O leitor novo
 corrige isso com `financial_summary`. Não se distorcem os escalares conhecidos
 para contornar esse problema anterior. Publicar primeiro o leitor visual
-compatível reduz esse risco antes de uma futura importação; um merge que dispare
-simultaneamente as duas automações não garante essa ordem. O PR deve registrar
-esse limite e o disparo automático do ETL.
+compatível é um pré-requisito para uma futura importação. O preflight descrito
+abaixo verifica esse requisito mesmo quando o merge dispara as duas automações
+independentemente; o financeiro bloqueia se o visual ainda não estiver pronto.
 
 `financial_audit` resume candidaturas `known`, `partial`, `missing`, zeros completos
 e a soma conhecida (`subtotal`, `null` quando nenhum valor é conhecido).
@@ -113,11 +113,17 @@ bytes FTP/HTTPS. Seu gate existente ainda recusa dataset inteiramente sem
 transferências. O ETL e o leitor aceitam esse caso sem fabricar atividade;
 publicar uma base vazia exige decisão operacional separada.
 
-**Atenção à integração:** o workflow existente `goias-finance-data.yml` observa
-alterações em `tools/goias_finance_etl.py`. Fazer merge desta correção pode
-disparar coleta e publicação financeira automáticas. Esta tarefa não executou
-esse fluxo, não mudou workflows/horários e não autoriza merge ou publicação.
-O deploy visual continua independente e exclui JSON financeiro.
+**Preflight de integração:** o workflow `goias-finance-data.yml` observa o ETL;
+merge, agenda e execução manual continuam podendo iniciar a job financeira.
+Agora a job compartilha a exclusão visual e exige o leitor Raio-X compatível já
+publicado e verificado por FTP/HTTPS antes da coleta e novamente antes do bot
+commit. Sem essa prova, falha fechado e não publica dados prematuramente. Os
+horários e o caminho existente de upload/verificação de bytes são preservados.
+O writer também exige o protocolo da job nova para schema 1 e repete a prova
+antes do transporte. O deploy visual continua independente e
+exclui JSON financeiro. Detalhes e limites:
+[preflight da PR #133](goias-finance-publication-preflight.md).
+Esta tarefa não executa o fluxo nem autoriza merge ou publicação.
 
 Validação exclusivamente sintética: `tests/test_goias_finance_etl.py`,
 `tests/test_goias_financial_contract.py`, `tests/test_goias_identity.py`,

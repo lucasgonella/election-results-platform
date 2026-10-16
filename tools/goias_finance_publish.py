@@ -84,6 +84,15 @@ def publish(path):
     if (data.get('scope') != 'GO' or data.get('year') != 2026
             or len(data.get('candidates', [])) <= 100 or not data.get('transfers')):
         raise ValueError('invalid_goias_dataset')
+    if 'financial_schema' in data:
+        if type(data['financial_schema']) is not int or data['financial_schema'] != 1:
+            raise ValueError('unsupported_financial_schema')
+        # A queued legacy workflow can checkout new main without the shared
+        # exclusion. Only the guarded workflow definition supplies this marker.
+        if os.environ.get('FINANCE_PREFLIGHT_PROTOCOL') != '1':
+            raise RuntimeError('financial_preflight_protocol_required')
+        from deploy.finance_preflight import verify_live_reader
+        verify_live_reader()
     from deploy.ssh_transport import selection
     if selection() == 'ssh':
         from deploy.ssh_finance import publish as ssh_publish

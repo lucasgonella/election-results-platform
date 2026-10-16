@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from tools import goias_finance_publish as p
+from deploy import finance_preflight
 
 
 @pytest.fixture
@@ -47,9 +48,50 @@ def test_nullable_values_and_additive_coverage_preserve_publication_bytes(tmp_pa
     monkeypatch.setattr(p, 'ftp_read', lambda: next(reads))
     monkeypatch.setattr(p, 'https_read', lambda: raw)
     monkeypatch.setattr(p, '_ftp', lambda content: (uploads.append(content) or 0, b''))
+    monkeypatch.setenv('FINANCE_PREFLIGHT_PROTOCOL', '1')
+    proofs = []
+    monkeypatch.setattr(finance_preflight, 'verify_live_reader', lambda: proofs.append('verified'))
     result = p.publish(path)
     assert result['status'] == 'published' and result['ftp_https_verified']
+    assert proofs == ['verified']
     assert uploads == [raw] and json.loads(uploads[0]) == data
+
+
+@pytest.mark.parametrize('protocol', [None, '', '0', '2'])
+def test_legacy_workflow_cannot_publish_new_schema(dataset, monkeypatch, protocol):
+    path, raw = dataset
+    path.write_text(json.dumps({**json.loads(raw), 'financial_schema': 1}))
+    monkeypatch.delenv('FINANCE_PREFLIGHT_PROTOCOL', raising=False)
+    if protocol is not None:
+        monkeypatch.setenv('FINANCE_PREFLIGHT_PROTOCOL', protocol)
+    monkeypatch.setattr(finance_preflight, 'verify_live_reader', lambda: pytest.fail('legacy definition'))
+    monkeypatch.setattr(p, 'ftp_read', lambda: pytest.fail('must not access transport'))
+    with pytest.raises(RuntimeError, match='financial_preflight_protocol_required'):
+        p.publish(path)
+
+
+@pytest.mark.parametrize('schema', [None, True, '1', 0, 2])
+def test_unsupported_schema_cannot_bypass_guard(dataset, monkeypatch, schema):
+    path, raw = dataset
+    path.write_text(json.dumps({**json.loads(raw), 'financial_schema': schema}))
+    monkeypatch.setenv('FINANCE_PREFLIGHT_PROTOCOL', '1')
+    monkeypatch.setattr(finance_preflight, 'verify_live_reader', lambda: pytest.fail('invalid schema'))
+    with pytest.raises(ValueError, match='unsupported_financial_schema'):
+        p.publish(path)
+
+
+@pytest.mark.parametrize('transport', ['ftp', 'ssh'])
+def test_protocol_marker_alone_cannot_authorize_upload(dataset, monkeypatch, transport):
+    path, raw = dataset
+    path.write_text(json.dumps({**json.loads(raw), 'financial_schema': 1}))
+    monkeypatch.setenv('FINANCE_PREFLIGHT_PROTOCOL', '1')
+    monkeypatch.setenv('PUBLICATION_TRANSPORT', transport)
+    def blocked():
+        raise RuntimeError('compatible_finance_reader_not_published')
+    monkeypatch.setattr(finance_preflight, 'verify_live_reader', blocked)
+    monkeypatch.setattr(p, 'ftp_read', lambda: pytest.fail('must not access transport'))
+    with pytest.raises(RuntimeError, match='compatible_finance_reader_not_published'):
+        p.publish(path)
 
 
 def test_empty_financial_dataset_remains_blocked_before_transport(dataset, monkeypatch):
@@ -131,8 +173,9 @@ def test_native_transport_plain_passive_bounded_and_credentials_not_in_argv(monk
     with pytest.raises(ValueError, match='invalid_goias_ftp_destination'): p._ftp(b'bytes')
 
 
-def test_financial_workflow_uses_latest_main_and_single_scoped_writer():
+def test_financial_workflow_pins_main_code_and_single_scoped_writer():
     workflow = (Path(__file__).resolve().parents[1]/'.github/workflows/goias-finance-data.yml').read_text()
-    assert 'ref: main' in workflow and '-m tools.goias_finance_publish' in workflow
+    assert "if: github.ref == 'refs/heads/main'" in workflow
+    assert 'ref: ${{ github.sha }}' in workflow and '-m tools.goias_finance_publish' in workflow
     assert 'concurrency:' in workflow and 'goias-finance-etl' in workflow
     assert '--upload-file' not in workflow and 'git push origin HEAD:main' in workflow

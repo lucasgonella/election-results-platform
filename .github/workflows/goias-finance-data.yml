@@ -17,15 +17,32 @@ concurrency:
   cancel-in-progress: false
 jobs:
   import:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Exclude deploy, rollback and recovery until financial verification ends.
+    # Do not wait for a visual deploy while holding this group: fail closed.
+    concurrency:
+      group: locaweb-frontend-production
+      queue: max
+      cancel-in-progress: false
     env:
       PUBLICATION_TRANSPORT: ${{ vars.LOCAWEB_FINANCE_TRANSPORT || 'ftp' }}
+      # Literal protocol marker: legacy queued definitions cannot publish schema 1.
+      FINANCE_PREFLIGHT_PROTOCOL: '1'
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           persist-credentials: true
+      - name: Require already published compatible Raio-X before collection
+        env:
+          LOCAWEB_FTP_PORT: '21'
+          LOCAWEB_FTP_HOST: ${{ secrets.LOCAWEB_FTP_HOST }}
+          LOCAWEB_FTP_USER: ${{ secrets.LOCAWEB_FTP_USER }}
+          LOCAWEB_FTP_PASSWORD: ${{ secrets.LOCAWEB_FTP_PASSWORD }}
+          LOCAWEB_FTP_GOIAS_DIR: ${{ vars.LOCAWEB_FTP_GOIAS_DIR }}
+        run: python3 -m deploy.finance_preflight
       - name: Unit test financial importer
         run: |
           python3 -m pip install -r collector/requirements-dev.txt
@@ -49,6 +66,14 @@ jobs:
             --candidates /tmp/tse-go/candidates.zip \
             --finance /tmp/tse-go/finance.zip \
             --output web/public/eleicoes/goias/raio-x/data/go-2026.json
+      - name: Recheck compatible Raio-X before committing financial data
+        env:
+          LOCAWEB_FTP_PORT: '21'
+          LOCAWEB_FTP_HOST: ${{ secrets.LOCAWEB_FTP_HOST }}
+          LOCAWEB_FTP_USER: ${{ secrets.LOCAWEB_FTP_USER }}
+          LOCAWEB_FTP_PASSWORD: ${{ secrets.LOCAWEB_FTP_PASSWORD }}
+          LOCAWEB_FTP_GOIAS_DIR: ${{ vars.LOCAWEB_FTP_GOIAS_DIR }}
+        run: python3 -m deploy.finance_preflight
       - name: Validate and publish only complete dataset
         run: |
           set -euo pipefail
@@ -75,6 +100,11 @@ jobs:
         run: python deploy/scripts/prepare-ssh.py
       - name: Upload validated GO dataset through selected transport
         env:
+          LOCAWEB_FTP_PORT: '21'
+          LOCAWEB_FTP_HOST: ${{ secrets.LOCAWEB_FTP_HOST }}
+          LOCAWEB_FTP_USER: ${{ secrets.LOCAWEB_FTP_USER }}
+          LOCAWEB_FTP_PASSWORD: ${{ secrets.LOCAWEB_FTP_PASSWORD }}
+          LOCAWEB_FTP_GOIAS_DIR: ${{ vars.LOCAWEB_FTP_GOIAS_DIR }}
           FTP_HOST: ${{ secrets.LOCAWEB_FTP_HOST }}
           FTP_USER: ${{ secrets.LOCAWEB_FTP_USER }}
           FTP_PASSWORD: ${{ secrets.LOCAWEB_FTP_PASSWORD }}

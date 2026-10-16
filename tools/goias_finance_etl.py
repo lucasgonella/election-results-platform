@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 import io
 import json
+import os
 from pathlib import Path
 import re
 import zipfile
@@ -227,6 +228,10 @@ def main():
     parser.add_argument("--finance", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    # Old queued Actions definitions use ref: main but have no compatibility
+    # guard or shared exclusion. Refuse before generating/committing new data.
+    if os.environ.get('GITHUB_ACTIONS') == 'true' and os.environ.get('FINANCE_PREFLIGHT_PROTOCOL') != '1':
+        raise RuntimeError('financial_preflight_protocol_required')
     data = build(args.candidates, args.finance)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.output.with_suffix(".new")
