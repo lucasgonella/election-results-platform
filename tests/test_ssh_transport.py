@@ -72,6 +72,28 @@ def test_private_key_permissions_fail_closed(tmp_path, mode):
     with pytest.raises(ValueError): SSHSession._file(str(key), private=True)
 
 
+@pytest.mark.parametrize('file_uid,file_mode,parent_uid,parent_mode,managed', [
+    (0,0o440,0,0o550,True),
+    (0,0o440,0,0o577,False),
+    (0,0o460,0,0o550,False),
+    (999,0o440,0,0o550,False),
+    (0,0o440,999,0o550,False),
+])
+def test_systemd_acl_mask_requires_root_managed_readonly_credentials(monkeypatch,file_uid,file_mode,parent_uid,parent_mode,managed):
+    import stat
+    from types import SimpleNamespace
+    p=Path('/run/credentials/fixture.service/locaweb_ssh_key')
+    def metadata(path):
+        if path==p:return SimpleNamespace(st_mode=stat.S_IFREG|file_mode,st_uid=file_uid)
+        return SimpleNamespace(st_mode=stat.S_IFDIR|parent_mode,st_uid=parent_uid)
+    monkeypatch.setattr(Path,'lstat',metadata)
+    monkeypatch.setattr(Path,'resolve',lambda path:path)
+    if managed: assert SSHSession._file(str(p),private=True,credentials_directory=str(p.parent))==p
+    else:
+        with pytest.raises(ValueError):SSHSession._file(str(p),private=True,credentials_directory=str(p.parent))
+    with pytest.raises(ValueError):SSHSession._file(str(p),private=True)
+
+
 @pytest.mark.parametrize('name', ['/../secret', '/public_html/estudos/index.html',
     '/public_html/data/turnos/2/version.json', '/public_html//data/a', '/public_html/data/./a',
     '/public_html/data/a;id', '/public_html/data/a\n', 'relative'])

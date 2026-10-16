@@ -62,7 +62,8 @@ class SSHSession:
         self.guard, self.buffer = threading.RLock(), bytearray()
         credentials = env.get('CREDENTIALS_DIRECTORY')
         self.identity = self._file(env.get('LOCAWEB_SSH_IDENTITY_FILE') or
-            (credentials+'/locaweb_ssh_key' if credentials else None), private=True)
+            (credentials+'/locaweb_ssh_key' if credentials else None), private=True,
+            credentials_directory=credentials if not env.get('LOCAWEB_SSH_IDENTITY_FILE') else None)
         self.known_hosts = self._file(env.get('LOCAWEB_SSH_KNOWN_HOSTS_FILE') or
             (credentials+'/locaweb_known_hosts' if credentials else None))
         verify_known_hosts(self.known_hosts)
@@ -79,12 +80,23 @@ class SSHSession:
         self.destination = 'afgnet1@ftp.afgnet.com.br'
 
     @staticmethod
-    def _file(value, private=False):
+    def _file(value, private=False, credentials_directory=None):
         if not value or not Path(value).is_absolute() or re.search(r'[\s,:;\x00-\x1f]', value):
             raise ValueError('ssh_configuration_required')
         p = Path(value)
         info = p.lstat()
-        if not stat.S_ISREG(info.st_mode) or info.st_mode & (0o077 if private else 0o022):
+        # systemd uses a named-user ACL on root-owned read-only credentials.
+        # Its ACL mask appears as group-read (0440), despite ordinary service
+        # group membership not granting access. Accept only that managed case:
+        # exact credential parent, /run/credentials, root ownership, read-only
+        # file, protected root-owned directory, and no symlink indirection.
+        managed = False
+        if (private and credentials_directory and p.parent == Path(credentials_directory)
+                and str(p).startswith('/run/credentials/') and p.resolve() == p
+                and info.st_uid == 0 and stat.S_IMODE(info.st_mode) == 0o440):
+            parent = p.parent.lstat()
+            managed = stat.S_ISDIR(parent.st_mode) and parent.st_uid == 0 and not parent.st_mode & 0o027
+        if not stat.S_ISREG(info.st_mode) or (info.st_mode & (0o077 if private else 0o022) and not managed):
             raise ValueError('ssh_unsafe_key_permissions' if private else 'ssh_unsafe_known_hosts_permissions')
         return p
 

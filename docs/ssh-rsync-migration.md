@@ -65,6 +65,10 @@ validação fora de banda e revisão do pin, nunca `StrictHostKeyChecking=no`.
 
 Chaves dos serviços ficam protegidas sob `/etc/election-results-platform/ssh`;
 systemd entrega `locaweb_ssh_key` e `locaweb_known_hosts` por `LoadCredential`.
+Na app01 essa entrega tem owner root, ACL nominativa e modo aparente 0440
+(máscara ACL), dentro de diretório root 0550. O cliente aceita esse caso apenas
+no caminho gerenciado `/run/credentials`, sem symlinks e sem escrita/outros;
+chaves comuns continuam exigindo 0600/0400. Não se alteram ACLs do systemd.
 Os usuários `electioncollector` e `electionround2` conservam identidades e
 restrições. Não recebem acesso à chave pessoal de gonella. Entradas dedicadas
 em authorized_keys usam `restrict`, preservando as anteriores e um backup.
