@@ -12,6 +12,7 @@ on:
       - '.github/workflows/deploy-frontend-ftp.yml'
       - '.github/workflows/deploy-portal-ftp.yml'
       - 'deploy/scripts/wait-frontend-ci.py'
+      - 'deploy/scripts/recover-frontend-owned-actions.py'
 permissions:
   contents: read
   actions: read

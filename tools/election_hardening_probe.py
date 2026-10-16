@@ -52,13 +52,17 @@ async def probe(args):
             nonlocal reason
             if urlsplit(res.url).netloc != origin.netloc: return
             headers = res.headers
-            trace.append({'session': session_id, 'at_seconds': round(time.monotonic() - started, 4), 'url': res.url,
+            timing = res.request.timing
+            elapsed = timing['responseStart'] - timing['requestStart'] if timing['responseStart'] >= 0 and timing['requestStart'] >= 0 else None
+            entry = {'session': session_id, 'at_seconds': round(time.monotonic() - started, 4), 'url': res.url,
+                'response_headers_ms': elapsed,
                 'status': res.status, 'headers': {k: headers[k] for k in ['server', 'cache-control', 'etag',
                 'last-modified', 'retry-after', 'x-cache', 'age', 'x-ratelimit-limit', 'x-ratelimit-remaining',
-                'content-length', 'via', 'cf-cache-status', 'x-powered-by'] if k in headers}})
+                'content-length', 'via', 'cf-cache-status', 'x-powered-by'] if k in headers}}
+            trace.append(entry)
             if res.status == 429 or res.status >= 500:
                 reason = 'http_' + str(res.status); halt.set()
-                try: trace[-1]['error_body_excerpt'] = (await res.text())[:1500]
+                try: entry['error_body_excerpt'] = (await res.text())[:1500]
                 except Exception: pass
         async def session(index):
             context = await browser.new_context(viewport={'width': 390 if index % 2 else 1440, 'height': 900},

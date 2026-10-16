@@ -516,8 +516,20 @@ class Transport:
     def _rename(self, temporary, destination):
         self.allowed(temporary)
         self.writable(destination)
+        parent = str(PurePosixPath(destination).parent)
+        if str(PurePosixPath(temporary).parent) != parent:
+            raise ValueError('cross_directory_rename_forbidden')
         try:
-            return self.ftp.rename(temporary, destination)
+            # Keep RNFR/RNTO below the hosting's long absolute-path failure.
+            # Full guarded paths still identify the files; only the wire command
+            # is relative to a verified directory. No retry/replay is added here.
+            self.ftp.cwd('/')
+            for component in PurePosixPath(parent).parts[1:]: self.ftp.cwd(component)
+            if self.ftp.pwd().rstrip('/') != parent.rstrip('/'):
+                raise RuntimeError('ftp_rename_directory_mismatch')
+            result = self.ftp.rename(PurePosixPath(temporary).name, PurePosixPath(destination).name)
+            self.ftp.cwd('/')
+            return result
         except Exception as error:
             control_failure(error, 'rename')
             raise

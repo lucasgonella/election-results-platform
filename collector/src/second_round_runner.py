@@ -104,6 +104,8 @@ def cycle(state, *, dry_run=False, client=None, connector=connect):
         cadence = policy(values, previous, fingerprint)
         observation = {**cadence, 'last_source_success_at': source_success_at,
                        'observed_snapshot_id': verified['snapshot_id'],
+                       'observed_snapshot_since': ((previous.get('observed_snapshot_since') or now())
+                            if previous.get('observed_snapshot_id') == verified['snapshot_id'] else now()),
                        'official_generated_at': verified['descriptor']['generated_at']}
         checkpoint = load(state / 'checkpoint.json') or {}
         step = 'publication'
@@ -132,6 +134,7 @@ def cycle(state, *, dry_run=False, client=None, connector=connect):
                       official_files_checked=len(client.records),
                       ea20_files_checked=sum(url.endswith('-u.json') for url in client.records),
                       **cadence, retry_after_epoch=time.time() + cadence['poll_after_seconds'])
+        result.update(observation)
         save(health_path, result)
         return result
     except AwaitingData:

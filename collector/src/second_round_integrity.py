@@ -109,6 +109,8 @@ def verify_values(values, *, strict=False):
     if set(values) != names | META | extra:
         raise ValueError("unexpected_second_round_files")
     if extra:
+        if len(values['portal.json']) > 4 * 1024 * 1024:
+            raise ValueError('second_round_portal_too_large')
         portal = parse(values['portal.json'])
         expected = {'schema_version': 1, 'environment': 'oficial', 'round': 2,
                     'files': {name: parse(raw) for name, raw in values.items() if name != 'portal.json'}}

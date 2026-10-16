@@ -205,6 +205,16 @@ do código, reinstalar sua unidade/timer e reativar o segundo turno. Manter a
 Não remover locks manualmente nem fazer downgrade de código que não lê o formato
 público ainda ativo. Nenhuma exclusão remota faz parte da migração.
 
+No workflow visual, RNFR/RNTO usam basenames após CWD por componente e PWD
+confirmado. Um timeout após rename continua sendo resultado desconhecido: a
+reconciliação confere bytes em sessão nova, sem repetir STOR. A recuperação
+automática só ocorre dentro do mesmo workflow serializado, para journal
+`prepared` de um Actions comprovadamente terminado com falha/cancelamento/timeout,
+no repositório, branch, workflow, SHA e tentativa correspondentes. Antes de qualquer
+restauração, verifica todos os backups e exige que estado e HTML atuais sejam
+exatamente a baseline ou candidata daquele journal. Owner ativo/desconhecido,
+backup inválido ou publicação externa bloqueiam; não há adoção por idade.
+
 ## Ensaios limitados e decisão
 
 `tools/election_hardening_probe.py` aceita somente loopback e, com `--public`,

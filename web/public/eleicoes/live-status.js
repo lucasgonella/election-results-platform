@@ -9,6 +9,8 @@
         retrying: 'Tentando nova consulta', collection_late: 'Consulta ao TSE atrasada',
         collection_unavailable: 'Consulta ao TSE indisponível', publication_unavailable: 'Publicação indisponível',
         publication_late: 'Publicação atrasada',
+        publication_failed: 'Falha na publicação', collector_failed: 'Falha na consulta oficial',
+        review_required: 'Atualização em revisão',
         checkpoint_publication_inconsistency: 'Publicação em verificação', recovery_required: 'Atualização em recuperação',
         unknown_transaction: 'Publicação em verificação', collector_timer_inactive: 'Atualização interrompida',
         storage_warning: 'Atualização requer atenção', ftp_unavailable: 'Publicação temporariamente indisponível'};
@@ -18,6 +20,9 @@
     let status = null, busy = false;
     function render() {
         const context = root.ElectionPortal?.getContext();
+        const generation = context?.result?.snapshot?.generated_at;
+        const dataAge = generation ? (Date.now() - Date.parse(generation)) / 1000 : NaN;
+        metrics.displayedDataAgeSeconds = Number.isFinite(dataAge) && dataAge >= 0 ? dataAge : null;
         let label = 'Verificando atualização';
         if (status) {
             label = labels[status.state] || 'Atualização em verificação';

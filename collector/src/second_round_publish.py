@@ -102,6 +102,10 @@ class Transport(wire.Transport):
                 with getattr(self, 'metrics_lock', threading.Lock()):
                     metrics = getattr(self, 'metrics', {})
                     metrics['ftp_failures'] = metrics.get('ftp_failures', 0) + 1
+                    kind = type(error).__name__
+                    if isinstance(error, ftplib.Error) and str(error)[:3].isdigit(): kind += '_' + str(error)[:3]
+                    failures = metrics.setdefault('ftp_error_types', {})
+                    failures[kind] = failures.get(kind, 0) + 1
                 if not isinstance(error, (OSError, EOFError)) and not (isinstance(error, ftplib.error_temp) and str(error).startswith('421')):
                     raise
                 if attempt == 2 or self.reconnect is None: raise

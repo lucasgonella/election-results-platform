@@ -7,7 +7,7 @@ import time
 
 
 def relevant(path, component):
-    shared = {'deploy/frontend.py', 'deploy/frontend-targets.json', 'deploy/frontend-requirements.txt',
+    shared = {'deploy/frontend.py', 'deploy/scripts/recover-frontend-owned-actions.py', 'deploy/frontend-targets.json', 'deploy/frontend-requirements.txt',
               'deploy/scripts/wait-frontend-ci.py', '.github/workflows/deploy-frontend-ftp.yml'}
     caller = '.github/workflows/deploy-'+('portal' if component == 'portal' else 'goias')+'-ftp.yml'
     if path in shared or path == caller:

@@ -34,6 +34,10 @@ def assess(health, checkpoint, pending, marker, *, timer_active=True, epoch=None
     if not timer_active: reasons.append('collector_timer_inactive')
     if health.get('failure_code') in {'orphan_lock_without_trusted_journal', 'unknown_second_round_lock_owner'} and health.get('status') == 'failed':
         reasons.append('recovery_required')
+    if health.get('status') == 'failed':
+        if health.get('failure_code') == 'second_round_roster_change_requires_review': reasons.append('review_required')
+        elif health.get('failures', 0) >= 2:
+            reasons.append('publication_failed' if health.get('failure_stage') in {'publication', 'recovery'} else 'collector_failed')
     if checkpoint and not marker: reasons.append('publication_unavailable')
     if marker and checkpoint and marker.get('snapshot_id') != checkpoint.get('snapshot_id'):
         known = pending and marker.get('snapshot_id') == pending.get('snapshot_id')
@@ -42,7 +46,7 @@ def assess(health, checkpoint, pending, marker, *, timer_active=True, epoch=None
         if health.get('status') not in {'awaiting_official_round_two_data'}: reasons.append('collection_unavailable')
     elif source_age > budget: reasons.append('collection_late')
     if (health.get('observed_snapshot_id') and health['observed_snapshot_id'] != checkpoint.get('snapshot_id')
-            and (age(health.get('last_official_change_at'), epoch) or 0) > 180):
+            and (age(health.get('observed_snapshot_since') or health.get('last_official_change_at'), epoch) or 0) > 180):
         reasons.append('publication_late')
     if storage.get('alert'): reasons.append('storage_warning')
     if health.get('status') in {'failed', 'rate_limited', 'official_data_temporarily_unavailable'} and not reasons: state = 'retrying'
@@ -64,8 +68,8 @@ def assess(health, checkpoint, pending, marker, *, timer_active=True, epoch=None
             'public_http_429_total': health.get('public_http_429_total', 0),
             'ftp_failures_total': health.get('ftp_failures_total', 0),
             'timer_active': timer_active, 'pending': bool(pending), 'pending_age_seconds': pending_age,
-            'cycle_bytes': storage.get('cycle_bytes', 0), 'free_bytes': storage.get('free_bytes'),
-            'cycle_count': storage.get('cycle_count', 0),
+            'cycle_bytes': storage.get('cycle_bytes'), 'free_bytes': storage.get('free_bytes'),
+            'cycle_count': storage.get('cycle_count'), 'storage_sampled_at': storage.get('checked_at'),
             'growth_bytes_per_hour': storage.get('growth_bytes_per_hour', 0),
             'metrics': health.get('metrics', {})}
 
@@ -147,7 +151,12 @@ def run(state, output, *, timer_active=None, transport=None, public_reader=None,
             marker = parse(raw) if raw else None
         except Exception as error:
             marker, marker_error = None, error_report(error)
-    status = assess(health, checkpoint, pending, marker, timer_active=timer_active, storage=load(state / 'storage.json'))
+    measured_storage = load(state / 'storage.json') or {}
+    import shutil
+    measured_storage['free_bytes'] = shutil.disk_usage(state).free
+    measured_storage['alert'] = (measured_storage.get('alert', False) or measured_storage['free_bytes'] <
+        int(os.environ.get('ELECTION_ROUND2_MIN_FREE_BYTES', str(2 * 1024 ** 3))) * 1.5)
+    status = assess(health, checkpoint, pending, marker, timer_active=timer_active, storage=measured_storage)
     if marker_error: status['public_read_error'] = marker_error
     if transport_error:
         status['ftp_error'] = transport_error

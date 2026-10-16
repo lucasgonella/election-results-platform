@@ -13,7 +13,7 @@ import time
 
 from .cycle_retention import ArchiveFTP
 from .election_release import canonical, digest, tree
-from .second_round_publish import describe, load, local_lock, result_name, STATE
+from .second_round_publish import describe, load, local_lock, result_name, save, STATE
 
 BACKUP = '/backup/election-results-platform/round2-cycles'
 CYCLE = re.compile(r'(?<![a-f0-9])[a-f0-9]{32}(?![a-f0-9])')
@@ -158,7 +158,13 @@ def main():
                     done = archive_one(args.state, item, remote)
                     print(json.dumps({key: value for key, value in done.items() if key != 'files'}), flush=True)
             finally: remote.close()
-            (args.state / 'storage.json').unlink(missing_ok=True)
+            from .second_round_metrics import storage
+            previous = load(args.state / 'storage.json') or {}
+            save(args.state / 'storage.json', {**previous, 'sampled_epoch': 0})
+            try: storage(args.state)
+            except RuntimeError as error:
+                if str(error) != 'round2_storage_limit': raise
+                print(json.dumps({'status': 'retention_complete_storage_limit_remains'}))
     except RuntimeError as error:
         if str(error) != 'second_round_writer_busy': raise
         print(json.dumps({'status': 'writer_busy_retention_deferred'}))
