@@ -14,6 +14,8 @@ from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import tempfile
+import time
+import threading
 from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, build_opener
@@ -21,6 +23,7 @@ from urllib.request import Request, build_opener
 from deploy import frontend as wire
 from .election_release import META, UFS, canonical, digest, parse, tree, transition
 from .second_round_integrity import verify_values
+from .second_round_metrics import measure
 
 SITE = '/public_html/data/turnos/2'
 PRIVATE = '/election-round2-deploy'
@@ -37,14 +40,14 @@ def identity(value):
     return value
 
 
-def save(path, value):
+def save(path, value, *, mode=0o600):
     """Durable replace on the local filesystem; no shared first-round files."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     raw = canonical(value)
     fd, temporary = tempfile.mkstemp(prefix='.round2-', dir=path.parent)
     try:
-        os.fchmod(fd, 0o600)
+        os.fchmod(fd, mode)
         with os.fdopen(fd, 'wb') as stream:
             stream.write(raw)
             stream.flush()
@@ -78,19 +81,28 @@ def transaction_path(sid, name):
 
 
 def result_name(name):
-    return name in META or bool(re.fullmatch(r'(' + '|'.join(UFS + ['br', 'zz']) +
+    return name in META | {'portal.json'} or bool(re.fullmatch(r'(' + '|'.join(UFS + ['br', 'zz']) +
         r')/(president|governor)\.json', name))
 
 
 class Transport(wire.Transport):
+    def fork(self):
+        if self.reconnect is None: return None
+        child = Transport(self.reconnect(), reconnect=self.reconnect)
+        child.metrics, child.metrics_lock = getattr(self, 'metrics', {}), getattr(self, 'metrics_lock', threading.Lock())
+        return child
+
     def _readonly_retry(self, operation):
         # Replace the control socket before repeating any interrupted read.
         # Partial RETR bytes and unread responses must never be reused.
         import time
         for attempt in range(3):
             try: return operation()
-            except (OSError, EOFError, ftplib.error_temp) as error:
-                if isinstance(error, ftplib.error_temp) and not str(error).startswith('421'):
+            except (OSError, EOFError, ftplib.Error) as error:
+                with getattr(self, 'metrics_lock', threading.Lock()):
+                    metrics = getattr(self, 'metrics', {})
+                    metrics['ftp_failures'] = metrics.get('ftp_failures', 0) + 1
+                if not isinstance(error, (OSError, EOFError)) and not (isinstance(error, ftplib.error_temp) and str(error).startswith('421')):
                     raise
                 if attempt == 2 or self.reconnect is None: raise
                 self.ftp.close()
@@ -126,7 +138,7 @@ class Transport(wire.Transport):
 
     def writable(self, path):
         self.allowed(path)
-        if path == SITE + '/version.json': return path
+        if path in {SITE + '/version.json', SITE + '/status.json'}: return path
         relative = path.removeprefix(SITE + '/releases/')
         sid, _, name = relative.partition('/')
         if re.fullmatch('[a-f0-9]{64}', sid) and result_name(name): return path
@@ -205,6 +217,13 @@ def ftp_connect():
             if os.environ.get('LOCAWEB_FTP_PORT', '21') != '21':
                 raise ValueError('plain_ftp_port_21_required')
             ftp = wire.PassiveFTP()
+            if isinstance(ftp, ftplib.FTP):
+                original_transfer = ftp.ntransfercmd
+                def transfer(cmd, rest=None):
+                    connection, size = original_transfer(cmd, rest)
+                    connection.settimeout(45)  # Separate data/control budgets.
+                    return connection, size
+                ftp.ntransfercmd = transfer
             try:
                 ftp.connect(os.environ['LOCAWEB_FTP_HOST'], 21, timeout=15)
                 ftp.login(os.environ['LOCAWEB_FTP_USER'], os.environ['LOCAWEB_FTP_PASSWORD'])
@@ -245,8 +264,11 @@ def describe(values):
 
 def marker_for(verified):
     desc = verified['descriptor']
-    return canonical({'schema_version': 1, 'environment': 'oficial', 'round': 2,
-        'generated_at': desc['generated_at'], 'snapshot_id': verified['snapshot_id']})
+    marker = {'schema_version': 1, 'environment': 'oficial', 'round': 2,
+        'generated_at': desc['generated_at'], 'snapshot_id': verified['snapshot_id']}
+    if 'portal.json' in desc['files']:
+        marker['portal'] = desc['files']['portal.json']
+    return canonical(marker)
 
 
 def validate_descriptor(desc, sid):
@@ -263,13 +285,66 @@ def validate_descriptor(desc, sid):
 
 class Publisher:
     """Caller holds local_lock for every mutation, including orphan recovery."""
-    def __init__(self, transport, state, *, http=http_read, fault=lambda _: None):
+    def __init__(self, transport, state, *, http=http_read, fault=lambda _: None, metrics=None):
         self.t = transport
         self.state = Path(state)
-        self.http = http
         self.fault = fault
         self.job_path = self.state / 'pending.json'
         self.checkpoint_path = self.state / 'checkpoint.json'
+        self.metrics = metrics if metrics is not None else {}
+        self.t.metrics, self.t.metrics_lock = self.metrics, threading.Lock()
+        self._baseline_cache = None
+        self._http_lock, self._http_next = threading.Lock(), 0
+        def read_public(relative):
+            if http is http_read:
+                rate = float(os.environ.get('ELECTION_ROUND2_HTTPS_RPS', '4'))
+                if not 0 < rate <= 5: raise ValueError('invalid_round2_https_rate')
+                with self._http_lock:
+                    delay = self._http_next - time.monotonic()
+                    if delay > 0: time.sleep(delay)
+                    self._http_next = time.monotonic() + 1 / rate
+            try:
+                return http(relative)
+            except HTTPError as error:
+                if error.code == 429:
+                    with self._http_lock:
+                        self.metrics['public_http_429'] = self.metrics.get('public_http_429', 0) + 1
+                raise
+        self.http = read_public
+
+    def read_files(self, sid, files):
+        def read(transport, pair):
+            name, entry = pair
+            raw = transport.read(SITE + '/releases/' + sid + '/' + name)
+            wire.verify_bytes(raw, entry)
+            if self.http('releases/' + sid + '/' + name) != raw:
+                raise RuntimeError('second_round_https_hash_mismatch')
+            return name, raw
+        workers = int(os.environ.get('ELECTION_ROUND2_FTP_WORKERS', '2'))
+        if workers not in (1, 2): raise ValueError('invalid_round2_ftp_workers')
+        if workers == 1 or not getattr(self.t, 'reconnect', None):
+            return dict(read(self.t, pair) for pair in sorted(files.items()))
+        from concurrent.futures import ThreadPoolExecutor
+        local, sessions = threading.local(), []
+        def run(pair):
+            if not hasattr(local, 'transport'):
+                local.transport = self.t.fork(); sessions.append(local.transport)
+            return read(local.transport, pair)
+        try:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                return dict(pool.map(run, sorted(files.items())))
+        finally:
+            for transport in sessions: transport.ftp.close()
+
+    def baseline(self, marker, *, reuse=False):
+        # Scoped to one trusted writer operation. Never cache candidate validation
+        # across activation or skip the final FTP/HTTPS integrity verification.
+        if reuse and self._baseline_cache and self._baseline_cache[0] == marker:
+            return self._baseline_cache[1]
+        with measure(self.metrics, 'baseline_verification'):
+            result = self.release(marker)
+        self._baseline_cache = (marker, result)
+        return result
 
     def marker(self):
         ftp = self.t.read(SITE + '/version.json', optional=True)
@@ -288,13 +363,7 @@ class Publisher:
         desc = parse(self.t.read(transaction_path(sid, 'descriptor.json')))
         validate_descriptor(desc, sid)
         if expected is not None and expected != desc: raise ValueError('remote_descriptor_conflict')
-        values = {}
-        for name, entry in sorted(desc['files'].items()):
-            raw = self.t.read(SITE + '/releases/' + sid + '/' + name)
-            wire.verify_bytes(raw, entry)
-            if self.http('releases/' + sid + '/' + name) != raw:
-                raise RuntimeError('second_round_https_hash_mismatch')
-            values[name] = raw
+        values = self.read_files(sid, desc['files'])
         verified = describe(values)
         if verified['descriptor'] != desc or marker_for(verified) != marker:
             raise ValueError('second_round_release_identity_mismatch')
@@ -323,12 +392,21 @@ class Publisher:
 
     def finish(self, job):
         # Proof before adopting checkpoint; a checkpoint failure leaves the journal.
-        self.release(bytes.fromhex(job['marker']), expected=job['descriptor'])
+        with measure(self.metrics, 'https_post_activation_verification'):
+            self.release(bytes.fromhex(job['marker']), expected=job['descriptor'])
         if self.marker() != bytes.fromhex(job['marker']):
             raise RuntimeError('second_round_selection_changed')
         receipt = {'status': 'published', 'round': 2, 'snapshot_id': job['snapshot_id'],
-                   'verified_at': now(), 'activation': 'ftp_marker_rename', 'multinode_guarantee': False}
-        save(self.state / 'receipts' / (job['snapshot_id'] + '.json'), receipt)
+                   'verified_at': now(), 'activation': 'ftp_marker_rename', 'multinode_guarantee': False,
+                   'transaction_owner': job['owner']}
+        receipt_path = self.state / 'receipts' / (job['snapshot_id'] + '.json')
+        previous_receipt = load(receipt_path)
+        if previous_receipt:
+            if previous_receipt.get('transaction_owner') == job['owner']:
+                receipt = previous_receipt  # Crash recovery never fabricates a newer publication time.
+            else:
+                save(self.state / 'receipt-history' / (digest(canonical(previous_receipt)) + '.json'), previous_receipt)
+        save(receipt_path, receipt)
         self.fault('before_checkpoint')
         save(self.checkpoint_path, receipt)
         self.fault('after_checkpoint')
@@ -342,16 +420,20 @@ class Publisher:
             self.fault('after_owner_cleanup')
             self.t.ftp.rmd(PRIVATE + '/lock')
         # Keep an immutable local journal; no releases/backups are deleted.
-        save(self.state / 'journals' / (job['snapshot_id'] + '.json'), job)
+        journal_path = self.state / 'journals' / (job['snapshot_id'] + '.json')
+        previous_job = load(journal_path)
+        if previous_job and previous_job.get('owner') != job['owner']:
+            journal_path = journal_path.with_name(job['snapshot_id'] + '.' + job['owner'][:24] + '.json')
+        save(journal_path, job)
         save(self.job_path, None)
-        return receipt
+        return {key: value for key, value in receipt.items() if key != 'transaction_owner'}
 
-    def recover(self):
+    def recover(self, *, reuse_baseline=False):
         job = load(self.job_path)
         if not job:
             if self.t.metadata(PRIVATE + '/lock/') is not None:
                 raise RuntimeError('orphan_lock_without_trusted_journal')
-            return self.reconcile()
+            return self.reconcile(reuse_baseline=reuse_baseline)
         identity(job['snapshot_id'])
         validate_descriptor(job['descriptor'], job['snapshot_id'])
         selected = self.marker()  # Resolve activation outcome before any write.
@@ -368,43 +450,73 @@ class Publisher:
             return self.finish(job)
         self.remote_lock(job)
         if selected == new: return self.finish(job)
-        if old: self.release(old)
+        if old:
+            self.baseline(old, reuse=reuse_baseline)
+            self.t.put(job.get('before_backup', transaction_path(job['snapshot_id'], 'before-marker.json')), old)
         package = Path(job['package'])
         values = tree(package)
         verified = describe(values)
         if verified['descriptor'] != job['descriptor']: raise ValueError('local_pending_package_changed')
         # Only temporary names belonging to this persisted transaction are known.
-        for name, raw in sorted(values.items()):
-            path = SITE + '/releases/' + job['snapshot_id'] + '/' + name
-            existing = self.t.read(path, optional=True)
-            if existing is not None:
-                if existing != raw: raise ValueError('immutable_second_round_collision')
-                continue
-            temporary = self.t.read(path + '.upload', optional=True)
-            if temporary is not None:
-                if temporary == raw:
-                    self.t.ftp.rename(path + '.upload', path)
-                else:
-                    self.t.ftp.delete(path + '.upload')
-            if self.t.read(path, optional=True) is None: self.t.put(path, raw)
-            self.fault('after_file')
+        with measure(self.metrics, 'ftp_upload_and_verification'):
+            self.prepare_files(job, values)
         self.t.put(transaction_path(job['snapshot_id'], 'descriptor.json'), canonical(job['descriptor']))
-        self.release(new, expected=job['descriptor'])
+        with measure(self.metrics, 'https_pre_activation_verification'):
+            self.release(new, expected=job['descriptor'])
         job['phase'] = 'verified'
         save(self.job_path, job)
         self.fault('before_activation')
         if self.marker() != old: raise RuntimeError('external_second_round_marker')
         # A marker temporary left by a crash is reconciled, never blindly replayed.
-        temporary = self.t.read(SITE + '/version.json.upload', optional=True)
-        if temporary is not None:
-            if temporary != new: raise RuntimeError('unknown_marker_temporary')
-            self.t.ftp.rename(SITE + '/version.json.upload', SITE + '/version.json')
-        else:
-            self.t.put(SITE + '/version.json', new, replace=True)
+        with measure(self.metrics, 'activation'):
+            temporary = self.t.read(SITE + '/version.json.upload', optional=True)
+            if temporary is not None:
+                if temporary != new: raise RuntimeError('unknown_marker_temporary')
+                self.t.ftp.rename(SITE + '/version.json.upload', SITE + '/version.json')
+            else:
+                self.t.put(SITE + '/version.json', new, replace=True)
         self.fault('after_activation')
         return self.finish(job)
 
-    def reconcile(self):
+    def prepare_files(self, job, values):
+        """Disjoint immutable files only; activation remains serialized."""
+        def upload(transport, name, raw):
+            path = SITE + '/releases/' + job['snapshot_id'] + '/' + name
+            existing = transport.read(path, optional=True)
+            if existing is not None:
+                if existing != raw: raise ValueError('immutable_second_round_collision')
+                return
+            temporary = transport.read(path + '.upload', optional=True)
+            if temporary is not None:
+                if temporary == raw:
+                    transport.ftp.rename(path + '.upload', path)
+                else:
+                    transport.ftp.delete(path + '.upload')
+            if transport.read(path, optional=True) is None: transport.put(path, raw)
+        workers = int(os.environ.get('ELECTION_ROUND2_FTP_WORKERS', '2'))
+        if workers not in (1, 2): raise ValueError('invalid_round2_ftp_workers')
+        if workers == 1 or not getattr(self.t, 'reconnect', None):
+            for name, raw in sorted(values.items()):
+                upload(self.t, name, raw)
+                self.fault('after_file')
+            return
+        from concurrent.futures import ThreadPoolExecutor
+        import threading
+        sessions, local = [], threading.local()
+        def run(pair):
+            if not hasattr(local, 'transport'):
+                local.transport = self.t.fork()
+                sessions.append(local.transport)
+            upload(local.transport, *pair)
+        try:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                # Context manager waits for all workers even after a failure.
+                # No marker/receipt/checkpoint is touched by a worker.
+                for _ in pool.map(run, sorted(values.items())): self.fault('after_file')
+        finally:
+            for transport in sessions: transport.ftp.close()
+
+    def reconcile(self, *, reuse_baseline=False):
         if load(self.job_path): return self.recover()
         if self.t.metadata(PRIVATE + '/lock/') is not None:
             raise RuntimeError('orphan_lock_without_trusted_journal')
@@ -413,7 +525,7 @@ class Publisher:
         if not marker:
             if checkpoint: raise RuntimeError('remote_second_round_marker_missing')
             return {'status': 'awaiting_official_round_two_data'}
-        verified = self.release(marker)[1]
+        verified = self.baseline(marker, reuse=reuse_baseline)[1]
         if checkpoint and checkpoint['snapshot_id'] != verified['snapshot_id']:
             # Adopt only a transaction previously verified by this trusted host.
             receipt = load(self.state / 'receipts' / (verified['snapshot_id'] + '.json'))
@@ -423,17 +535,17 @@ class Publisher:
             raise RuntimeError('remote_release_without_local_receipt')
         return {'status': 'verified', 'snapshot_id': verified['snapshot_id']}
 
-    def publish(self, directory):
-        self.reconcile()  # Finish earlier transaction before considering newer data.
-        values = tree(Path(directory))
+    def publish(self, directory=None, *, values=None, baseline_checked=False):
+        self.reconcile(reuse_baseline=baseline_checked)
+        values = tree(Path(directory)) if values is None else values
         verified = describe(values)
         before = self.marker()
         if before:
-            prior, _ = self.release(before)
+            prior, _ = self.baseline(before, reuse=True)
             # Different fetch times alone never create a new public release.
             if verified['snapshot_id'] == parse(before)['snapshot_id']:
                 return {'status': 'unchanged', 'snapshot_id': verified['snapshot_id']}
-            before_names, after_names = set(prior) - META, set(values) - META
+            before_names, after_names = set(prior) - META - {'portal.json'}, set(values) - META - {'portal.json'}
             if not before_names <= after_names: raise ValueError('second_round_inventory_regression')
             for name in before_names:
                 old, new = parse(prior[name]), parse(values[name])
@@ -446,14 +558,16 @@ class Publisher:
         if checkpoint and (not before or checkpoint['snapshot_id'] != parse(before)['snapshot_id']):
             raise RuntimeError('second_round_checkpoint_mismatch')
         import secrets
+        if directory is None: raise ValueError('changed_round2_package_required')
         job = {'schema': 1, 'snapshot_id': verified['snapshot_id'], 'owner': secrets.token_hex(32),
             'phase': 'prepared', 'package': str(Path(directory).resolve()), 'descriptor': verified['descriptor'],
             'before': before.hex() if before else None, 'marker': marker_for(verified).hex(), 'created_at': now()}
+        # A release may be safely selected again without overwriting the first
+        # activation's backup. Descriptors remain addressed by the full release ID.
+        job['before_backup'] = transaction_path(job['owner'], 'before-marker.json')
         # Persist intended work before acquiring the remote lock.
         save(self.job_path, job)
         self.fault('after_journal')
         self.remote_lock(job)
         self.fault('after_lock')
-        if before:
-            self.t.put(transaction_path(job['snapshot_id'], 'before-marker.json'), before)
-        return self.recover()
+        return self.recover(reuse_baseline=True)

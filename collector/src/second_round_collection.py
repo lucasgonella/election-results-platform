@@ -12,6 +12,7 @@ from .planner import build_ea14_url, ElectionCollectionPlan
 from .runtime import build_config_url, select_supported_elections
 from .second_round_discovery import SETTINGS, evaluate
 from .tse_client import TseClient, TseFetchResult
+from .second_round_metrics import measure
 
 
 class AwaitingData(Exception):
@@ -39,18 +40,30 @@ class CachedClient(TseClient):
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
         self.records = {}
+        self.metrics = {}
+        self.http_429 = 0
 
     def fetch_json(self, url, **_):
         official_url(url)
         path = self.directory / (digest(url.encode()) + '.json')
-        old = parse(path.read_bytes()) if path.exists() else None
+        try: old = parse(path.read_bytes()) if path.exists() else None
+        except (ValueError, UnicodeError): old = None
+        # Legacy/unverifiable cache entries require a fresh official 200. Cache
+        # corruption must never turn a 304 into an invented source response.
+        if old and old.get('payload_sha256') != digest(canonical(old.get('payload'))): old = None
         headers = {'If-None-Match': old['etag']} if old and old.get('etag') else {}
-        response = self.session.get(url, headers=headers, timeout=self.timeout, allow_redirects=False)
+        with measure(self.metrics, 'tse_http'):
+            response = self.session.get(url, headers=headers, timeout=self.timeout, allow_redirects=False)
         if response.status_code == 429:
+            self.http_429 += 1
             delay = response.headers.get('Retry-After', '300')
             try: seconds = int(delay)
-            except ValueError: seconds = 300
-            raise RateLimited(max(60, min(seconds, 3600)))
+            except ValueError:
+                from email.utils import parsedate_to_datetime
+                from datetime import datetime, timezone
+                try: seconds = int((parsedate_to_datetime(delay) - datetime.now(timezone.utc)).total_seconds())
+                except (ValueError, TypeError, OverflowError): seconds = 300
+            raise RateLimited(max(60, seconds))
         if response.status_code in (404, 204):
             raise AwaitingData()
         if response.status_code == 304:
@@ -65,7 +78,8 @@ class CachedClient(TseClient):
             if not isinstance(payload, dict) or payload.get('f') != 'o':
                 raise ValueError('invalid_official_payload')
             record = {'url': url, 'etag': response.headers.get('ETag'),
-                      'sha256': digest(response.content), 'payload': payload}
+                      'sha256': digest(response.content), 'payload': payload,
+                      'payload_sha256': digest(canonical(payload))}
             # Cache is an optimization; no publisher checkpoint is updated here.
             from .second_round_publish import save
             save(path, record)
@@ -125,7 +139,7 @@ def discover(client):
     return tuple(plans)
 
 
-def build_values(client, plans):
+def build_values(client, plans, *, include_portal=True):
     values = {}
     started = False
     for plan in plans:
@@ -134,8 +148,10 @@ def build_values(client, plans):
             raw = fetched.payload
             if raw.get('f') != 'o':
                 raise ValueError('non_official_second_round_result')
-            parsed = parse_ea20(raw)
-            validate_target(target, parsed)
+            with measure(getattr(client, 'metrics', {}), 'parsing'):
+                parsed = parse_ea20(raw)
+            with measure(getattr(client, 'metrics', {}), 'target_validation'):
+                validate_target(target, parsed)
             if not parsed.offices[0].candidates:
                 raise AwaitingData()
             if parsed.generated_at is None:
@@ -157,12 +173,22 @@ def build_values(client, plans):
         'candidate_count': sum(r['candidate_count'] for r in rows), 'results': rows}
     values['version.json'] = meta
     values['alerts.json'] = {**meta, 'alerts': [], 'alert_count': 0}
+    if include_portal:
+        # One immutable browser download, bound to the release descriptor/hash.
+        # Individual files remain available and are still verified by FTP/HTTPS.
+        values['portal.json'] = {'schema_version': 1, 'environment': 'oficial', 'round': 2,
+            'files': dict(values)}
     return {name: canonical(value) for name, value in values.items()}
 
 
 def collect(directory, client):
     plans = discover(client)
     values = build_values(client, plans)
+    write_values(directory, values)
+    return values
+
+
+def write_values(directory, values):
     directory.mkdir(parents=True, exist_ok=False)
     for name, raw in values.items():
         path = directory / name
@@ -176,4 +202,3 @@ def collect(directory, client):
         fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
         try: os.fsync(fd)
         finally: os.close(fd)
-    return values
