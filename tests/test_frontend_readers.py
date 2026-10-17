@@ -54,7 +54,7 @@ const context={URLSearchParams,window:{location:{search:'?turno=2'},Favorites:{s
  document:{body:{classList:{add:c=>classes.add(c),remove:c=>classes.delete(c)}},
  getElementById:id=>{if(!elements.has(id))elements.set(id,{hidden:true,setAttribute:()=>{}});return elements.get(id);}},
  console,setInterval:fn=>{timers.set(++timerId,fn);return timerId;},clearInterval:id=>timers.delete(id),
- fetch:async url=>{urls.push(url);return {ok:available,json:async()=>url.endsWith('version.json')?
+ fetch:async url=>{urls.push(url);return {ok:available,status:available?200:404,json:async()=>url.endsWith('version.json')?
  {environment:'oficial',round:2,snapshot_id:sid,generated_at:'2026-10-25T12:00:00Z'}:{environment:'oficial',results:[row]}};}};
 vm.createContext(context);vm.runInContext(SOURCE,context);
 vm.runInContext(`loadAlerts=async()=>{};selectInitialRoute=()=>{};renderEnvironment=()=>{};

@@ -112,6 +112,13 @@ evidências oficiais, sem CPFs públicos. Repasses de campanha permanecem distin
 de doações pessoais. O ETL é o único responsável pela resolução e pelo JSON.
 Método, auditoria e investigação de Luana: [identidade no Raio-X](../../../../../docs/goias-person-identity.md).
 
+O contrato aditivo `financial_schema: 1` diferencia valor conhecido, subtotal e
+ausência por candidatura. Zero exige valor explícito na fonte; versões legadas
+continuam exibidas sem reclassificar zeros históricos. O leitor mantém a
+completude ao consolidar candidaturas de uma pessoa e nos volumes do grafo.
+Evidências, compatibilidade e limites de publicação:
+[contrato dos valores financeiros](../../../../../docs/financial-value-contract.md).
+
 ## Navegação pelo índice completo
 
 A página sem seleção explícita abre em **Visão geral**. `selected` válido é

@@ -268,7 +268,7 @@ def test_composition_script_cache_is_bumped():
     )
 
     assert (
-        'src="composition.js?v=3"'
+        'src="composition.js?v=4"'
         in html
     )
 
@@ -330,6 +330,6 @@ def test_composition_pending_assets_are_cache_busted():
     )
 
     assert (
-        'src="composition.js?v=3"'
+        'src="composition.js?v=4"'
         in html
     )

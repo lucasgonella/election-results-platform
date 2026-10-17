@@ -34,10 +34,19 @@
   }
   function validateData(data) {
     if (!data || data.scope !== 'GO' || data.year !== 2026 || !Array.isArray(data.candidates) || !Array.isArray(data.transfers)) throw new Error('Contrato incompatível: é necessária a base GO / 2026.');
+    if (data.financial_schema != null && data.financial_schema !== 1) throw new Error('Contrato de cobertura financeira incompatível.');
     const candidates = new Set(), transfers = new Set();
     for (const candidate of data.candidates) {
       if (!candidate || !textID(candidate.id) || typeof candidate.name !== 'string' || !candidate.name.trim() || !['deputado federal', 'deputado estadual'].includes(candidate.office) || candidates.has(candidate.id)) throw new Error('Candidaturas inválidas ou identificadores repetidos na base.');
       for (const key of ['revenue', 'expenses', 'votes']) if (candidate[key] != null && (!validAmount(candidate[key]) || candidate[key] < 0)) throw new Error('Valor de candidatura incompatível com o contrato.');
+      if (data.financial_schema === 1 || candidate.financial_coverage != null) for (const key of ['revenue', 'expenses']) {
+        const metric = candidate.financial_coverage?.[key];
+        if (!metric || !Number.isInteger(metric.known_records) || metric.known_records < 0 || !Number.isInteger(metric.missing_records) || metric.missing_records < 0 || !Array.isArray(metric.zero_declarations)) throw new Error('Cobertura financeira inválida.');
+        if (metric.zero_declarations.some(row => key !== 'revenue' || typeof row?.source_file !== 'string' || !row.source_file.toLowerCase().endsWith('receitas_candidatos_2026_go.csv') || !Number.isInteger(row.source_row) || row.source_row < 2)) throw new Error('Evidência de zero explícito inválida.');
+        const supported = metric.known_records > 0 || metric.zero_declarations.length > 0;
+        const status = !supported ? 'missing' : metric.missing_records ? 'partial' : 'known';
+        if (metric.status !== status || (validAmount(metric.known_subtotal) && metric.known_subtotal >= 0) !== supported || (!supported && metric.known_subtotal != null) || (status === 'known' ? candidate[key] !== metric.known_subtotal : candidate[key] != null) || (metric.zero_declarations.length && !metric.known_records && metric.known_subtotal !== 0)) throw new Error('Cobertura financeira inconsistente.');
+      }
       candidates.add(candidate.id);
     }
     for (const transfer of data.transfers) {
@@ -59,9 +68,15 @@
     return data;
   }
   function sumKnown(rows, field = 'amount') {
-    let total = 0, known = 0;
-    for (const row of rows) if (validAmount(row[field])) { total += row[field]; known += 1; }
-    return {total: known ? total : null, known, missing: rows.length - known, count: rows.length};
+    let total = 0, known = 0, missing = 0;
+    for (const row of rows) {
+      const value = row.financial_coverage?.[field]?.status === 'partial' ? row.financial_coverage[field].known_subtotal : row[field];
+      if (validAmount(value)) { total += value; known += 1; }
+      // A known subtotal is still incomplete. Keep that information when
+      // combining candidacies into people, people into metrics, or graph rows.
+      if (!validAmount(value) || row.financial_coverage?.[field]?.status === 'partial' || row.financial_summary?.[field]?.missing > 0) missing += 1;
+    }
+    return {total: known ? total : null, known, missing, count: rows.length};
   }
   function preferDocumentedDonorName(node, entity, records) {
     // Choose a display label only within an already resolved official identity.
@@ -105,7 +120,16 @@
         const candidacies = byPerson.get(entity.id) || [];
         const roleKind = entity.roles.includes('candidate') ? entity.roles.includes('donor') ? 'candidate-donor' : entity.roles.includes('campaign_financier') ? 'candidate-campaign' : 'candidate' : entity.kind === 'person' ? 'donor' : entity.kind;
         const node = {...(candidacies[0] || {}), ...entity, aliases: [...entity.aliases], kind: roleKind, candidacies, campaigns: (entity.campaign_ids || []).map(id => entities.get(id)).filter(Boolean)};
-        if (candidacies.length) for (const key of ['revenue', 'expenses', 'votes']) node[key] = sumKnown(candidacies, key).total;
+        if (candidacies.length) {
+          node.financial_summary = {};
+          for (const key of ['revenue', 'expenses', 'votes']) {
+            node.financial_summary[key] = sumKnown(candidacies, key);
+            node[key] = node.financial_summary[key].total;
+          }
+          // Per-candidacy evidence remains on candidacies. Do not attach the
+          // first candidacy's coverage to a sum covering several candidacies.
+          delete node.financial_coverage;
+        }
         nodes.set(entity.id, node);
         for (const candidate of candidacies) aliases.set(candidate.id, entity.id);
       }
@@ -260,10 +284,11 @@
     const local = neighborhood(rows, selected, depth);
     let groups = aggregate(rows).filter(group => !selected || (local.ids.has(group.from_id) && local.ids.has(group.to_id)));
     groups.sort((a, b) => (b.total ?? -1) - (a.total ?? -1) || a.id.localeCompare(b.id));
-    const volume = new Map(), participating = new Set();
-    for (const group of groups) for (const id of [group.from_id, group.to_id]) {
+    const volumeRows = new Map(), participating = new Set();
+    for (const group of groups) for (const id of new Set([group.from_id, group.to_id])) {
       participating.add(id);
-      if (group.known > 0) volume.set(id, (volume.get(id) || 0) + group.total);
+      if (!volumeRows.has(id)) volumeRows.set(id, []);
+      volumeRows.get(id).push(...group.rows);
     }
     const ids = new Set(selected && index.nodes.has(selected) ? [selected] : []), chosen = [];
     for (const group of groups) {
@@ -271,7 +296,10 @@
       if (chosen.length >= maxEdges || ids.size + new Set(missing).size > maxNodes) continue;
       missing.forEach(id => ids.add(id)); chosen.push(group);
     }
-    const nodes = Array.from(ids).map(id => ({...index.nodes.get(id), volume: volume.has(id) ? volume.get(id) : null, distance: local.distance.get(id) ?? 1}));
+    const nodes = Array.from(ids).map(id => {
+      const summary = sumKnown(volumeRows.get(id) || []);
+      return {...index.nodes.get(id), volume: summary.total, volume_summary: summary, distance: local.distance.get(id) ?? 1};
+    });
     return {nodes, edges: chosen, totalEdges: groups.length, hiddenEdges: groups.length - chosen.length, totalNodes: selected ? local.ids.size : participating.size, hiddenNodes: Math.max(0, (selected ? local.ids.size : participating.size) - nodes.length)};
   }
   /* Directed breadth-first search. Every hop is backed by an original row ID;

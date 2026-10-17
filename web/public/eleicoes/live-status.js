@@ -44,14 +44,14 @@
         }
     }
     async function refresh() {
-        if (busy || doc.hidden || root.LiveData.paused()) return;
+        if (busy || doc.hidden || root.LiveData.paused('/data/turnos/2')) return;
         busy = true;
         try {
             const response = await root.LiveData.fetch('/data/turnos/2/status.json');
             if (!response.ok) throw new Error('status_unavailable');
             const next = await response.json();
             if (next.schema_version !== 1 || next.round !== 2 || next.environment !== 'oficial' || !Number.isFinite(Date.parse(next.checked_at))) throw new Error('invalid_public_status');
-            status = next; root.LiveData.setState(next.election_state); render();
+            status = next; root.LiveData.setState(next.election_state, '/data/turnos/2'); render();
         } catch (_) {
             if (!status) doc.getElementById('live-status-label').textContent = 'Status de atualização indisponível';
             else render();

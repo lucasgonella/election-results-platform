@@ -146,6 +146,41 @@ test("round two comparison reader uses its independent marker and immutable root
     assert.ok(fake.urls.every(url => url.startsWith("/data/turnos/2/")));
 });
 
+test("comparison defaults to the shared HTTP reader and reuses parallel component reads", async () => {
+    const originalLiveData = global.LiveData, originalFetch = global.fetch;
+    try {
+        const {create} = require("../web/public/eleicoes/live-data.js");
+        const fake = fakePublication(2); let time = 10000;
+        const shared = create(async url => {
+            const response = await fake.fetch(url);
+            return new Response(response.ok ? JSON.stringify(await response.json()) : "", {status: response.ok ? 200 : 404});
+        }, {clock: () => time, sleep: async ms => {time += ms;}, spacingMs: 0, random: () => 0});
+        global.LiveData = shared;
+        global.fetch = () => {throw new Error("comparison_bypassed_shared_reader");};
+        const root = "/data/turnos/2", base = root + "/releases/" + marker(2).snapshot_id;
+        const [a, b] = await Promise.all([map.loadPinnedRound(2), map.loadPinnedRound(2), shared.fetch(root + "/version.json")]);
+        const values = await Promise.all([a.read("ac"), b.read("ac"), shared.fetch(base + "/ac/president.json")]);
+        assert.equal(values[0].election.round, 2); assert.equal(values[1].election.round, 2);
+        assert.deepEqual(fake.urls, [root + "/version.json", base + "/manifest.json", base + "/ac/president.json"]);
+        assert.equal(shared.stats.network, 3);
+    } finally {global.LiveData = originalLiveData; global.fetch = originalFetch;}
+});
+
+test("comparison retains injected fetchers and the fallback without LiveData", async () => {
+    const originalLiveData = global.LiveData, originalFetch = global.fetch;
+    try {
+        global.LiveData = {fetch: () => {throw new Error("unexpected_shared_reader");}};
+        global.fetch = () => {throw new Error("unexpected_native_fetch");};
+        const injected = fakePublication(2), a = await map.loadPinnedRound(2, injected.fetch);
+        assert.equal((await a.read("ac")).election.round, 2);
+        global.LiveData = null;
+        const fallback = fakePublication(1); global.fetch = fallback.fetch;
+        const b = await map.loadPinnedRound(1);
+        assert.equal((await b.read("ac")).election.round, 1);
+        assert.ok(fallback.urls.every(url => url.startsWith("/data/") && !url.startsWith("/data/turnos/")));
+    } finally {global.LiveData = originalLiveData; global.fetch = originalFetch;}
+});
+
 test("comparison rejects a changed activation, a mixed-turn manifest and an unsafe path", async () => {
     for (const options of [{change: true}, {mixed: true}]) { const fake = fakePublication(2, options); await assert.rejects(map.loadPinnedRound(2, fake.fetch), /map_comparison_/); }
     const fake = fakePublication(2, {path: "../ac/president.json"}); const reader = await map.loadPinnedRound(2, fake.fetch);

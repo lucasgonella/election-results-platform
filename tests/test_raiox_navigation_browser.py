@@ -329,6 +329,51 @@ class RaioxBrowserTests(unittest.TestCase):
         self.assertEqual(self.selected(), 'person:charles')
         self.assertEqual(self.page.locator('#transfer-table [data-record]').count(), 3)
 
+    def test_financial_values_keep_unknown_zero_and_subtotals_visible(self):
+        fixture = navigation_fixture()
+        # One person owns a known and a missing candidacy: the projected node
+        # must keep a subtotal. All records are invented and have no documents.
+        fixture['candidates'][0]['revenue'] = 12.5
+        fixture['candidates'][0]['expenses'] = 0
+        fixture['candidates'][1]['person_id'] = 'person:charles'
+        fixture['entities'][0]['candidate_ids'].append('registration:bia')
+        FixtureHandler.fixture = fixture
+        self.open('?selected=person%3Acharles')
+        self.assertIn('Subtotal', self.page.locator('#revenue-note').inner_text())
+        self.assertIn('Subtotal', self.page.locator('#candidate-list [data-candidate="person:charles"] .candidate-amount').inner_text())
+        self.assertIn('Subtotal R$', self.page.locator('#detail-content .profile-metric').first.inner_text())
+        self.assertIn('Não informado', self.page.locator('#candidate-list [data-candidate="person:davi"] .candidate-amount').inner_text())
+        self.page.locator('.financial-coverage summary').click()
+        self.assertIn('Zero publicado na base legada', self.page.locator('.financial-coverage').inner_text())
+
+        def metric(status='missing', known=0, missing=0, declarations=None, subtotal=None):
+            return dict(status=status, known_records=known, missing_records=missing, zero_declarations=declarations or [], known_subtotal=subtotal if subtotal is not None else 0 if known or declarations else None)
+        fixture['financial_schema'] = 1
+        for candidate in fixture['candidates']:
+            candidate['financial_coverage'] = dict(revenue=metric(), expenses=metric())
+        fixture['candidates'][0]['revenue'] = None
+        fixture['candidates'][0]['financial_coverage'] = dict(revenue=metric('partial', 1, 1, subtotal=12.5), expenses=metric('known', 1))
+        fixture['candidates'][2]['revenue'] = 0
+        fixture['candidates'][2]['financial_coverage']['revenue'] = metric('known', declarations=[dict(source_file='receitas_candidatos_2026_GO.csv', source_row=2)])
+        fixture['transfers'][0]['amount'] = None
+        fixture['transfers'][1]['amount'] = 0
+        FixtureHandler.fixture = fixture
+        self.open('?selected=person%3Adavi')
+        self.assertIn('R$', self.page.locator('#candidate-list [data-candidate="person:davi"] .candidate-amount').inner_text())
+        self.page.locator('.financial-coverage summary').click()
+        self.assertIn('Zero explícito na fonte', self.page.locator('.financial-coverage').inner_text())
+        self.assertIn('linha 2', self.page.locator('.financial-coverage').inner_text())
+        self.open('?selected=person%3Aizaura')
+        self.assertIn('Subtotal', self.page.locator('.graph-node[data-node="person:izaura"]').get_attribute('aria-label'))
+        self.page.locator('#table-view-button').click()
+        self.assertIn('Não informado', self.page.locator('#transfer-table').inner_text())
+        self.page.locator('.advanced-filters summary').click()
+        self.page.locator('#min-value').fill('0')
+        self.page.locator('#max-value').fill('0')
+        self.page.wait_for_function("document.querySelectorAll('#transfer-table [data-record]').length === 1")
+        self.assertIn('R$', self.page.locator('#transfer-table').inner_text())
+        self.assertNotIn('Não informado', self.page.locator('#transfer-table').inner_text())
+
     def test_touch_pinch_and_mobile_accessibility_in_both_themes(self):
         axe = os.environ.get('RAIOX_AXE_PATH')
         if os.environ.get('RAIOX_BROWSER_REQUIRED') == '1' and not axe:

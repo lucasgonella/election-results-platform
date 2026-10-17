@@ -128,7 +128,8 @@
             && context.dataBase === dataRoot + "/releases/" + marker.snapshot_id
             && (marker.round == null ? round === 1 : Number(marker.round) === round);
     }
-    async function loadPinnedRound(round, fetcher, signal) {
+    const dataFetch = (...args) => root.LiveData ? root.LiveData.fetch(...args) : root.fetch(...args);
+    async function loadPinnedRound(round, fetcher = dataFetch, signal) {
         if (![1, 2].includes(Number(round))) throw new Error("map_round_invalid");
         const dataRoot = Number(round) === 2 ? "/data/turnos/2" : "/data";
         async function json(url) {
@@ -289,7 +290,7 @@
             try {
                 if (!hasPinnedContext(this.context)) throw new Error("map_current_snapshot_not_pinned");
                 // Comparison is explicit, and the other round has its own immutable pointer.
-                const other = await loadPinnedRound(Number(this.context.round) === 2 ? 1 : 2, root.fetch.bind(root), this.comparisonController.signal);
+                const other = await loadPinnedRound(Number(this.context.round) === 2 ? 1 : 2, undefined, this.comparisonController.signal);
                 const pending = this.states.map(state => state.scope); const values = new Map();
                 const worker = async () => { while (pending.length && key === this.key) { const scope = pending.shift(); try { values.set(scope, summarize(await other.read(scope))); } catch (error) { if (error.name === "AbortError") throw error; } } };
                 await Promise.all(Array.from({length: 4}, worker));
