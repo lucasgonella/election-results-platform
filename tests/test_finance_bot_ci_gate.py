@@ -55,7 +55,7 @@ def test_human_commit_never_inherits_prior_ci():
 
 
 def test_partial_ci_is_not_accepted():
-    commits = {'bot1': revision('approved'), 'approved': revision('older')}
+    commits = {'bot1': revision('approved'), 'approved': revision('older', user='somebody')}
     checks = {'approved': ['Python Tests']}
     with patch.dict(gate.os.environ, {'GITHUB_REPOSITORY': 'owner/repo'}), patch.object(
             gate.subprocess, 'check_output', side_effect=runner(commits, checks)):
