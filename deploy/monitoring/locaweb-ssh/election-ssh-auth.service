@@ -1,0 +1,15 @@
+[Unit]
+Description=Check Locaweb SSH authentication for election monitoring
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=electioncollector
+Group=electioncollector
+ExecStart=/usr/bin/python3 /opt/election-monitoring/check-locaweb-ssh.py
+TimeoutStartSec=25
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/election-zabbix
+PrivateTmp=true
