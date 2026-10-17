@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Locaweb SSH authentication check every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=1min
+AccuracySec=10s
+Unit=election-ssh-auth.service
+
+[Install]
+WantedBy=timers.target
