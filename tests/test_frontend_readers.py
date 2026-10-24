@@ -19,7 +19,7 @@ const urls = [];
 const id = 'a'.repeat(64);
 const version = {environment:'fixture', generated_at:'same', snapshot_id:id, activation_revision:'1'};
 const item = {scope:'ac', office:1, path:'ac/president.json', election_code:1, round:1, tse_idg:'1', captured_at:'same'};
-const context = {URLSearchParams,window:{}, document:{}, console, localStorage:{getItem:()=>null}, fetch:async(url)=>{
+const context = {URLSearchParams,window:{location:{search:'?turno=1'}}, document:{}, console, localStorage:{getItem:()=>null}, fetch:async(url)=>{
   urls.push(url);
   return {ok:true,json:async()=>url.endsWith('manifest.json')?{results:[item]}:
     {candidates:[], snapshot:{tse_idg:'1', captured_at:'same'}}};
@@ -38,7 +38,8 @@ vm.runInContext(SOURCE,context);
     subprocess.run([node,'-e',script],check=True,capture_output=True,text=True)
 
 
-def test_round_two_waiting_page_retries_until_official_activation():
+@pytest.mark.parametrize('search', ['', '?turno=2'])
+def test_round_two_waiting_page_retries_until_official_activation(search):
     node=shutil.which('node')
     assert node, 'Node required'
     source=(Path(__file__).resolve().parents[1]/'web/public/eleicoes/app.js').read_text()
@@ -50,7 +51,7 @@ const timers=new Map(), urls=[], elements=new Map(), classes=new Set();
 let available=false, timerId=0;
 const sid='a'.repeat(64);
 const row={round:2,scope:'ac',office:3,path:'ac/governor.json'};
-const context={URLSearchParams,window:{location:{search:'?turno=2'},Favorites:{setManifest:()=>{}}},
+const context={URLSearchParams,window:{location:{search:SEARCH},Favorites:{setManifest:()=>{}}},
  document:{body:{classList:{add:c=>classes.add(c),remove:c=>classes.delete(c)}},
  getElementById:id=>{if(!elements.has(id))elements.set(id,{hidden:true,setAttribute:()=>{}});return elements.get(id);}},
  console,setInterval:fn=>{timers.set(++timerId,fn);return timerId;},clearInterval:id=>timers.delete(id),
@@ -71,12 +72,12 @@ vm.runInContext(`loadAlerts=async()=>{};selectInitialRoute=()=>{};renderEnvironm
  assert(urls.every(url=>url.startsWith('/data/turnos/2/')));
  assert.equal(vm.runInContext('activeDataBase',context),`/data/turnos/2/releases/${sid}`);
 })().catch(e=>{console.error(e);process.exitCode=1;});
-'''.replace('SOURCE',json.dumps(source))
+'''.replace('SOURCE',json.dumps(source)).replace('SEARCH',json.dumps(search))
     subprocess.run([node,'-e',script],check=True,capture_output=True,text=True)
 
 
-@pytest.mark.parametrize('round_number',[1,2])
-def test_favorites_refresh_stays_in_the_selected_round(round_number):
+@pytest.mark.parametrize('search,round_number',[('',2),('?turno=1',1),('?turno=2',2)])
+def test_favorites_refresh_stays_in_the_selected_round(search,round_number):
     source=(Path(__file__).resolve().parents[1]/'web/public/eleicoes/favorites.js').read_text()
     source=source.replace('    init();','    window.harness = {loadVersion, refreshManifest, loadFavoriteData};')
     script=r'''
@@ -85,7 +86,7 @@ const round=ROUND,root=round===2?'/data/turnos/2':'/data',id='a'.repeat(64);
 const version={environment:'oficial',round,snapshot_id:id,generated_at:'2026-10-12T12:00:00Z'};
 const item={scope:'ac',office:3,path:'ac/governor.json',election_code:6260,round,tse_idg:'1',captured_at:'same'};
 let mixed=false;
-const context={URLSearchParams,window:{location:{search:'?turno='+round}},document:{},console,
+const context={URLSearchParams,window:{location:{search:SEARCH}},document:{},console,
  localStorage:{getItem:()=>null},fetch:async url=>{urls.push(url);return {ok:true,json:async()=>
  url.endsWith('version.json')?version:url.endsWith('manifest.json')?
  {environment:'oficial',results:[{...item,round:mixed?1:round}]}:
@@ -97,7 +98,7 @@ vm.createContext(context);vm.runInContext(SOURCE,context);
  assert.deepEqual(urls,[root+'/version.json',root+'/releases/'+id+'/manifest.json',root+'/releases/'+id+'/ac/governor.json']);
  if(round===2){mixed=true;await assert.rejects(h.refreshManifest(version),/second_round_not_official/);}
 })().catch(e=>{console.error(e);process.exitCode=1;});
-'''.replace('ROUND',str(round_number)).replace('SOURCE',json.dumps(source))
+'''.replace('ROUND',str(round_number)).replace('SOURCE',json.dumps(source)).replace('SEARCH',json.dumps(search))
     subprocess.run([shutil.which('node'),'-e',script],check=True,capture_output=True,text=True)
 
 

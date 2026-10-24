@@ -1,5 +1,5 @@
 const dataFetch = (...args) => window.LiveData ? window.LiveData.fetch(...args) : fetch(...args);
-const SELECTED_ROUND = new URLSearchParams(window.location.search).get("turno") === "2" ? 2 : 1;
+const SELECTED_ROUND = new URLSearchParams(window.location.search).get("turno") === "1" ? 1 : 2;
 const ROUND_DATA_ROOT = SELECTED_ROUND === 2 ? "/data/turnos/2" : "/data";
 const VERSION_URL = ROUND_DATA_ROOT + "/version.json";
 
@@ -9,7 +9,7 @@ const ALERTS_URL = ROUND_DATA_ROOT + "/alerts.json";
 
 const REFRESH_MS = 5000;
 
-// Legacy /data remains the default until version.json advertises a verified release.
+// Stay in the selected round's namespace until version.json advertises a verified release.
 let activeDataBase = ROUND_DATA_ROOT;
 function dataBaseForVersion(version) {
     const id = version?.snapshot_id;

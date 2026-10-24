@@ -8,7 +8,7 @@
         const reload = new Set();
         let tail = Promise.resolve(), nextRequest = 0, blockedUntil = 0, failures = 0;
         const defaultNamespace = root.location
-            ? (new URLSearchParams(root.location.search).get('turno') === '2' ? '/data/turnos/2' : '/data')
+            ? (new URLSearchParams(root.location.search).get('turno') === '1' ? '/data' : '/data/turnos/2')
             : '/data/turnos/2'; // Preserve the standalone round-two reader API.
         const contexts = new Map(['/data', '/data/turnos/2'].map(base => [base,
             {round: base === '/data' ? 1 : 2, electionState: null, lastMarkerCheck: null,
