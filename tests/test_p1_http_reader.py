@@ -63,7 +63,8 @@ def run_node(script):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_round_namespaces_caches_markers_and_polling_are_independent():
+@pytest.mark.parametrize('search,default_poll', [('', True), ('?turno=1', False), ('?turno=2', True)])
+def test_round_namespaces_caches_markers_and_polling_are_independent(search, default_poll):
     run_node(r'''
 const time = clock(), disk = caches(), calls = [];
 let firstMarker = marker(1);
@@ -71,14 +72,14 @@ const r = reader(async (url, init) => {
   calls.push({url, init});
   return json(url === first + '/version.json' ? firstMarker
     : url === second + '/version.json' ? marker(2) : {url});
-}, {caches: disk, location: {search: ''}}, options(time));
+}, {caches: disk, location: {search: SEARCH}}, options(time));
 await Promise.all([r.fetch(first + '/version.json'), r.fetch(second + '/version.json')]);
 assert.equal(disk.stores.size, 2);
 r.setState('counting_finished', first); r.setState('counting_in_progress', second);
 time.advance(6000);
 assert.equal(r.shouldPoll(first + '/releases/' + sid), false);
 assert.equal(r.shouldPoll(second + '/releases/' + sid), true);
-assert.equal(r.shouldPoll(), false); // Default follows this page's first round.
+assert.equal(r.shouldPoll(), DEFAULT_POLL); // Default follows the selected URL round.
 firstMarker = {...firstMarker, snapshot_id: 'b'.repeat(64)};
 await r.fetch(first + '/version.json');
 assert.equal(r.shouldPoll(first + '/releases/' + sid), true);
@@ -93,7 +94,7 @@ const financialInit = {cache: 'reload'};
 await r.fetch('/data/go-2026.json', financialInit);
 assert.equal(calls.length, before + 1);
 assert.equal(calls.at(-1).init, financialInit);
-''')
+'''.replace('SEARCH', repr(search)).replace('DEFAULT_POLL', str(default_poll).lower()))
 
 
 def test_first_round_legacy_marker_and_304_revalidation_remain_supported():

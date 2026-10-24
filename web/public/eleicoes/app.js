@@ -9,7 +9,7 @@ const ALERTS_URL = ROUND_DATA_ROOT + "/alerts.json";
 
 const REFRESH_MS = 5000;
 
-// Legacy /data remains the default until version.json advertises a verified release.
+// Stay in the selected round's namespace until version.json advertises a verified release.
 let activeDataBase = ROUND_DATA_ROOT;
 function dataBaseForVersion(version) {
     const id = version?.snapshot_id;

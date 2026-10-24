@@ -1,7 +1,7 @@
 /* Public operational timestamps, separate from official generation and rendering. */
 (function (root) {
     'use strict';
-    if (!root.document || new URLSearchParams(root.location.search).get('turno') !== '2') return;
+    if (!root.document || new URLSearchParams(root.location.search).get('turno') === '1') return;
     const doc = root.document, panel = doc.getElementById('live-pipeline-status');
     if (!panel || !root.LiveData) return;
     panel.hidden = false;
