@@ -1,5 +1,5 @@
 const dataFetch = (...args) => window.LiveData ? window.LiveData.fetch(...args) : fetch(...args);
-const SELECTED_ROUND = new URLSearchParams(window.location.search).get("turno") === "2" ? 2 : 1;
+const SELECTED_ROUND = new URLSearchParams(window.location.search).get("turno") === "1" ? 1 : 2;
 const ROUND_DATA_ROOT = SELECTED_ROUND === 2 ? "/data/turnos/2" : "/data";
 const VERSION_URL = ROUND_DATA_ROOT + "/version.json";
 
