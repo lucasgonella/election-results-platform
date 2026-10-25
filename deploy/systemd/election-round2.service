@@ -16,6 +16,7 @@ ExecStart=/opt/election-round2-venv/bin/python -m collector.src.second_round_run
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=20min
+KillMode=mixed
 StateDirectory=election-round2
 StateDirectoryMode=0700
 UMask=0077
