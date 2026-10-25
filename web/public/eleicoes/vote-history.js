@@ -5,8 +5,9 @@
     if (!panel) return;
     const $ = id => doc.getElementById(id);
     const number = value => new Intl.NumberFormat('pt-BR').format(value);
-    const compact = value => new Intl.NumberFormat('pt-BR', {notation: 'compact', maximumFractionDigits: 1}).format(value);
+    const percent = value => new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(value) + '%';
     const time = value => new Date(value).toLocaleTimeString('pt-BR', {timeZone: 'America/Sao_Paulo', hour12: false});
+    const minute = value => new Date(value).toLocaleTimeString('pt-BR', {timeZone: 'America/Sao_Paulo', hour12: false, hour: '2-digit', minute: '2-digit'});
     const ns = 'http://www.w3.org/2000/svg';
     let history = null, busy = false, selected = null, following = true;
     function element(tag, attributes, text) {
@@ -34,6 +35,11 @@
             for (const [id, votes] of Object.entries(point.votes)) {
                 if (!ids.has(id) || !Number.isSafeInteger(votes) || votes < 0) throw new Error('invalid_history_vote');
             }
+            if (!point.percentages || typeof point.percentages !== 'object') throw new Error('history_percentages_unavailable');
+            for (const [id, value] of Object.entries(point.percentages)) {
+                if (!ids.has(id) || !Number.isFinite(value) || value < 0 || value > 100) throw new Error('invalid_history_percentage');
+            }
+            if ([...ids].some(id => point.votes[id] != null && point.percentages[id] == null)) throw new Error('history_percentage_missing');
             previous = stamp;
         }
         return value;
@@ -51,7 +57,8 @@
         const stamp = doc.createElement('strong'); stamp.textContent = time(point.at) + ' · Brasília'; output.append(stamp);
         for (const candidate of history.candidates) {
             const row = doc.createElement('span'); row.textContent = candidate.name + ': '
-                + (point.votes[candidate.id] == null ? 'Sem observação nesta parcial' : number(point.votes[candidate.id]) + ' votos');
+                + (point.percentages[candidate.id] == null ? 'Sem observação nesta parcial'
+                    : percent(point.percentages[candidate.id]) + ' · ' + number(point.votes[candidate.id]) + ' votos');
             row.style.borderColor = color(candidate); output.append(row);
         }
         const crosshair = $('vote-history-crosshair');
@@ -73,7 +80,8 @@
         const body = doc.createElement('tbody');
         for (const point of history.points) {
             const row = doc.createElement('tr');
-            for (const text of [time(point.at), ...history.candidates.map(c => point.votes[c.id] == null ? '—' : number(point.votes[c.id]))]) {
+            for (const text of [time(point.at), ...history.candidates.map(c => point.percentages[c.id] == null ? '—'
+                : percent(point.percentages[c.id]) + ' · ' + number(point.votes[c.id]) + ' votos')]) {
                 const cell = doc.createElement('td'); cell.textContent = text; row.append(cell);
             }
             body.append(row);
@@ -86,37 +94,37 @@
         const left = 66, right = width - 18, top = 20, bottom = height - 48;
         const stamps = history.points.map(point => Date.parse(point.at));
         const start = stamps[0], span = Math.max(1, stamps[stamps.length - 1] - start);
-        const max = Math.max(1, ...history.points.flatMap(point => Object.values(point.votes)));
-        const ceiling = Math.ceil(max / 4) * 4;
         const x = at => left + (Date.parse(at) - start) / span * (right - left);
-        const y = votes => bottom - votes / ceiling * (bottom - top);
+        const y = value => bottom - value / 100 * (bottom - top);
         svg.setAttribute('viewBox', `0 0 ${width} ${height}`); svg.replaceChildren();
         Object.assign(svg.dataset, {left, start, span, plot: right - left});
         for (let tick = 0; tick <= 4; tick++) {
-            const value = ceiling * tick / 4, at = y(value);
+            const value = 100 * tick / 4, at = y(value);
             svg.append(element('line', {x1: left, x2: right, y1: at, y2: at, class: 'history-grid'}),
-                element('text', {x: left - 9, y: at + 4, 'text-anchor': 'end', class: 'history-axis'}, compact(value)));
+                element('text', {x: left - 9, y: at + 4, 'text-anchor': 'end', class: 'history-axis'}, value + '%'));
         }
         const ticks = width < 550 ? 2 : 4;
         for (let tick = 0; tick <= ticks; tick++) {
             const at = start + span * tick / ticks;
             svg.append(element('text', {x: left + (right - left) * tick / ticks, y: bottom + 25,
-                'text-anchor': tick === 0 ? 'start' : tick === ticks ? 'end' : 'middle', class: 'history-axis'}, time(at)));
+                'text-anchor': tick === 0 ? 'start' : tick === ticks ? 'end' : 'middle', class: 'history-axis'}, minute(at)));
         }
         const legend = $('vote-history-legend'); legend.replaceChildren();
         for (const candidate of history.candidates) {
             let path = '', prior = false;
             for (const point of history.points) {
-                const votes = point.votes[candidate.id];
-                if (votes == null) { prior = false; continue; }
-                path += prior ? ` H ${x(point.at)} V ${y(votes)}` : ` M ${x(point.at)} ${y(votes)}`;
+                const value = point.percentages[candidate.id];
+                if (value == null) { prior = false; continue; }
+                path += prior ? ` L ${x(point.at)} ${y(value)}` : ` M ${x(point.at)} ${y(value)}`;
                 prior = true;
             }
             svg.append(element('path', {d: path, stroke: color(candidate), fill: 'none', 'stroke-width': 3,
                 'vector-effect': 'non-scaling-stroke'}));
             const last = history.points[history.points.length - 1];
-            if (last.votes[candidate.id] != null) svg.append(element('circle', {cx: x(last.at), cy: y(last.votes[candidate.id]), r: 4, fill: color(candidate)}));
-            const label = doc.createElement('span'); label.textContent = candidate.name; label.style.borderColor = color(candidate); legend.append(label);
+            if (last.percentages[candidate.id] != null) svg.append(element('circle', {cx: x(last.at), cy: y(last.percentages[candidate.id]), r: 4, fill: color(candidate)}));
+            const label = doc.createElement('span'); label.textContent = candidate.name
+                + (last.percentages[candidate.id] == null ? '' : ' · ' + percent(last.percentages[candidate.id]));
+            label.style.borderColor = color(candidate); legend.append(label);
         }
         svg.append(element('line', {id: 'vote-history-crosshair', y1: top, y2: bottom, class: 'history-cursor'}));
         const slider = $('vote-history-position'); slider.max = String(history.points.length - 1); slider.disabled = false;

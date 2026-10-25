@@ -1,5 +1,6 @@
 """Factual national vote observations from verified, completed publications only."""
 from datetime import datetime
+import math
 import re
 
 from .election_release import canonical, digest, parse
@@ -31,7 +32,7 @@ def build_history(state):
             raise ValueError('invalid_vote_history_publication_time')
         receipts.append((stamp, sid, receipt))
     for stamp, sid, receipt in sorted(receipts):
-        if sid in points: continue
+        if sid in points and 'percentages' in points[sid]: continue
         package = state / 'cycles' / sid[:32] / 'package'
         if not package.is_dir(): continue  # Previously verified cached observations remain durable.
         if verify_proof(package)['snapshot_id'] != sid:
@@ -43,17 +44,23 @@ def build_history(state):
         if election_code is not None and result['election']['code'] != election_code:
             raise ValueError('vote_history_election_mismatch')
         election_code = result['election']['code']
-        votes = {}
+        votes, percentages = {}, {}
         for candidate in result['candidates']:
             identity = str(candidate['tse_candidate_seq'])
             count = candidate['votes']
             if not re.fullmatch('[0-9]{1,20}', identity) or type(count) is not int or count < 0:
                 raise ValueError('vote_history_invalid_count')
+            percentage = candidate['vote_percentage']
+            if (type(percentage) not in (int, float) or not math.isfinite(percentage)
+                    or not 0 <= percentage <= 100):
+                raise ValueError('vote_history_invalid_percentage')
             candidates[identity] = {'id': identity, 'name': candidate['ballot_name'] or candidate['name'],
                                     'number': candidate['ballot_number']}
             votes[identity] = count
+            percentages[identity] = percentage
         points[sid] = {'snapshot_id': sid, 'at': stamp,
-                       'source_at': result['snapshot']['generated_at'], 'votes': votes}
+                       'source_at': result['snapshot']['generated_at'], 'votes': votes,
+                       'percentages': percentages}
     if not points: return None
     ordered = sorted(points.values(), key=lambda point: datetime.fromisoformat(point['at']))
     if len(ordered) > 4096: raise ValueError('vote_history_observation_limit')

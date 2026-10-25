@@ -83,7 +83,7 @@
     >
     <link rel="stylesheet" href="electoral-map.css?v=1">
     <link rel="stylesheet" href="municipal-map.css?v=1">
-    <link rel="stylesheet" href="vote-history.css?v=1">
+    <link rel="stylesheet" href="vote-history.css?v=2">
 </head>
 
 <body>
@@ -126,12 +126,12 @@
 <div class="explorer-layout"><section class="map-panel" id="geografia" aria-label="Mapa eleitoral do Brasil"><div id="electoral-map-root"><div class="skeleton map-skeleton" role="status">Preparando o mapa oficial do Brasil…</div></div></section><section class="presidential-panel" id="presidencia" aria-labelledby="presidential-heading"><div class="section-heading"><div><p class="eyebrow">02 / PRESIDÊNCIA</p><h2 id="presidential-heading">A disputa nacional.</h2></div></div><p class="race-context" id="race-context" role="status">Carregando o Brasil</p><div id="presidential-race" class="presidential-race"><div class="skeleton race-skeleton">Consultando candidaturas oficiais…</div></div><div class="race-actions"><button class="text-button" id="presidential-focus" type="button">Ver todos os candidatos <span aria-hidden="true">↓</span></button><button class="text-button" type="button" data-dialog-open="compare-dialog">Comparar turnos <span aria-hidden="true">↗</span></button></div><p class="data-note">A ordem de votação não representa uma declaração de vitória. A situação eleitoral é a informada pelo TSE.</p></section></div>
 <section id="vote-history" class="vote-history-panel" aria-labelledby="vote-history-title" hidden>
   <p class="eyebrow">PRESIDÊNCIA · BRASIL · 2º TURNO</p>
-  <h2 id="vote-history-title">Histórico das parciais oficiais</h2>
-  <p class="history-description">Votos válidos por candidatura e horário de publicação no portal, em Brasília. Selecione uma parcial para consultar os valores registrados.</p>
+  <h2 id="vote-history-title">Evolução da apuração</h2>
+  <p class="history-description">Porcentagem dos votos válidos de cada candidatura ao longo da apuração. Selecione um horário para consultar a parcial oficial registrada.</p>
   <div id="vote-history-legend" class="history-legend" aria-label="Candidaturas"></div>
-  <p class="history-axis-title">Votos válidos por candidatura</p>
-  <svg id="vote-history-svg" class="history-chart" role="img" aria-label="Histórico dos votos oficiais por horário de publicação"></svg>
-  <p class="history-note">Eixo horizontal: horário da publicação (Brasília). Cada ponto corresponde a uma parcial oficial preservada; os segmentos mantêm o último valor observado entre publicações. Horários anteriores sem registro não são estimados.</p>
+  <p class="history-axis-title">% dos votos válidos</p>
+  <svg id="vote-history-svg" class="history-chart" role="img" aria-label="Evolução da porcentagem dos votos válidos por horário de publicação"></svg>
+  <p class="history-note">Eixo esquerdo: porcentagem dos votos válidos. Eixo horizontal: horário da publicação (Brasília). As linhas conectam as parciais oficiais registradas. Não há estimativa para minutos sem observação nem para horários anteriores ao primeiro registro.</p>
   <label for="vote-history-position" class="history-position-label">Selecionar horário da parcial</label>
   <input id="vote-history-position" type="range" min="0" max="0" value="0" step="1" disabled>
   <output id="vote-history-readout" class="history-readout" for="vote-history-position" aria-live="polite"></output>
@@ -526,7 +526,7 @@
     <script src="electoral-map.js?v=2"></script>
     <script src="live-status.js?v=2"></script>
     <script src="premium-controller.js?v=2"></script>
-    <script src="vote-history.js?v=1"></script>
+    <script src="vote-history.js?v=2"></script>
 
 </body>
 </html>
