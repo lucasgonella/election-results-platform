@@ -54,5 +54,17 @@ def test_history_uses_only_verified_completed_publications_and_preserves_cache(t
     expected = {str(row['tse_candidate_seq']): row['votes']
                 for row in parse(values['br/president.json'])['candidates']}
     assert result['points'][0]['votes'] == expected
+    percentages = {str(row['tse_candidate_seq']): row['vote_percentage']
+                   for row in parse(values['br/president.json'])['candidates']}
+    assert result['points'][0]['percentages'] == percentages
     assert result['round'] == 2 and result['scope'] == 'br' and result['office'] == 1
     assert build_history(tmp_path) == result == load(tmp_path / 'vote-history.json')
+
+
+def test_history_enriches_existing_votes_with_official_percentages(tmp_path):
+    recorded(tmp_path, 1)
+    original = build_history(tmp_path)
+    legacy = {**original, 'points': [{k: v for k, v in p.items() if k != 'percentages'}
+                                    for p in original['points']]}
+    save(tmp_path / 'vote-history.json', legacy)
+    assert build_history(tmp_path) == original

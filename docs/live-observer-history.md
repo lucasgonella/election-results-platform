@@ -25,7 +25,12 @@ histórico público é um campo permitido de `status.json`, publicado pelo mesmo
 fluxo auxiliar de journal, transferência, readback e HTTPS já existente. Não há
 novo writer de releases eleitorais. Falha no histórico não interrompe a coleta.
 
-O gráfico mostra votos observados de cada candidatura, sem projeções, juízos ou
+O gráfico mostra a porcentagem oficial dos votos válidos de cada candidatura,
+com escala de 0% a 100% no eixo esquerdo e linhas conectando observações reais,
+sem estimar valores nos minutos sem registro. O detalhe mantém os votos absolutos.
+Porcentagens vêm do mesmo pacote oficial verificado; caches anteriores são
+enriquecidos a partir dos pacotes e proofs preservados, sem alterar os originais.
+O gráfico não inclui projeções, juízos ou
 declaração de resultado. O eixo horizontal usa o horário de publicação no portal,
 em Brasília; a geração oficial também fica registrada. Não se inventam pontos
 anteriores. Apenas pacotes já publicados entram no histórico; dados de staging,
