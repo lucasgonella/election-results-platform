@@ -84,51 +84,6 @@
     <link rel="stylesheet" href="electoral-map.css?v=1">
     <link rel="stylesheet" href="municipal-map.css?v=1">
     <link rel="stylesheet" href="vote-history.css?v=2">
-    <style>
-        .election-outage-notice {
-            margin: 1.5rem 0 2rem;
-            padding: clamp(1.2rem, 3vw, 2rem);
-            border: 2px solid #d97706;
-            border-radius: 1rem;
-            background: #fff7ed;
-            color: #43240c;
-            box-shadow: 0 8px 24px rgba(67, 36, 12, .08);
-        }
-        .election-outage-notice .outage-eyebrow {
-            margin: 0 0 .5rem;
-            font-size: .8rem;
-            font-weight: 800;
-            letter-spacing: .08em;
-            text-transform: uppercase;
-            color: #9a3412;
-        }
-        .election-outage-notice h2 {
-            margin: 0 0 .75rem;
-            color: #7c2d12;
-            font-size: clamp(1.3rem, 3vw, 1.9rem);
-            line-height: 1.25;
-        }
-        .election-outage-notice p { margin: 0 0 .85rem; line-height: 1.6; }
-        .election-outage-notice .outage-link {
-            display: inline-block;
-            margin: .3rem 0 1rem;
-            padding: .8rem 1.15rem;
-            border-radius: .55rem;
-            background: #9a3412;
-            color: #fff;
-            font-weight: 750;
-            text-decoration: none;
-        }
-        .election-outage-notice .outage-link:focus-visible {
-            outline: 3px solid #2563eb;
-            outline-offset: 3px;
-        }
-        .election-outage-notice .outage-footnote {
-            margin: 0;
-            font-size: .9rem;
-            color: #694326;
-        }
-    </style>
 </head>
 
 <body>
@@ -140,15 +95,6 @@
 <div class="header-actions"><button class="global-search-button icon-button" id="global-search-open" type="button" aria-label="Abrir busca global" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span>Buscar</span></button><button id="favorites-open" class="favorites-open icon-button" aria-label="Abrir candidatos favoritos" type="button" aria-haspopup="dialog" aria-controls="favorites-backdrop"><span aria-hidden="true">☆</span><span class="header-button-label">Favoritos</span><span id="favorites-count">0</span></button><button class="theme-toggle icon-button" data-theme-toggle type="button" aria-label="Alternar tema claro e escuro"><span aria-hidden="true">◐</span></button><button class="nav-toggle icon-button" data-nav-toggle type="button" aria-controls="main-navigation" aria-expanded="false" aria-label="Abrir menu"><span aria-hidden="true">☰</span></button></div>
 </div></header>
 <main class="container app-shell" id="conteudo">
-<section class="election-outage-notice" role="alert" aria-labelledby="outage-title">
-    <p class="outage-eyebrow">Comunicado de indisponibilidade · Eleições 2026</p>
-    <h2 id="outage-title">Nossa atualização da apuração está temporariamente suspensa</h2>
-    <p>Uma falta de energia no local onde está hospedado o backend da AFGNET interrompeu a coleta e a publicação de novos resultados. Os dados exibidos abaixo podem estar desatualizados.</p>
-    <p>Para acompanhar a apuração enquanto restabelecemos o serviço, consulte:</p>
-    <a class="outage-link" href="https://seuimposto.com/" target="_blank" rel="noopener noreferrer">Acompanhar em seuimposto.com ↗</a>
-    <p class="outage-footnote">O seuimposto.com é um site externo, independente da AFGNET. Pedimos desculpas pelo transtorno.</p>
-</section>
-
 
 <section class="masthead" aria-labelledby="portal-title"><div class="masthead-copy"><p class="eyebrow"><span class="live-dot" aria-hidden="true"></span> CENTRAL ELEITORAL <span class="eyebrow-divider">/</span> 2026</p><h1 class="masthead-title" id="portal-title">O Brasil,<br><em>voto a voto.</em></h1><p class="subtitle">Resultados oficiais. Perspectiva geográfica.<br>Contexto para entender cada disputa.</p></div><div class="masthead-meta"><div id="environment-badge" class="environment-badge" role="status">Carregando fonte…</div><p id="national-freshness" class="muted">Verificando o conjunto publicado</p><button class="text-button" type="button" data-dialog-open="source-dialog">Fontes e metodologia <span aria-hidden="true">↗</span></button>    <nav class="round-switch" aria-label="Selecionar turno da eleição">
         <span class="round-switch-title">Acompanhar apuração</span>
