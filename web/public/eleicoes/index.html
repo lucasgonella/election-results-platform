@@ -83,6 +83,7 @@
     >
     <link rel="stylesheet" href="electoral-map.css?v=1">
     <link rel="stylesheet" href="municipal-map.css?v=1">
+    <link rel="stylesheet" href="vote-history.css?v=1">
 </head>
 
 <body>
@@ -123,6 +124,20 @@
 
 <section class="national-summary" id="national-summary" aria-label="Panorama dos cargos"><button class="national-card" type="button" data-national-office="1"><span class="national-label">Presidência</span><strong class="national-value" id="national-presidency">—</strong><span class="national-detail" id="national-presidency-detail">Conferindo dados</span><span class="national-arrow" aria-hidden="true">↗</span></button><button class="national-card" type="button" data-national-office="3"><span class="national-label">Governos estaduais</span><strong class="national-value" id="national-governors">—</strong><span class="national-detail" id="national-governors-detail">Disputas por estado</span><span class="national-arrow" aria-hidden="true">↗</span></button><button class="national-card" type="button" data-national-office="5"><span class="national-label">Senado</span><strong class="national-value" id="national-senate">—</strong><span class="national-detail" id="national-senate-detail">Dados deste turno</span><span class="national-arrow" aria-hidden="true">↗</span></button><button class="national-card" type="button" data-national-office="6"><span class="national-label">Câmara Federal</span><strong class="national-value" id="national-chamber">—</strong><span class="national-detail" id="national-chamber-detail">Representação por UF</span><span class="national-arrow" aria-hidden="true">↗</span></button><button class="national-card" type="button" data-national-office="7"><span class="national-label">Assembleias e CLDF</span><strong class="national-value" id="national-assemblies">—</strong><span class="national-detail" id="national-assemblies-detail">Dados legislativos</span><span class="national-arrow" aria-hidden="true">↗</span></button></section>
 <div class="explorer-layout"><section class="map-panel" id="geografia" aria-label="Mapa eleitoral do Brasil"><div id="electoral-map-root"><div class="skeleton map-skeleton" role="status">Preparando o mapa oficial do Brasil…</div></div></section><section class="presidential-panel" id="presidencia" aria-labelledby="presidential-heading"><div class="section-heading"><div><p class="eyebrow">02 / PRESIDÊNCIA</p><h2 id="presidential-heading">A disputa nacional.</h2></div></div><p class="race-context" id="race-context" role="status">Carregando o Brasil</p><div id="presidential-race" class="presidential-race"><div class="skeleton race-skeleton">Consultando candidaturas oficiais…</div></div><div class="race-actions"><button class="text-button" id="presidential-focus" type="button">Ver todos os candidatos <span aria-hidden="true">↓</span></button><button class="text-button" type="button" data-dialog-open="compare-dialog">Comparar turnos <span aria-hidden="true">↗</span></button></div><p class="data-note">A ordem de votação não representa uma declaração de vitória. A situação eleitoral é a informada pelo TSE.</p></section></div>
+<section id="vote-history" class="vote-history-panel" aria-labelledby="vote-history-title" hidden>
+  <p class="eyebrow">PRESIDÊNCIA · BRASIL · 2º TURNO</p>
+  <h2 id="vote-history-title">Histórico das parciais oficiais</h2>
+  <p class="history-description">Votos válidos por candidatura e horário de publicação no portal, em Brasília. Selecione uma parcial para consultar os valores registrados.</p>
+  <div id="vote-history-legend" class="history-legend" aria-label="Candidaturas"></div>
+  <p class="history-axis-title">Votos válidos por candidatura</p>
+  <svg id="vote-history-svg" class="history-chart" role="img" aria-label="Histórico dos votos oficiais por horário de publicação"></svg>
+  <p class="history-note">Eixo horizontal: horário da publicação (Brasília). Cada ponto corresponde a uma parcial oficial preservada; os segmentos mantêm o último valor observado entre publicações. Horários anteriores sem registro não são estimados.</p>
+  <label for="vote-history-position" class="history-position-label">Selecionar horário da parcial</label>
+  <input id="vote-history-position" type="range" min="0" max="0" value="0" step="1" disabled>
+  <output id="vote-history-readout" class="history-readout" for="vote-history-position" aria-live="polite"></output>
+  <p id="vote-history-status" class="history-note" role="status">Consultando histórico oficial…</p>
+  <details id="vote-history-table-details"><summary>Ver valores por horário</summary><div class="history-table-wrap"><table id="vote-history-table"><caption class="sr-only">Votos por candidatura em cada publicação preservada</caption></table></div></details>
+</section>
 <section class="results-explorer" id="resultados" aria-labelledby="results-explorer-title"><div class="section-heading"><div><p class="eyebrow">03 / EXPLORAÇÃO</p><h2 id="results-explorer-title">Da sua região à sua escolha.</h2></div><button class="text-button" id="share-view" type="button">Compartilhar esta visão <span aria-hidden="true">↗</span></button></div><nav class="breadcrumbs" aria-label="Localização nos resultados"><button type="button" id="breadcrumb-brasil">Brasil</button><span aria-hidden="true">/</span><span id="breadcrumb-scope">Todas as localidades</span><span aria-hidden="true">/</span><span id="breadcrumb-office">Resultados</span></nav>
     <details class="mobile-filters" open><summary>Localidade e cargo <span aria-hidden="true">⌄</span></summary><section class="controls">
 
@@ -511,6 +526,7 @@
     <script src="electoral-map.js?v=2"></script>
     <script src="live-status.js?v=2"></script>
     <script src="premium-controller.js?v=2"></script>
+    <script src="vote-history.js?v=1"></script>
 
 </body>
 </html>

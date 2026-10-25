@@ -62,14 +62,16 @@ def verify_proof(package):
     return describe(actual)
 
 
-def cycle(state, *, dry_run=False, client=None, connector=connect, retry_after_reconcile=False):
+def cycle(state, *, dry_run=False, client=None, connector=connect, retry_after_reconcile=False, source_changed=False):
     health_path = state / 'health.json'
     previous = load(health_path) or {}
     if retry_after_reconcile and (dry_run or previous.get('status') != 'failed'):
         # In particular, never bypass a source's Retry-After/rate-limit state
         # or the ordinary cadence of a healthy/awaiting-data pipeline.
         raise ValueError('supervised_retry_requires_failed_live_cycle')
-    if previous.get('retry_after_epoch', 0) > time.time() and not retry_after_reconcile:
+    healthy_change = (source_changed and previous.get('status') in {'published', 'unchanged'}
+                      and not previous.get('failures'))
+    if previous.get('retry_after_epoch', 0) > time.time() and not retry_after_reconcile and not healthy_change:
         return {**previous, 'status': 'backoff', 'checked_at': now()}
     diagnostics = {'error_type', 'error_code', 'failure_code', 'failure_stage',
                    'transport', 'transport_operation', 'remote_errno', 'remote_error_type',
@@ -228,7 +230,7 @@ def legacy_rollback(publisher, state):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation', choices=['cycle', 'status', 'reconcile', 'recover', 'publish', 'verify', 'health', 'legacy-rollback'])
+    parser.add_argument('operation', choices=['watch', 'cycle', 'status', 'reconcile', 'recover', 'publish', 'verify', 'health', 'legacy-rollback'])
     parser.add_argument('--state', type=Path, default=Path(os.environ.get('ELECTION_ROUND2_STATE_DIR', STATE)))
     parser.add_argument('--directory', type=Path)
     parser.add_argument('--dry-run', action='store_true')
@@ -242,6 +244,9 @@ def main():
         if args.operation in {'verify', 'publish'} and not args.directory:
             raise ValueError('second_round_package_required')
         credentials()
+        if args.operation == 'watch':
+            from .second_round_watch import watch
+            return watch(args.state)
         with local_lock(args.state):
             if args.operation == 'verify': result = verify_proof(args.directory)
             elif args.operation == 'health':

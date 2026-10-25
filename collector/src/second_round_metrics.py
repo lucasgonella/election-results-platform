@@ -33,9 +33,9 @@ def policy(values, previous, fingerprint):
     elif all(s['total'] > 0 and s['totalized'] == s['total'] for s in sections):
         state, delay = 'counting_finished', min(600, 60 * 2 ** min(stable, 4))
     elif stable >= 3:
-        state, delay = 'counting_stable', min(120, 10 * 2 ** min(stable - 2, 4))
+        state, delay = 'counting_stable', 30
     else:
-        state, delay = 'counting_in_progress', 10
+        state, delay = 'counting_in_progress', 30
     return {'election_state': state, 'poll_after_seconds': delay, 'stable_cycles': stable,
             'source_fingerprint': fingerprint,
             'last_official_change_at': (now() if changed and previous.get('source_fingerprint')
