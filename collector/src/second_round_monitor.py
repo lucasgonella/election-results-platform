@@ -132,7 +132,11 @@ def run(state, output, *, timer_active=None, transport=None, public_reader=None,
     health, checkpoint = load(state / 'health.json') or {}, load(state / 'checkpoint.json') or {}
     pending = load(state / 'pending.json')
     if timer_active is None:
-        timer_active = subprocess.run(['systemctl', 'is-active', '--quiet', 'election-round2.timer']).returncode == 0
+        legacy_timer = subprocess.run(['systemctl', 'is-active', '--quiet', 'election-round2.timer']).returncode == 0
+        observer_active = subprocess.run(['systemctl', 'is-active', '--quiet', 'election-round2.service']).returncode == 0
+        timer_active = legacy_timer or observer_active
+    else:
+        legacy_timer, observer_active = timer_active, False
     marker_error = None
     try:
         if public_reader is None:
@@ -169,6 +173,15 @@ def run(state, output, *, timer_active=None, transport=None, public_reader=None,
                    'last_activation_at', 'https_marker_observed_at',
                    'official_generated_at', 'source_stale_after_seconds'}
     public = {key: value for key, value in status.items() if key in public_keys}
+    status['timer_active'] = legacy_timer
+    status['observer_active'] = observer_active
+    try:
+        from .second_round_vote_history import build_history
+        history = build_history(state)
+        if history: public['vote_history'] = history
+    except Exception as error:
+        # An unavailable history must never block collection or the current results.
+        status['history_error'] = error_report(error)
     if transport is not None:
         try: publish_status(transport, state, public, public_reader=public_reader)
         except Exception as error:

@@ -49,10 +49,10 @@ systemctl daemon-reload
 (cd "$release_dir" && runuser -u electionround2 -- env PYTHONDONTWRITEBYTECODE=1 \
   /opt/election-round2-venv/bin/python -m collector.src.second_round_runner cycle \
   --dry-run --state /var/lib/election-round2/preflight)
-systemctl start election-round2.service
-systemctl enable --now election-round2.timer
+systemctl disable --now election-round2.timer
+systemctl enable --now election-round2.service
 systemctl enable --now election-round2-monitor.timer election-round2-retention.timer
 systemctl start election-round2-monitor.service
 systemctl show election-round2.service -p Result -p ExecMainStatus -p User -p WorkingDirectory
-systemctl is-enabled election-round2.timer
+systemctl is-enabled election-round2.service
 systemctl list-timers election-round2.timer --no-pager

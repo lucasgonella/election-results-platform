@@ -4,7 +4,7 @@ Wants=network-online.target
 After=network-online.target
 
 [Service]
-Type=oneshot
+Type=simple
 User=electionround2
 Group=electionround2
 WorkingDirectory=/opt/election-round2/current
@@ -12,7 +12,11 @@ EnvironmentFile=/etc/election-results-platform/round2.env
 LoadCredential=ftp.env:/etc/election-results-platform/secrets/ftp.env
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/election-round2-venv/bin/python -m collector.src.second_round_runner cycle
+ExecStart=/opt/election-round2-venv/bin/python -m collector.src.second_round_runner watch
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20min
+KillMode=mixed
 StateDirectory=election-round2
 StateDirectoryMode=0700
 UMask=0077
@@ -32,3 +36,6 @@ CPUQuota=25%
 MemoryMax=384M
 TasksMax=32
 TimeoutStartSec=20min
+
+[Install]
+WantedBy=multi-user.target
