@@ -56,7 +56,10 @@ def verify_proof(package):
             return TseFetchResult(url, 200, None, None, record['sha256'], record['payload'])
     replay = Replay()
     actual = tree(Path(package))
-    expected = build_values(replay, discover(replay), include_portal='portal.json' in actual)
+    # Older, immutable releases intentionally contained an empty schema-1 feed.
+    # Replay their original format so recovery/rollback can still verify them.
+    expected = build_values(replay, discover(replay), include_portal='portal.json' in actual,
+                            include_elected_alerts=parse(actual['alerts.json']).get('schema_version') == 2)
     if actual != expected or evidence['snapshot_id'] != describe(actual)['snapshot_id']:
         raise ValueError('second_round_source_package_mismatch')
     return describe(actual)

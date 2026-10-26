@@ -20,6 +20,13 @@ com “Aguardando apuração” em vez de votos e percentuais. Zero seções exi
 zero e nenhum eleito. Quando o TSE totaliza seções, a fase passa automaticamente
 a `counting`; localidades ainda zeradas continuam com a indicação de espera.
 
+O `alerts.json` de schema 2 reúne os candidatos oficialmente marcados como
+`Eleito` e `e=s`: presidente na abrangência Brasil e governadores por UF.
+Esse resumo também integra o agregado validado e alimenta os resultados definidos
+por estado do portal. Liderança e definição matemática sem candidato eleito não
+produzem declarações próprias. As provas de releases antigas com o resumo vazio
+de schema 1 continuam verificáveis no formato original para recuperação.
+
 O timestamp de captura é fixado na geração oficial para identidade determinística;
 a hora real da coleta fica na prova privada e no health. SHA-256 de cada arquivo,
 tamanho e inventário canônico determinam o ID SHA-256 da release. A prova privada
