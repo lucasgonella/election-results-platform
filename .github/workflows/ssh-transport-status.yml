@@ -1,75 +1,46 @@
-name: Biometry publication - SSH preferred with safe FTP alternative
+name: SSH publication readiness and finance recovery
 on:
   workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [readiness, finance-status, finance-recover]
+        default: readiness
 permissions:
   contents: read
   actions: read
   checks: read
 concurrency:
-  group: election-biometry-production
+  group: goias-finance-etl
   cancel-in-progress: false
 jobs:
-  publish:
-    if: github.ref == 'refs/heads/ops/biometry-publish-20261026-2015'
+  inspect:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       PUBLICATION_TRANSPORT: ssh
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          path: request
-      - uses: actions/checkout@v4
-        with:
-          ref: 05ae559c769dd089fa965dc9caf2d1e3b2ac6a32
-          path: source
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - run: python -m pip install -r source/collector/requirements.txt
-      - name: Recheck accounting and publication recovery offline
-        working-directory: source
-        run: python -m unittest tests.test_biometry tests.test_biometry_runner -v
-      - name: Prepare existing dedicated SSH identity and pinned host
+      - name: Require approved effective source
+        if: inputs.operation == 'finance-recover'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python deploy/scripts/wait-frontend-ci.py --commit "$GITHUB_SHA" --component raio-x
+      - name: Dedicated identity and pinned host verification
         env:
           LOCAWEB_SSH_PRIVATE_KEY: ${{ secrets.LOCAWEB_SSH_PRIVATE_KEY }}
           LOCAWEB_SSH_KNOWN_HOSTS: ${{ secrets.LOCAWEB_SSH_KNOWN_HOSTS }}
-        run: python source/deploy/scripts/prepare-ssh.py
-      - name: Locate the immediately previous attempt for journal recovery
-        id: attempt
-        run: echo "previous=$((GITHUB_RUN_ATTEMPT-1))" >> "$GITHUB_OUTPUT"
-      - uses: actions/download-artifact@v4
-        if: github.run_attempt != '1'
-        with:
-          name: biometry-ssh-ftp-state-${{ github.run_id }}-${{ steps.attempt.outputs.previous }}
-          path: ${{ runner.temp }}/biometry-state
-          github-token: ${{ github.token }}
-          run-id: ${{ github.run_id }}
-      - name: Publish frozen snapshot using approved unchanged main publisher
+        run: python deploy/scripts/prepare-ssh.py
+      - name: Read actual remote state or recover a stopped finance writer
         env:
-          LOCAWEB_FTP_HOST: ${{ secrets.LOCAWEB_FTP_HOST }}
-          LOCAWEB_FTP_USER: ${{ secrets.LOCAWEB_FTP_USER }}
-          LOCAWEB_FTP_PASSWORD: ${{ secrets.LOCAWEB_FTP_PASSWORD }}
-          LOCAWEB_FTP_PORT: '21'
-        run: >-
-          python request/operations/biometry-publication/run.py
-          --source source
-          --request request/operations/biometry-publication
-          --state "$RUNNER_TEMP/biometry-state"
-          --report "$RUNNER_TEMP/biometry-report.json"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: biometry-ssh-ftp-state-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/biometry-state/*.json
-          if-no-files-found: ignore
-          retention-days: 90
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: biometry-ssh-ftp-report-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/biometry-report.json
-          if-no-files-found: ignore
-          retention-days: 90
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          if test "$OPERATION" = finance-recover; then
+            python -m deploy.ssh_finance recover --writer-stopped
+          else
+            python -m deploy.ssh_finance status
+          fi
