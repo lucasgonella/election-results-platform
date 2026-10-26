@@ -240,17 +240,33 @@ def main():
                 if args.operation != 'export':
                     count = collect(db, client, limit=args.limit)
                     print(json.dumps({'event': 'biometry_collected', 'sections': count, 'at': now()}), flush=True)
-                if args.operation == 'export' or args.output or args.publish:
+                publish_due = args.publish and (args.operation != 'watch' or time.time() - max(
+                    meta(db, 'last_published', 0), meta(db, 'last_publish_attempt', 0)) >= 600)
+                if args.operation == 'export' or args.output or publish_due:
                     data = aggregate(db)
                     if args.output:
                         args.output.write_bytes(canonical(data))
-                    if args.publish and (time.time() - meta(db, 'last_published', 0) >= 600
-                                         or args.operation != 'watch'):
+                    if publish_due:
                         from .biometry_publish import publish
-                        receipt = publish(args.state, data)
-                        set_meta(db, 'last_published', time.time())
+                        # A failed publication must not stall official BU collection.
+                        # Persist attempt cadence before connecting, including across
+                        # restarts; the publisher retains its own recovery journal.
+                        set_meta(db, 'last_publish_attempt', time.time())
                         db.commit()
-                        print(json.dumps(receipt), flush=True)
+                        try:
+                            receipt = publish(args.state, data)
+                        except Exception as error:
+                            if args.operation != 'watch':
+                                raise
+                            code = str(error) if re.fullmatch('[a-z][a-z0-9_]{1,100}', str(error)) else type(error).__name__
+                            print(json.dumps({'event': 'biometry_publish_failed',
+                                  'error_type': type(error).__name__, 'code': code,
+                                  'retry_at': meta(db, 'last_publish_attempt') + 600,
+                                  'at': now()}), flush=True)
+                        else:
+                            set_meta(db, 'last_published', time.time())
+                            db.commit()
+                            print(json.dumps(receipt), flush=True)
                 if args.operation != 'watch':
                     break
                 if not count:

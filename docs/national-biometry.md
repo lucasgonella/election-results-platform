@@ -56,9 +56,15 @@ Não modifica outros serviços, dados eleitorais, financeiro ou credenciais.
 `journalctl -u election-biometry.service` mostram ciclos e falhas sanitizadas.
 Para exportar/diagnosticar com o CLI `biometry_runner`, parar apenas esse
 serviço antes; todas as operações CLI usam flock exclusivo no state.
-O serviço publica no máximo a cada dez minutos, e a página consulta a versão
-a cada dois minutos quando visível. Se não houver mudança, verifica a release
-anterior sem reenviar.
+O serviço tenta publicar no máximo a cada dez minutos, inclusive após falha
+ou reinício, e a página consulta a versão a cada dois minutos quando visível.
+Falhas de publicação são registradas separadamente e não impõem a pausa de
+falha de coleta: o download dos BUs continua entre as tentativas. O horário da
+última publicação só avança após confirmação; o journal pendente é preservado
+para recuperação pelo mesmo publicador. Exportações/publicações supervisionadas
+continuam mostrando a falha ao operador. Se não houver mudança, verifica a
+release anterior sem reenviar. A taxa global do TSE permanece quatro requisições
+por segundo; não multiplicar coletores sobre o mesmo checkpoint.
 
 Namespace exclusivo: `/public_html/biometria-2026/presidente/turno-2`.
 Release imutável `releases/SHA256/panel.json`, vinculada por hash/tamanho e
