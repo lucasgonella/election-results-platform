@@ -20,6 +20,7 @@ SCOPES = {
     'second': ['/public_html/data/turnos/2', '/election-round2-deploy'],
     'municipal-1': ['/public_html/municipal-2026/turnos/1', '/public_html/municipal-2026/geography', '/election-municipal-deploy/1'],
     'municipal-2': ['/public_html/municipal-2026/turnos/2', '/public_html/municipal-2026/geography', '/election-municipal-deploy/2'],
+    'biometry-2': ['/public_html/biometria-2026/presidente/turno-2', '/election-biometry-deploy/2'],
     'portal': ['/public_html/eleicoes', '/frontend-deploy'],
     'raio-x': ['/public_html/eleicoes/goias/raio-x', '/frontend-deploy'],
     'finance': ['/public_html/eleicoes/goias/raio-x/data', '/goias-finance-deploy'],

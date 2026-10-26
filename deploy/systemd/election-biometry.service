@@ -1,0 +1,40 @@
+[Unit]
+Description=National presidential round-two BU identification dashboard collector
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=electionbiometry
+Group=electionbiometry
+WorkingDirectory=/opt/election-biometry/current
+LoadCredential=locaweb_ssh_key:/etc/election-results-platform/ssh/actions.key
+LoadCredential=locaweb_known_hosts:/etc/election-results-platform/ssh/known_hosts
+Environment=PUBLICATION_TRANSPORT=ssh
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/election-biometry-venv/bin/python -m collector.src.biometry_runner watch --state /var/lib/election-biometry --publish
+Restart=on-failure
+RestartSec=30s
+TimeoutStopSec=180s
+StateDirectory=election-biometry
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+CPUQuota=20%
+MemoryMax=384M
+TasksMax=32
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

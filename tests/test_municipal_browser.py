@@ -20,6 +20,12 @@ if os.environ.get('MUNICIPAL_BROWSER_REQUIRED')=='1' and not sync_playwright:rai
 ROOT=Path(__file__).resolve().parents[1]
 
 
+def load_tests(loader, suite, pattern):
+    """Reuse the portal's required Chromium job for its national BU panel."""
+    suite.addTests(loader.loadTestsFromName('tests.test_biometry_browser'))
+    return suite
+
+
 class Handler(SimpleHTTPRequestHandler):
     files={}
     def do_GET(self):

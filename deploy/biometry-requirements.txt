@@ -1,0 +1,2 @@
+# Independent service environment. No PostgreSQL or changes to other collectors.
+requests>=2.32,<3
