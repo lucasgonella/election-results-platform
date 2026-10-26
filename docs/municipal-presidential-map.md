@@ -67,6 +67,15 @@ quando necessários. Nacional usa malha reduzida; selecionar UF usa a resoluçã
 detalhada. Geometrias têm URLs imutáveis próprias e podem ser reutilizadas entre
 releases/turnos. Cache do leitor é limitado. Não há SDK cartográfico externo.
 
+Os limites estaduais ficam sobre as divisões municipais, com um halo da cor do
+fundo e um traço de contraste adaptado ao tema. A espessura permanece constante
+em pixels de tela durante zoom e em telas pequenas; o destaque do município
+selecionado fica acima desse contorno. As 27 UFs usam a malha oficial
+`BR_UF_2025.zip` do mesmo ano da malha municipal, simplificada com tolerância de
+0,005 grau e projetada pela mesma transformação Mercator do canvas. Os caminhos
+`municipalD` e os metadados/hash da origem ficam no asset visual
+`brazil-states.js`, sem consultas adicionais durante a navegação.
+
 Busca normaliza acentos e mantém UF/código nos resultados para separar homônimos.
 Mapa/tabela/painel usam a mesma publicação municipal fixada, com URL de seleção.
 Tabela tem 30 linhas por página. Hover e zoom não selecionam; clique/toque/Enter

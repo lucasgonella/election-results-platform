@@ -66,6 +66,7 @@
         constructor(parent){
             this.parent=parent;this.reader=new Reader();this.round=0;this.sequence=0;this.camera={scale:1,x:0,y:0};this.paths=new Map();this.details=new Map();this.geometryLoaded=new Set();this.active=false;this.page=0;this.query='';this.mode=['leader','share','margin'].includes(parent.mode)?parent.mode:'leader';this.candidate=parent.candidate||'';
             const url=new URL(root.location.href);this.uf=UFS.includes(url.searchParams.get('muf'))?url.searchParams.get('muf'):'';this.selected=/^\d{7}$/.test(url.searchParams.get('municipio')||'')?url.searchParams.get('municipio'):'';
+            this.stateBorders=new Map(parent.states.filter(state=>state.municipalD).map(state=>[state.scope,new Path2D(state.municipalD)]));
             this.build();this.bind();
             this.setContext(parent.portal.getContext());
             doc.addEventListener('election:context',event=>this.setContext(event.detail||parent.portal.getContext()));
@@ -178,8 +179,18 @@
                 ctx.globalAlpha=visible.has(id)?(this.candidate&&this.mode==='leader'&&String(this.catalog[row.leader?.id]?.number)!==String(this.candidate)? .28:1):.12;
                 ctx.fillStyle=this.color(row);ctx.fill(item.path,'evenodd');ctx.strokeStyle=surface;ctx.lineWidth=.4/this.camera.scale;
                 ctx.setLineDash(row.consolidation==='partial'&&['partial','tie'].includes(row.status)?[2/this.camera.scale,2/this.camera.scale]:[]);ctx.stroke(item.path);
-                if(id===this.selected||id===this.hovered){ctx.globalAlpha=1;ctx.strokeStyle=ink;ctx.lineWidth=2.5/this.camera.scale;ctx.setLineDash([]);ctx.stroke(item.path);}
-            }ctx.globalAlpha=1;ctx.setLineDash([]);
+            }
+            ctx.globalAlpha=1;ctx.setLineDash([]);ctx.lineJoin='round';
+            const borderScale=820/(this.canvas.clientWidth||820)/this.camera.scale;
+            for(const [uf,path] of this.stateBorders){
+                if(this.uf&&uf!==this.uf||!this.geometryLoaded.has(uf+'-national')&&!this.geometryLoaded.has(uf+'-detail'))continue;
+                ctx.strokeStyle=surface;ctx.lineWidth=3.2*borderScale;ctx.stroke(path);
+                ctx.strokeStyle=ink;ctx.lineWidth=1.4*borderScale;ctx.stroke(path);
+            }
+            for(const id of new Set([this.selected,this.hovered])){
+                const item=this.paths.get(id);if(!item||this.uf&&item.uf!==this.uf)continue;
+                ctx.strokeStyle=ink;ctx.lineWidth=2.5/this.camera.scale;ctx.stroke(item.path);
+            }
         }
         point(event){const b=this.canvas.getBoundingClientRect();return {x:(event.clientX-b.left)*820/b.width,y:(event.clientY-b.top)*740/b.height};}
         hit(point){const x=(point.x-this.camera.x)/this.camera.scale,y=(point.y-this.camera.y)/this.camera.scale;
