@@ -38,10 +38,17 @@ o coletor não afirma validar a assinatura digital da urna.
 
 Código `collector/src/biometry*.py`, sem PostgreSQL. SQLite WAL com chave única
 UF/município/zona/seção; mudanças no inventário invalidam o BU anterior até
-nova leitura. Fila intercala as 28 localidades; quatro workers e limite global
-de quatro requisições por segundo. AUX e BU são duas requisições por seção:
-a consolidação inicial pode levar dias. Retomada aproveita o checkpoint;
-429 impõe pausa compartilhada e persistida. Reserva de disco 2 GiB, limite de
+nova leitura. Fila intercala as 28 localidades. O serviço seleciona 12 workers
+e limite global de 20 requisições por segundo, compartilhado por todos os
+workers; a CLI mantém quatro workers/quatro requisições como padrões e aceita
+`--workers` (1–16) e `--rps` (até 25). A
+[documentação oficial do TSE](https://www.tse.jus.br/eleicoes/informacoes-tecnicas-sobre-a-divulgacao-de-resultados)
+informa máximo de 100 requisições por IP por segundo: o teto próprio conserva
+margem para os outros coletores da app01. AUX e BU são duas requisições por seção;
+o prazo depende da taxa efetiva e da disponibilidade dos arquivos. Retomada
+aproveita o checkpoint; 429 impõe pausa compartilhada e persistida de pelo menos
+dez minutos ou o `Retry-After` maior, sem novas tentativas durante a pausa.
+Reserva de disco 2 GiB, limite de
 checkpoint 1 GiB, serviço com 384 MiB de memória e 20% de CPU.
 
 Instalação somente de main revisada e com todos os checks aprovados:
@@ -63,8 +70,8 @@ falha de coleta: o download dos BUs continua entre as tentativas. O horário da
 última publicação só avança após confirmação; o journal pendente é preservado
 para recuperação pelo mesmo publicador. Exportações/publicações supervisionadas
 continuam mostrando a falha ao operador. Se não houver mudança, verifica a
-release anterior sem reenviar. A taxa global do TSE permanece quatro requisições
-por segundo; não multiplicar coletores sobre o mesmo checkpoint.
+release anterior sem reenviar. Não multiplicar coletores sobre o mesmo
+checkpoint nem somar workers como se cada um tivesse seu próprio limite.
 
 Namespace exclusivo: `/public_html/biometria-2026/presidente/turno-2`.
 Release imutável `releases/SHA256/panel.json`, vinculada por hash/tamanho e
