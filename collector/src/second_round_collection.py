@@ -142,7 +142,28 @@ def discover(client):
     return tuple(plans)
 
 
-def build_values(client, plans, *, include_portal=True):
+def elected_results(payload):
+    """Publish only named, officially elected candidates in the relevant scope."""
+    scope, office, snapshot = payload['scope'], payload['office'], payload['snapshot']
+    if office['code'] == 1 and scope['code'] != 'br':
+        return []
+    return [{
+        'id': f"{scope['code']}:{office['code']}:{candidate['tse_candidate_seq']}",
+        'kind': 'elected', 'scope': scope['code'], 'uf': scope.get('uf'),
+        'office': office['code'], 'office_name': office['name'],
+        'candidate_id': candidate['tse_candidate_seq'],
+        'candidate_name': candidate.get('ballot_name') or candidate['name'],
+        'party_acronym': candidate.get('party_acronym'),
+        'result_status': candidate['result_status'],
+        'mathematical_definition': snapshot.get('mathematical_definition'),
+        'tse_idg': snapshot['tse_idg'], 'generated_at': snapshot['generated_at'],
+        'captured_at': snapshot['captured_at'],
+    } for candidate in payload['candidates']
+        if candidate.get('elected') is True
+        and str(candidate.get('result_status') or '').strip().casefold() == 'eleito']
+
+
+def build_values(client, plans, *, include_portal=True, include_elected_alerts=True):
     values = {}
     started = False
     for plan in plans:
@@ -175,7 +196,10 @@ def build_values(client, plans, *, include_portal=True):
     values['manifest.json'] = {**meta, 'result_count': len(rows),
         'candidate_count': sum(r['candidate_count'] for r in rows), 'results': rows}
     values['version.json'] = meta
-    values['alerts.json'] = {**meta, 'alerts': [], 'alert_count': 0}
+    alerts = [alert for name in sorted(values) if name.endswith(('/president.json', '/governor.json'))
+              for alert in elected_results(values[name])] if include_elected_alerts else []
+    values['alerts.json'] = {**meta, 'schema_version': 2 if include_elected_alerts else 1,
+                            'alerts': alerts, 'alert_count': len(alerts)}
     if include_portal:
         # One immutable browser download, bound to the release descriptor/hash.
         # Individual files remain available and are still verified by FTP/HTTPS.
