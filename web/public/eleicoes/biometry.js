@@ -9,6 +9,7 @@
     const validId = value => typeof value==='string' && /^[a-f0-9]{64}$/.test(value);
     const sum = rows => Object.fromEntries(FIELDS.map(key=>[key,rows.reduce((total,row)=>total+row[key],0)]));
     const norm = value => String(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
+    const identified = row => row.processed>0 && (row.attendance===0 || row.unknown<row.attendance);
     function validate(value) {
         if(value?.schema!==1 || value.environment!=='oficial' || !eqElection(value.election)
             || !Array.isArray(value.states) || !Array.isArray(value.municipalities)
@@ -58,8 +59,8 @@
         const quote=value=>{let text=String(value??'');if(/^[=+@-]/.test(text))text="'"+text;return '"'+text.replace(/"/g,'""')+'"';};
         const header=['UF','Localidade','BUs esperados','BUs processados','Comparecimento nos BUs lidos','Biometria reconhecida','Identificação biográfica','Sem cadastro biométrico','Forma não informada'];
         return '\ufeff'+[header,...rows.map(row=>[row.uf.toUpperCase(),row.name,row.expected,row.processed,
-            row.processed?row.attendance:'',row.processed?row.biometric:'',row.processed?row.biographic:'',
-            row.processed?row.no_registration:'',row.processed?row.unknown:''])].map(row=>row.map(quote).join(';')).join('\r\n');
+            row.processed?row.attendance:'',identified(row)?row.biometric:'',identified(row)?row.biographic:'',
+            identified(row)?row.no_registration:'',row.processed?row.unknown:''])].map(row=>row.map(quote).join(';')).join('\r\n');
     }
     const api={validate,read,sum,csv};
     if(typeof module!=='undefined'&&module.exports){module.exports=api;return;}
@@ -80,14 +81,15 @@
         if(!publication)return;
         const {data}=publication,uf=find('uf').value;
         const total=uf?data.states.find(row=>row.uf===uf):data.totals;
-        const available=total.processed>0,without=total.biographic+total.no_registration;
+        const available=total.processed>0,known=identified(total),without=total.biographic+total.no_registration;
+        const pending=available?'Forma de identificação não informada nos BUs lidos':'Aguardando BUs desta localidade';
         find('scope').textContent=uf?(data.states.find(row=>row.uf===uf).name+' · '+uf.toUpperCase()):'Brasil e exterior';
-        find('biometric').textContent=available?number(total.biometric):'—';
-        find('biometric-share').textContent=available?percent(total.biometric,total.attendance)+' do comparecimento lido':'Aguardando BUs desta localidade';
-        find('without').textContent=available?number(without):'—';
-        find('without-share').textContent=available?percent(without,total.attendance)+' do comparecimento lido':'Aguardando BUs desta localidade';
-        find('biographic').textContent=available?number(total.biographic):'—';
-        find('no-registration').textContent=available?number(total.no_registration):'—';
+        find('biometric').textContent=known?number(total.biometric):'—';
+        find('biometric-share').textContent=known?percent(total.biometric,total.attendance)+' do comparecimento lido':pending;
+        find('without').textContent=known?number(without):'—';
+        find('without-share').textContent=known?percent(without,total.attendance)+' do comparecimento lido':pending;
+        find('biographic').textContent=known?number(total.biographic):'—';
+        find('no-registration').textContent=known?number(total.no_registration):'—';
         find('attendance').textContent=available?number(total.attendance):'—';
         find('coverage').textContent=percent(total.processed,total.expected);
         find('coverage-count').textContent=number(total.processed)+' de '+number(total.expected)+' seções com BU processado';
@@ -102,7 +104,7 @@
         const legend=find('legend');legend.replaceChildren();
         for(const [label,value,cls] of segments) {
             if(value) {const node=el('span',undefined,cls);node.style.width=(value/total.attendance*100)+'%';node.title=label+': '+number(value);find('segments').append(node);}
-            legend.append(el('span',label+' · '+(available?percent(value,total.attendance):'—'),cls+'-label'));
+            legend.append(el('span',label+' · '+((known||label==='Forma não informada'&&available)?percent(value,total.attendance):'—'),cls+'-label'));
         }
         const rows=visibleRows(),limit=view==='states'?28:25,pages=Math.max(1,Math.ceil(rows.length/limit));page=Math.min(page,pages-1);
         find('body').replaceChildren();
@@ -112,8 +114,8 @@
             else label.textContent=row.name+' · '+row.uf.toUpperCase();
             tr.append(label);
             const values=[number(row.processed)+' / '+number(row.expected),row.processed?number(row.attendance):'—',
-                row.processed?number(row.biometric):'—',row.processed?number(row.biographic+row.no_registration):'—',
-                row.processed?percent(row.biometric,row.attendance):'—',row.processed?number(row.unknown):'—'];
+                identified(row)?number(row.biometric):'—',identified(row)?number(row.biographic+row.no_registration):'—',
+                identified(row)?percent(row.biometric,row.attendance):'—',row.processed?number(row.unknown):'—'];
             for(const value of values)tr.append(el('td',value));find('body').append(tr);
         }
         if(!rows.length){const tr=el('tr'),td=el('td','Nenhuma localidade encontrada.');td.colSpan=7;tr.append(td);find('body').append(tr);}

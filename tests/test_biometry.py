@@ -165,5 +165,6 @@ const calls=[];const fetcher=async path=>{calls.push(path);return path.endsWith(
  marker.sha256='0'.repeat(64);await assert.rejects(api.read(fetcher));marker.sha256=hash;
  marker.size++;await assert.rejects(api.read(fetcher));
  assert(api.csv([{...data.states[0],name:'=SYNTHETIC'}]).includes("'=SYNTHETIC"));
+ assert(api.csv([data.states.at(-1)]).split('\r\n')[1].endsWith(';"";"";"";"183"'));
 })();'''
         subprocess.run(['node','-e',script,json.dumps(dataset())],check=True,cwd=Path(__file__).resolve().parents[1])
