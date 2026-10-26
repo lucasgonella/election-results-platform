@@ -30,7 +30,9 @@ class Throttled(RuntimeError):
 
 class OfficialHTTP:
     def __init__(self, rps=4):
-        if not 0 < rps <= 5:
+        # TSE documents 100 requests/IP/second. Keep this independent
+        # collector below one quarter, leaving room for existing pipelines.
+        if not 0 < rps <= 25:
             raise ValueError('biometry_invalid_request_rate')
         self.interval, self.next_request = 1 / rps, 0
         self.lock, self.local = threading.Lock(), threading.local()
@@ -56,7 +58,7 @@ class OfficialHTTP:
                 with self.local.session.get(url, timeout=(10, 30), allow_redirects=False, stream=True) as response:
                     if response.status_code == 429:
                         try:
-                            seconds = max(60, int(response.headers.get('Retry-After', '600')))
+                            seconds = max(600, int(response.headers.get('Retry-After', '600')))
                         except ValueError:
                             seconds = 600
                         self.cooldown = time.time() + seconds
@@ -210,16 +212,19 @@ def main():
     parser.add_argument('operation', choices=['collect', 'watch', 'export', 'status'])
     parser.add_argument('--state', type=Path, required=True)
     parser.add_argument('--limit', type=int, default=128)
+    parser.add_argument('--rps', type=float, default=4)
+    parser.add_argument('--workers', type=int, default=4)
     parser.add_argument('--output', type=Path)
     parser.add_argument('--publish', action='store_true')
     args = parser.parse_args()
-    if not args.state.is_absolute() or args.state.is_symlink() or not 1 <= args.limit <= 10000:
+    if (not args.state.is_absolute() or args.state.is_symlink()
+            or not 1 <= args.limit <= 10000 or not 1 <= args.workers <= 16):
         raise ValueError('biometry_invalid_state_or_limit')
     args.state.mkdir(parents=True, exist_ok=True)
     stop = threading.Event()
     for signum in (signal.SIGTERM, signal.SIGINT):
         signal.signal(signum, lambda *_: stop.set())
-    client = OfficialHTTP()
+    client = OfficialHTTP(args.rps)
     with local_lock(args.state):
         db = database(args.state)
         if args.operation == 'status':
@@ -238,19 +243,35 @@ def main():
                 if not meta(db, 'inventory') or time.time() - meta(db, 'inventory_checked_at', 0) > 86400:
                     initialize(db, client)
                 if args.operation != 'export':
-                    count = collect(db, client, limit=args.limit)
+                    count = collect(db, client, limit=args.limit, workers=args.workers)
                     print(json.dumps({'event': 'biometry_collected', 'sections': count, 'at': now()}), flush=True)
-                if args.operation == 'export' or args.output or args.publish:
+                publish_due = args.publish and (args.operation != 'watch' or time.time() - max(
+                    meta(db, 'last_published', 0), meta(db, 'last_publish_attempt', 0)) >= 600)
+                if args.operation == 'export' or args.output or publish_due:
                     data = aggregate(db)
                     if args.output:
                         args.output.write_bytes(canonical(data))
-                    if args.publish and (time.time() - meta(db, 'last_published', 0) >= 600
-                                         or args.operation != 'watch'):
+                    if publish_due:
                         from .biometry_publish import publish
-                        receipt = publish(args.state, data)
-                        set_meta(db, 'last_published', time.time())
+                        # A failed publication must not stall official BU collection.
+                        # Persist attempt cadence before connecting, including across
+                        # restarts; the publisher retains its own recovery journal.
+                        set_meta(db, 'last_publish_attempt', time.time())
                         db.commit()
-                        print(json.dumps(receipt), flush=True)
+                        try:
+                            receipt = publish(args.state, data)
+                        except Exception as error:
+                            if args.operation != 'watch':
+                                raise
+                            code = str(error) if re.fullmatch('[a-z][a-z0-9_]{1,100}', str(error)) else type(error).__name__
+                            print(json.dumps({'event': 'biometry_publish_failed',
+                                  'error_type': type(error).__name__, 'code': code,
+                                  'retry_at': meta(db, 'last_publish_attempt') + 600,
+                                  'at': now()}), flush=True)
+                        else:
+                            set_meta(db, 'last_published', time.time())
+                            db.commit()
+                            print(json.dumps(receipt), flush=True)
                 if args.operation != 'watch':
                     break
                 if not count:

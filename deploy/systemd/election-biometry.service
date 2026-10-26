@@ -13,7 +13,7 @@ LoadCredential=locaweb_known_hosts:/etc/election-results-platform/ssh/known_host
 Environment=PUBLICATION_TRANSPORT=ssh
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/election-biometry-venv/bin/python -m collector.src.biometry_runner watch --state /var/lib/election-biometry --publish
+ExecStart=/opt/election-biometry-venv/bin/python -m collector.src.biometry_runner watch --state /var/lib/election-biometry --publish --rps 20 --workers 12
 Restart=on-failure
 RestartSec=30s
 TimeoutStopSec=180s

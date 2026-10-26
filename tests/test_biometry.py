@@ -67,7 +67,9 @@ class BUAccountingTests(unittest.TestCase):
         for url in ['http://resultados.tse.jus.br/oficial/x','https://evil.example/oficial/x',
                     'https://resultados.tse.jus.br/oficial/x?other=1']:
             with self.assertRaises(ValueError):r.OfficialHTTP().get(url)
-        with self.assertRaises(ValueError):r.OfficialHTTP(6)
+        for rate in [0, -1, 26, float('inf'), float('nan')]:
+            with self.assertRaises(ValueError):r.OfficialHTTP(rate)
+        self.assertEqual(r.OfficialHTTP(20).interval, 0.05)
 
     def test_inventory_deduplicates_aggregated_sections_and_invalidates_changed_bu(self):
         class Client:
@@ -95,9 +97,26 @@ class BUAccountingTests(unittest.TestCase):
         from unittest.mock import MagicMock
         session=MagicMock();response=session.get.return_value.__enter__.return_value
         response.status_code=429;response.headers={'Retry-After':'120'};client.local.session=session
-        with self.assertRaises(r.Throttled):client.get(r.NATIONAL)
+        with self.assertRaises(r.Throttled) as raised:client.get(r.NATIONAL)
+        self.assertEqual(raised.exception.seconds,600)
         with self.assertRaises(r.Throttled):client.get(r.NATIONAL)
         self.assertEqual(session.get.call_count,1)
+
+    def test_longer_official_retry_after_and_global_spacing_are_respected(self):
+        from unittest.mock import MagicMock
+        client=r.OfficialHTTP(20)
+        session=MagicMock();response=session.get.return_value.__enter__.return_value
+        response.status_code=429;response.headers={'Retry-After':'900'};client.local.session=session
+        with self.assertRaises(r.Throttled) as raised:client.get(r.NATIONAL)
+        self.assertEqual(raised.exception.seconds,900)
+        client=r.OfficialHTTP(20);client.local.session=session
+        response.status_code=200;response.iter_content.side_effect=lambda size:[b'{}']
+        clock=[1000.0];sleeps=[]
+        def sleep(seconds):sleeps.append(seconds);clock[0]+=seconds
+        with patch.object(r.time,'monotonic',side_effect=lambda:clock[0]),patch.object(r.time,'sleep',side_effect=sleep):
+            for _ in range(20):client.get(r.NATIONAL)
+        self.assertEqual(len(sleeps),19)
+        self.assertTrue(all(abs(seconds-0.05)<1e-8 for seconds in sleeps))
 
 
 class PublicationTests(unittest.TestCase):
