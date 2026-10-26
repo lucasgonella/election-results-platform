@@ -1,0 +1,42 @@
+.biometry-panel{margin:2.5rem 0;padding:clamp(1.1rem,3vw,2.2rem);border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--surface);scroll-margin-top:100px}
+.biometry-panel[hidden]{display:none}
+.bio-heading{display:flex;justify-content:space-between;gap:1.2rem;align-items:start;flex-wrap:wrap}
+.bio-heading h2{font:500 clamp(1.8rem,3vw,2.6rem)/1.15 var(--font-editorial);margin:.35rem 0 .7rem}
+.bio-intro{max-width:70ch;color:var(--muted);margin:.5rem 0 1rem}
+.bio-filters{display:flex;flex-wrap:wrap;align-items:end;gap:1rem;margin:1.5rem 0}
+.bio-filters label{display:grid;gap:.35rem;flex:1;min-width:min(100%,210px);font-size:.85rem;font-weight:600}
+.bio-filters select,.bio-filters input{width:100%;min-height:44px;background:var(--surface);border:1px solid var(--line-strong);border-radius:5px;padding:.65rem .8rem}
+.bio-action{min-height:44px;border:1px solid var(--line-strong);background:var(--surface);border-radius:5px;padding:.6rem .9rem;color:var(--ink)}
+.bio-action[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent-strong);color:var(--accent-strong)}
+.bio-status{border-left:3px solid var(--accent);padding:.8rem 1rem;background:var(--surface-subtle);font-size:.9rem}
+.bio-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;margin:1.3rem 0}
+.bio-card{border:1px solid var(--line);border-radius:10px;padding:clamp(1rem,2vw,1.5rem);min-width:0}
+.bio-card h3{font-size:.9rem;font-weight:600;margin:0;color:var(--muted)}
+.bio-value{display:block;font-size:clamp(1.9rem,4vw,3.15rem);font-weight:650;letter-spacing:-.045em;font-variant-numeric:tabular-nums;line-height:1.2;margin:.7rem 0;overflow-wrap:anywhere}
+.bio-card p{margin:.4rem 0;font-size:.85rem;color:var(--muted)}
+.bio-card-biometric{border-top:4px solid var(--accent)}
+.bio-card-without{border-top:4px solid #bd8344}
+.bio-breakdown{display:flex;flex-wrap:wrap;gap:.6rem 1.5rem;font-size:.8rem;padding-top:.65rem;border-top:1px solid var(--line);margin-top:1rem}
+.bio-breakdown strong{display:block;color:var(--ink);font-variant-numeric:tabular-nums}
+.bio-chart{margin:1.25rem 0}
+.bio-segments{height:16px;border-radius:4px;overflow:hidden;display:flex;background:var(--surface-subtle)}
+.bio-segment-biometric{background:#087f8c}.bio-segment-without{background:#bd8344}.bio-segment-unknown{background:#87929b}
+.bio-legend{display:flex;flex-wrap:wrap;gap:.5rem 1.5rem;color:var(--muted);font-size:.8rem;margin:.7rem 0}
+.bio-legend span::before{content:"";display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:.4rem}
+.bio-segment-biometric-label::before{background:#087f8c}.bio-segment-without-label::before{background:#bd8344}.bio-segment-unknown-label::before{background:#87929b}
+.bio-unknown{padding:.8rem 1rem;background:var(--warning-soft);color:var(--warning);border-radius:5px;font-size:.9rem}
+.bio-updated,.bio-reference,.bio-method{font-size:.8rem;color:var(--muted)}
+.bio-toolbar,.bio-pagination{display:flex;align-items:center;justify-content:space-between;gap:.7rem;flex-wrap:wrap;margin:1.2rem 0 .8rem}
+.bio-switch{display:flex;gap:.4rem;flex-wrap:wrap}
+.bio-table-wrap{max-width:100%;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.bio-table{width:100%;border-collapse:collapse;font-size:.8rem;white-space:nowrap}
+.bio-table th,.bio-table td{padding:.8rem .9rem;text-align:right;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.bio-table th:first-child{text-align:left}.bio-table thead{background:var(--surface-subtle)}
+.bio-table tbody tr:last-child>*{border-bottom:0}
+.bio-row-button{color:var(--accent-strong);background:transparent;border:0;text-align:left;padding:.3rem 0;min-height:32px;text-decoration:underline;text-underline-offset:.2em}
+.bio-pagination p{color:var(--muted);font-size:.8rem}
+.bio-coverage-progress{width:100%;height:8px;accent-color:var(--accent)}
+.biometry-panel details{margin-top:1.4rem;color:var(--muted);font-size:.85rem}
+.biometry-panel summary{cursor:pointer;min-height:35px;color:var(--ink);font-weight:600}
+@media(min-width:1100px){.bio-cards{grid-template-columns:repeat(4,minmax(0,1fr))}.bio-value{font-size:clamp(1.8rem,2.8vw,2.65rem)}}
+@media(max-width:560px){.bio-cards{grid-template-columns:minmax(0,1fr)}.bio-filters{display:grid;grid-template-columns:minmax(0,1fr)}.bio-heading .bio-action{width:100%}.bio-table{font-size:.75rem}.bio-switch{width:100%}.bio-switch button{flex:1}.bio-toolbar>.bio-action{width:100%}}
