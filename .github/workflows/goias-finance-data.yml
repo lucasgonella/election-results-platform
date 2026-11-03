@@ -1,15 +1,6 @@
 name: Import TSE finance data for Goiás
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'tools/goias_finance_etl.py'
-      - 'tools/goias_identity.py'
-      - 'tools/goias_finance_publish.py'
-      - '.github/workflows/goias-finance-data.yml'
   workflow_dispatch:
-  schedule:
-    - cron: '23 9,15,21 * * *'
 permissions:
   contents: write
 concurrency:
@@ -17,7 +8,8 @@ concurrency:
   cancel-in-progress: false
 jobs:
   import:
-    if: github.ref == 'refs/heads/main'
+    # Freeze 2026-11-03: preserve published data; disable collectors, commits and FTP.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # Exclude deploy, rollback and recovery until financial verification ends.

@@ -1,23 +1,5 @@
 name: Official municipal presidential data
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'collector/src/municipal*'
-      - 'collector/src/parser.py'
-      - 'collector/src/tse_client.py'
-      - 'collector/src/election_release.py'
-      - 'collector/src/second_round_publish.py'
-      - 'collector/requirements.txt'
-      - 'tools/municipal*'
-      - 'tests/test_municipal*'
-      - 'tests/municipal_fixtures.py'
-      - 'deploy/scripts/wait-municipal-ci.py'
-      - 'deploy/frontend.py'
-      - '.github/workflows/municipal*.yml'
-  schedule:
-    - cron: '8,38 * * * *'
-    - cron: '18,48 * * * *'
   workflow_dispatch:
     inputs:
       operation:
@@ -34,7 +16,8 @@ permissions:
   checks: read
 jobs:
   collect:
-    if: github.ref == 'refs/heads/main' && (github.event.inputs.operation == '' || github.event.inputs.operation == 'run')
+    # Freeze 2026-11-03: no municipal collection or FTP publication.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 80
     concurrency:
@@ -91,6 +74,7 @@ jobs:
           path: ${{ runner.temp }}/municipal-state
           key: municipal-state-${{ github.event.inputs.round || (github.event.schedule == '18,48 * * * *' && '2' || '1') }}-${{ github.run_id }}-${{ github.run_attempt }}
   publish:
+    if: ${{ false }}
     env:
       PUBLICATION_TRANSPORT: ${{ vars.LOCAWEB_MUNICIPAL_TRANSPORT || 'ftp' }}
     needs: collect
@@ -141,6 +125,7 @@ jobs:
         env: *ftp-env
         run: python -m collector.src.municipal_publish status --round "${{ github.event.inputs.round || (github.event.schedule == '18,48 * * * *' && '2' || '1') }}"
   operation:
+    if: ${{ false }}
     env:
       PUBLICATION_TRANSPORT: ${{ vars.LOCAWEB_MUNICIPAL_TRANSPORT || 'ftp' }}
     if: github.ref == 'refs/heads/main' && (github.event.inputs.operation == 'status' || github.event.inputs.operation == 'recover')
