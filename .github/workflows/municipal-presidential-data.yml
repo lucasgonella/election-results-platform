@@ -78,7 +78,6 @@ jobs:
     env:
       PUBLICATION_TRANSPORT: ${{ vars.LOCAWEB_MUNICIPAL_TRANSPORT || 'ftp' }}
     needs: collect
-    if: github.ref == 'refs/heads/main' && needs.collect.outputs.ready == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     concurrency:
@@ -128,7 +127,6 @@ jobs:
     if: ${{ false }}
     env:
       PUBLICATION_TRANSPORT: ${{ vars.LOCAWEB_MUNICIPAL_TRANSPORT || 'ftp' }}
-    if: github.ref == 'refs/heads/main' && (github.event.inputs.operation == 'status' || github.event.inputs.operation == 'recover')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:
